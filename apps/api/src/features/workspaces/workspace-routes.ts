@@ -208,4 +208,39 @@ export const registerWorkspaceRoutes = async (
     });
     return reply.send(success(serializeDashboard(updated), createRequestId(request.id)));
   });
+
+  app.patch('/api/v1/workspaces/:workspaceId', async (request, reply) => {
+    const user = await requireUser(request, auth);
+    const params = z.object({ workspaceId: idSchema }).parse(request.params);
+    const input = z
+      .object({
+        name: z.string().trim().min(2).max(80).optional(),
+        description: z.string().trim().max(280).nullable().optional(),
+      })
+      .parse(request.body);
+
+    await requireMembership(params.workspaceId, user.id, ['OWNER', 'ADMIN']);
+
+    const updated = await prisma.workspace.update({
+      where: { id: params.workspaceId },
+      data: {
+        ...(input.name ? { name: input.name, slug: uniqueSlug(input.name) } : {}),
+        ...(input.description !== undefined ? { description: input.description } : {}),
+      },
+    });
+    return reply.send(success(updated, createRequestId(request.id)));
+  });
+
+  app.delete('/api/v1/workspaces/:workspaceId', async (request, reply) => {
+    const user = await requireUser(request, auth);
+    const params = z.object({ workspaceId: idSchema }).parse(request.params);
+
+    await requireMembership(params.workspaceId, user.id, ['OWNER', 'ADMIN']);
+
+    const deleted = await prisma.workspace.update({
+      where: { id: params.workspaceId },
+      data: { deletedAt: new Date() },
+    });
+    return reply.send(success({ id: deleted.id, deleted: true }, createRequestId(request.id)));
+  });
 };

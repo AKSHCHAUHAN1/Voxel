@@ -1,9 +1,22 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
-import { ArrowRight, FolderPlus, LayoutDashboard, Plus, Sparkles, X } from 'lucide-react';
+import {
+  ArrowRight,
+  FolderPlus,
+  LayoutDashboard,
+  Plus,
+  Sparkles,
+  X,
+  Edit2,
+  Share2,
+  Download,
+  Trash2,
+  Copy,
+  Check,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { workspaceService, type Workspace } from './workspace-service';
 
@@ -15,9 +28,21 @@ type WorkspaceForm = z.infer<typeof schema>;
 
 export default function WorkspacesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; workspace: Workspace } | null>(null);
+  const [editWorkspace, setEditWorkspace] = useState<Workspace | null>(null);
+  const [shareWorkspace, setShareWorkspace] = useState<Workspace | null>(null);
+  const [deleteWorkspace, setDeleteWorkspace] = useState<Workspace | null>(null);
+  const [copied, setCopied] = useState(false);
+
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const workspaces = useQuery({ queryKey: ['workspaces'], queryFn: workspaceService.list });
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const workspaces = useQuery({
+    queryKey: ['workspaces'],
+    queryFn: workspaceService.list,
+  });
+
   const create = useMutation({
     mutationFn: workspaceService.create,
     onSuccess: async (workspace) => {
@@ -26,8 +51,75 @@ export default function WorkspacesPage() {
       navigate(`/workspaces/${workspace.id}/dashboards`);
     },
   });
+
+  const rename = useMutation({
+    mutationFn: ({ id, name, description }: { id: string; name: string; description?: string | null }) =>
+      workspaceService.update(id, { name, description: description ?? null }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      setEditWorkspace(null);
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: workspaceService.delete,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      setDeleteWorkspace(null);
+    },
+  });
+
+  // Global click listener to close context menu
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  const handleRightClick = (e: React.MouseEvent, workspace: Workspace) => {
+    e.preventDefault();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      workspace,
+    });
+  };
+
+  const handleDownload = async (workspace: Workspace) => {
+    try {
+      const dashboards = await workspaceService.dashboards(workspace.id);
+      const payload = {
+        workspace,
+        dashboards,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${workspace.name.toLowerCase().replace(/\s+/g, '-')}-workspace.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setContextMenu(null);
+    } catch (err) {
+      console.error('Failed to download workspace:', err);
+    }
+  };
+
+  const copyShareLink = (workspaceId: string) => {
+    const url = `${window.location.origin}/workspaces/${workspaceId}/dashboards`;
+    navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
-    <section>
+    <section className="relative">
       <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[.16em] text-violet-500">
@@ -45,6 +137,7 @@ export default function WorkspacesPage() {
           <Plus size={17} /> New workspace
         </button>
       </div>
+
       {workspaces.isPending && <WorkspaceSkeleton />}
       {workspaces.isError && <ErrorState onRetry={() => void workspaces.refetch()} />}
       {workspaces.data && (
@@ -54,11 +147,58 @@ export default function WorkspacesPage() {
               key={workspace.id}
               workspace={workspace}
               onOpen={() => navigate(`/workspaces/${workspace.id}/dashboards`)}
+              onContextMenu={(e) => handleRightClick(e, workspace)}
             />
           ))}
           {workspaces.data.length === 0 && <EmptyState onCreate={() => setDialogOpen(true)} />}
         </div>
       )}
+
+      {/* Floating Context Menu */}
+      {contextMenu && (
+        <div
+          ref={menuRef}
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          className="fixed z-50 w-44 rounded-xl border border-slate-200 bg-white/90 p-1.5 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/90"
+        >
+          <button
+            onClick={() => {
+              setEditWorkspace(contextMenu.workspace);
+              setContextMenu(null);
+            }}
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs hover:bg-slate-100 dark:hover:bg-white/5"
+          >
+            <Edit2 size={13} /> Edit Title
+          </button>
+          <button
+            onClick={() => {
+              setShareWorkspace(contextMenu.workspace);
+              setContextMenu(null);
+            }}
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs hover:bg-slate-100 dark:hover:bg-white/5"
+          >
+            <Share2 size={13} /> Share Workspace
+          </button>
+          <button
+            onClick={() => handleDownload(contextMenu.workspace)}
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs hover:bg-slate-100 dark:hover:bg-white/5"
+          >
+            <Download size={13} /> Download JSON
+          </button>
+          <div className="my-1 border-t border-slate-100 dark:border-white/5" />
+          <button
+            onClick={() => {
+              setDeleteWorkspace(contextMenu.workspace);
+              setContextMenu(null);
+            }}
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+          >
+            <Trash2 size={13} /> Delete Workspace
+          </button>
+        </div>
+      )}
+
+      {/* New Workspace Dialog */}
       {dialogOpen && (
         <WorkspaceDialog
           pending={create.isPending}
@@ -67,13 +207,109 @@ export default function WorkspacesPage() {
           onSubmit={(values) => create.mutate(values)}
         />
       )}
+
+      {/* Edit Workspace Dialog */}
+      {editWorkspace && (
+        <EditWorkspaceDialog
+          workspace={editWorkspace}
+          pending={rename.isPending}
+          onClose={() => setEditWorkspace(null)}
+          onSubmit={(name, description) =>
+            rename.mutate({ id: editWorkspace.id, name, description: description ?? null })
+          }
+        />
+      )}
+
+      {/* Share Workspace Modal */}
+      {shareWorkspace && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-sm"
+          onMouseDown={() => setShareWorkspace(null)}
+        >
+          <div
+            onMouseDown={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-white/10 dark:bg-slate-900"
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-base font-semibold">Share Workspace</h3>
+              <button
+                onClick={() => setShareWorkspace(null)}
+                className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-400"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+              Copy this link to invite team members directly to this operating canvas.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                readOnly
+                value={`${window.location.origin}/workspaces/${shareWorkspace.id}/dashboards`}
+                className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs outline-none dark:border-white/10 dark:bg-white/5"
+              />
+              <button
+                onClick={() => copyShareLink(shareWorkspace.id)}
+                className="rounded-lg bg-violet-600 px-3 py-2 text-white hover:bg-violet-500"
+              >
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Workspace Confirmation */}
+      {deleteWorkspace && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-sm"
+          onMouseDown={() => setDeleteWorkspace(null)}
+        >
+          <div
+            onMouseDown={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900"
+          >
+            <h3 className="text-base font-semibold text-rose-600">Delete Workspace</h3>
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400 leading-5">
+              Are you sure you want to delete <b>{deleteWorkspace.name}</b>? All dashboard designs and connected node canvas assets will be soft-deleted. This action can be undone by system administrators.
+            </p>
+            <div className="mt-6 flex justify-end gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setDeleteWorkspace(null)}
+                className="rounded-lg px-3 py-2 font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => remove.mutate(deleteWorkspace.id)}
+                disabled={remove.isPending}
+                className="rounded-lg bg-rose-600 px-3 py-2 font-semibold text-white hover:bg-rose-500 disabled:opacity-50"
+              >
+                {remove.isPending ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
-function WorkspaceCard({ workspace, onOpen }: { workspace: Workspace; onOpen: () => void }) {
+
+function WorkspaceCard({
+  workspace,
+  onOpen,
+  onContextMenu,
+}: {
+  workspace: Workspace;
+  onOpen: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+}) {
   return (
     <button
       onClick={onOpen}
+      onContextMenu={onContextMenu}
       className="group rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-lg dark:border-white/10 dark:bg-slate-900 dark:hover:border-violet-400/40"
     >
       <div className="flex items-start justify-between">
@@ -94,6 +330,79 @@ function WorkspaceCard({ workspace, onOpen }: { workspace: Workspace; onOpen: ()
     </button>
   );
 }
+
+function EditWorkspaceDialog({
+  workspace,
+  pending,
+  onClose,
+  onSubmit,
+}: {
+  workspace: Workspace;
+  pending: boolean;
+  onClose: () => void;
+  onSubmit: (name: string, description?: string | null) => void;
+}) {
+  const { register, handleSubmit } = useForm<WorkspaceForm>({
+    resolver: zodResolver(schema),
+    defaultValues: { name: workspace.name, description: workspace.description || '' },
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-sm"
+      onMouseDown={onClose}
+    >
+      <form
+        onSubmit={handleSubmit((data) => onSubmit(data.name, data.description))}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900"
+      >
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-semibold">Rename workspace</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <label className="block text-sm font-medium">
+          Name
+          <input
+            {...register('name')}
+            autoFocus
+            className="mt-2 w-full rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 outline-none ring-violet-400 focus:ring-2 dark:border-white/10"
+          />
+        </label>
+        <label className="mt-4 block text-sm font-medium">
+          Description <span className="font-normal text-slate-400">(optional)</span>
+          <textarea
+            {...register('description')}
+            rows={3}
+            className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 outline-none ring-violet-400 focus:ring-2 dark:border-white/10"
+          />
+        </label>
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300"
+          >
+            Cancel
+          </button>
+          <button
+            disabled={pending}
+            className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {pending ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="col-span-full rounded-2xl border border-dashed border-violet-300 bg-violet-50/70 p-12 text-center dark:border-violet-500/40 dark:bg-violet-500/5">
@@ -114,6 +423,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
     </div>
   );
 }
+
 function ErrorState({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="mt-8 rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center dark:border-rose-500/30 dark:bg-rose-500/10">
@@ -129,6 +439,7 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
     </div>
   );
 }
+
 function WorkspaceSkeleton() {
   return (
     <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -138,6 +449,7 @@ function WorkspaceSkeleton() {
     </div>
   );
 }
+
 function WorkspaceDialog({
   pending,
   error,

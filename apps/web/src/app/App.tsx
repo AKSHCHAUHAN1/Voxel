@@ -9,6 +9,7 @@ const WorkspacesPage = lazy(() => import('@/features/workspaces/WorkspacesPage')
 const WorkspaceDashboardsPage = lazy(() => import('@/features/workspaces/WorkspaceDashboardsPage'));
 const EditorPage = lazy(() => import('@/features/editor/EditorPage'));
 const LandingPage = lazy(() => import('@/features/landing/LandingPage'));
+const SettingsPage = lazy(() => import('@/features/settings/SettingsPage'));
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
         <Route element={<ProtectedRoute />}>
           <Route element={<AppShell />}>
             <Route path="/workspaces" element={<WorkspacesPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route
               path="/workspaces/:workspaceId/dashboards"
               element={<WorkspaceDashboardsPage />}
