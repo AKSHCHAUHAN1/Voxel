@@ -1,9 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
-import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
-import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+
 import {
   BarChart3,
   FileText,
@@ -32,6 +30,10 @@ type CanvasNode = {
   title: string;
   content: string; // Used for static text, sparkline coords, status text, etc.
   size: 'small' | 'medium' | 'large' | 'wide';
+  
+  // Coordinates for absolute layout
+  x?: number;
+  y?: number;
   
   // Customizations
   color?: 'slate' | 'violet' | 'emerald' | 'rose' | 'amber' | 'indigo' | 'cyan';
@@ -75,14 +77,20 @@ const emptyScene: Scene = {
 const sceneOf = (value: unknown): Scene => {
   if (!value || typeof value !== 'object') return emptyScene;
   const candidate = value as Partial<Scene>;
-  return Array.isArray(candidate.nodes)
-    ? {
-        schemaVersion: candidate.schemaVersion ?? 2,
-        nodes: candidate.nodes as CanvasNode[],
-        connections: Array.isArray(candidate.connections) ? (candidate.connections as Connection[]) : [],
-        gridStyle: (candidate.gridStyle as GridStyle) ?? 'dots',
-      }
-    : emptyScene;
+  if (!Array.isArray(candidate.nodes)) return emptyScene;
+
+  const parsedNodes = (candidate.nodes as CanvasNode[]).map((node, index) => {
+    const x = typeof node.x === 'number' ? node.x : ((index % 3) * 310 + 40);
+    const y = typeof node.y === 'number' ? node.y : (Math.floor(index / 3) * 230 + 40);
+    return { ...node, x, y };
+  });
+
+  return {
+    schemaVersion: candidate.schemaVersion ?? 2,
+    nodes: parsedNodes,
+    connections: Array.isArray(candidate.connections) ? (candidate.connections as Connection[]) : [],
+    gridStyle: (candidate.gridStyle as GridStyle) ?? 'dots',
+  };
 };
 
 // Node Defaults builder
@@ -147,12 +155,6 @@ const newNode = (type: CanvasNode['type']): CanvasNode => {
 };
 
 // --- Theme mappings ---
-const colSpans = {
-  small: 'md:col-span-3',
-  medium: 'md:col-span-4',
-  large: 'md:col-span-6',
-  wide: 'md:col-span-12',
-};
 
 const cardColors = {
   slate: 'border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100',
@@ -186,7 +188,7 @@ export default function EditorPage() {
   });
 
   const scene = useMemo(
-    () => draft ?? sceneOf(dashboard.data?.scene),
+    () => sceneOf(draft ?? dashboard.data?.scene),
     [dashboard.data?.scene, draft],
   );
 
@@ -247,12 +249,42 @@ export default function EditorPage() {
     setPickerOpen(false);
   };
 
-  const reorder = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = scene.nodes.findIndex((node) => node.id === active.id);
-    const newIndex = scene.nodes.findIndex((node) => node.id === over.id);
-    update({ ...scene, nodes: arrayMove(scene.nodes, oldIndex, newIndex) });
+  const handleDragStart = (e: React.MouseEvent, nodeId: string) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+
+    const node = scene.nodes.find((n) => n.id === nodeId);
+    if (!node) return;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const initX = node.x ?? 100;
+    const initY = node.y ?? 100;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+
+      setDraft((prevDraft) => {
+        const current = prevDraft ?? scene;
+        return {
+          ...current,
+          nodes: current.nodes.map((n) =>
+            n.id === nodeId
+              ? { ...n, x: Math.max(0, initX + dx), y: Math.max(0, initY + dy) }
+              : n
+          ),
+        };
+      });
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
   };
 
   const updateNode = (id: string, updates: Partial<CanvasNode>) => {
@@ -667,11 +699,11 @@ export default function EditorPage() {
           </div>
 
           {/* Grid Layout Container */}
-          <div className="mx-auto max-w-5xl relative z-10">
+          <div className="relative z-10 w-full">
             
             <div className="mb-5 flex items-center justify-between text-xs text-slate-400">
               <div className="flex items-center gap-2 font-medium">
-                <LayoutPanelTop size={14} /> 12-column grid system
+                <LayoutPanelTop size={14} /> Freeform canvas board
               </div>
               <span className="font-mono text-[10px]">
                 {scene.nodes.length} Nodes · {scene.connections.length} Connections
@@ -681,10 +713,10 @@ export default function EditorPage() {
             {scene.nodes.length ? (
               <NodeGrid
                 nodes={scene.nodes}
-                onReorder={reorder}
                 selectedNodeId={selectedNodeId}
                 onSelectNode={setSelectedNodeId}
                 resolveNodeValue={resolveNodeValue}
+                onDragStart={handleDragStart}
               />
             ) : (
               <CanvasEmpty onAdd={() => setPickerOpen(true)} />
@@ -1154,38 +1186,33 @@ export default function EditorPage() {
   );
 }
 
-// --- DND-KIT GRID SETUP ---
+// --- FREEFORM GRID SETUP ---
 function NodeGrid({
   nodes,
-  onReorder,
   selectedNodeId,
   onSelectNode,
   resolveNodeValue,
+  onDragStart,
 }: {
   nodes: readonly CanvasNode[];
-  onReorder: (event: DragEndEvent) => void;
   selectedNodeId: string | null;
   onSelectNode: (id: string) => void;
   resolveNodeValue: (node: CanvasNode) => string;
+  onDragStart: (e: React.MouseEvent, nodeId: string) => void;
 }) {
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-  
   return (
-    <DndContext sensors={sensors} onDragEnd={onReorder}>
-      <SortableContext items={nodes.map((node) => node.id)} strategy={rectSortingStrategy}>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-12 relative z-10">
-          {nodes.map((node) => (
-            <CanvasNodeCard
-              key={node.id}
-              node={node}
-              isSelected={node.id === selectedNodeId}
-              onSelect={() => onSelectNode(node.id)}
-              resolveNodeValue={resolveNodeValue}
-            />
-          ))}
-        </div>
-      </SortableContext>
-    </DndContext>
+    <div className="relative w-full min-h-[650px] z-10">
+      {nodes.map((node) => (
+        <CanvasNodeCard
+          key={node.id}
+          node={node}
+          isSelected={node.id === selectedNodeId}
+          onSelect={() => onSelectNode(node.id)}
+          resolveNodeValue={resolveNodeValue}
+          onDragStart={onDragStart}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -1195,13 +1222,14 @@ function CanvasNodeCard({
   isSelected,
   onSelect,
   resolveNodeValue,
+  onDragStart,
 }: {
   node: CanvasNode;
   isSelected: boolean;
   onSelect: () => void;
   resolveNodeValue: (node: CanvasNode) => string;
+  onDragStart: (e: React.MouseEvent, nodeId: string) => void;
 }) {
-  const sortable = useSortable({ id: node.id });
   const displayValue = resolveNodeValue(node);
   
   // Icon picker based on type
@@ -1238,26 +1266,37 @@ function CanvasNodeCard({
       .filter((n) => !isNaN(n));
   }, [displayValue, node.type]);
 
+  const widthOf = (size: string) => {
+    switch (size) {
+      case 'small': return 220;
+      case 'medium': return 280;
+      case 'large': return 340;
+      case 'wide': return 440;
+      default: return 280;
+    }
+  };
+
   return (
     <article
       id={`node-card-${node.id}`}
-      ref={sortable.setNodeRef}
       style={{
-        transform: CSS.Transform.toString(sortable.transform),
-        transition: sortable.transition,
+        position: 'absolute',
+        left: `${node.x ?? 40}px`,
+        top: `${node.y ?? 40}px`,
+        width: `${widthOf(node.size)}px`,
+        zIndex: isSelected ? 30 : 10,
       }}
       onClick={(e) => {
         e.stopPropagation();
         onSelect();
       }}
-      className={`relative min-h-52 rounded-2xl p-5 shadow-sm transition-all duration-200 select-none ${colSpans[node.size]} ${cardStyle} ${
+      className={`rounded-2xl p-5 shadow-sm transition-all duration-200 select-none ${cardStyle} ${
         isSelected ? 'ring-2 ring-violet-500 border-violet-500 dark:ring-violet-400 dark:border-violet-400' : 'hover:scale-[1.01] hover:shadow-md'
-      } ${sortable.isDragging ? 'opacity-40 scale-95 shadow-none' : ''}`}
+      }`}
     >
       {/* --- DRAGGABLE CARD HEADER --- */}
       <div
-        {...sortable.attributes}
-        {...sortable.listeners}
+        onMouseDown={(e) => onDragStart(e, node.id)}
         className="flex items-center justify-between border-b border-black/5 dark:border-white/5 pb-2.5 mb-4 cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
       >
         <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
