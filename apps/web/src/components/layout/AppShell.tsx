@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, Outlet, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import {
   Bell,
   Boxes,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Command as CommandIcon,
   LogOut,
   Moon,
@@ -34,6 +36,8 @@ export function AppShell() {
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [collapsed, setCollapsed] = useState(false);
 
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -148,36 +152,89 @@ export function AppShell() {
         />
       )}
 
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-72 border-r border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-slate-950 lg:flex lg:flex-col">
-        <Link
-          to="/workspaces"
-          className="flex items-center gap-3 px-2 text-lg font-semibold tracking-tight"
-        >
-          <span className="grid size-9 place-items-center rounded-xl bg-violet-600 text-white shadow-lg shadow-violet-500/20">
-            <Boxes size={18} />
-          </span>{' '}
-          Voxel
-        </Link>
-        <Link
-          to="/workspaces"
-          className="mt-10 flex items-center gap-3 rounded-xl bg-violet-50 px-3 py-2.5 text-sm font-semibold text-violet-700 dark:bg-violet-500/15 dark:text-violet-200"
-        >
-          <PanelsTopLeft size={18} /> Workspaces
-        </Link>
-        <Link
-          to="/settings"
-          className="mt-1 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/5"
-        >
-          <Settings size={18} /> Settings
-        </Link>
-        <div className="mt-auto rounded-2xl border border-violet-100 bg-violet-50 p-4 text-xs text-violet-900 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-100">
-          <b>Secure workspace</b>
-          <p className="mt-1.5 leading-5 text-violet-700 dark:text-violet-200">
-            Your canvas is encrypted in transit and protected by role-based access.
-          </p>
+      <aside className={`flex flex-col fixed left-0 top-0 h-full bg-white dark:bg-slate-950 z-50 transition-all duration-300 overflow-hidden border-r border-slate-200 dark:border-white/10 ${collapsed ? 'w-20' : 'w-64'}`}>
+        {/* Brand Logo header */}
+        <div className="py-8 px-4 transition-all duration-300">
+          <Link
+            to="/workspaces"
+            className={`flex items-center transition-all duration-300 ${collapsed ? 'justify-center' : 'gap-3 px-2'}`}
+          >
+            <div className={`rounded-xl bg-violet-600 flex items-center justify-center shrink-0 transition-all duration-300 shadow-lg shadow-violet-500/20 ${collapsed ? 'w-10 h-10' : 'w-8 h-8'}`}>
+              <span className="text-white font-extrabold text-sm"><Boxes size={16} /></span>
+            </div>
+            <div className={`whitespace-nowrap overflow-hidden transition-all duration-300 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}>
+              <div className="text-base font-bold tracking-tight text-slate-900 dark:text-white leading-tight">Voxel</div>
+              <div className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">Visual systems</div>
+            </div>
+          </Link>
+        </div>
+
+        {/* Navigation Items */}
+        <nav className="flex-1 px-4 space-y-1.5">
+          {[
+            { path: '/workspaces', label: 'Workspaces', icon: PanelsTopLeft, activeCheck: (p: string) => p.startsWith('/workspaces') },
+            { path: '/settings', label: 'Settings', icon: Settings, activeCheck: (p: string) => p === '/settings' },
+          ].map((item) => {
+            const active = item.activeCheck(location.pathname);
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`flex items-center gap-3 rounded-xl transition-all duration-300 group relative overflow-hidden border
+                  ${active
+                    ? 'text-violet-600 dark:text-violet-200 bg-violet-50 dark:bg-violet-500/10 border-violet-100/50 dark:border-violet-500/20 shadow-sm font-bold'
+                    : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 border-transparent'
+                  }
+                  ${collapsed ? 'justify-center w-12 h-12 mx-auto p-0' : 'px-4 py-3'}
+                `}
+              >
+                {active && (
+                  <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-violet-600 rounded-l-full" />
+                )}
+                <Icon size={20} strokeWidth={active ? 2.2 : 1.8} className="shrink-0 relative z-10" />
+                <span className={`text-sm font-semibold relative z-10 whitespace-nowrap overflow-hidden transition-all duration-300 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}>
+                  {item.label}
+                </span>
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* User profile & Collapse controls at bottom */}
+        <div className="p-4 mt-auto transition-all duration-300">
+          <div className={`overflow-hidden transition-all duration-300 ${collapsed ? 'max-h-0 opacity-0' : 'max-h-24 opacity-100'}`}>
+            <div className="bg-slate-100 dark:bg-white/5 rounded-xl p-3">
+              <div className="flex items-center gap-3">
+                <span className="grid size-9 place-items-center rounded-full bg-violet-600 text-xs font-bold text-white shrink-0">
+                  GU
+                </span>
+                <div className="min-w-0 whitespace-nowrap overflow-hidden">
+                  <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">Guest User</div>
+                  <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">
+                    Verified Member
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className={`overflow-hidden transition-all duration-300 ${collapsed ? 'max-h-16 opacity-100' : 'max-h-0 opacity-0'}`}>
+            <span className="w-12 h-12 mx-auto rounded-xl bg-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
+              GU
+            </span>
+          </div>
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className={`mt-3 flex items-center justify-center gap-2 rounded-xl text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all duration-300 ${collapsed ? 'w-12 h-12 mx-auto p-0' : 'w-full py-2'}`}
+          >
+            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}>
+              Collapse
+            </span>
+          </button>
         </div>
       </aside>
-      <div className="lg:pl-72">
+      <div className={collapsed ? "lg:pl-20 transition-all duration-300" : "lg:pl-64 transition-all duration-300"}>
         <header className="sticky top-0 z-40 flex h-20 items-center justify-between border-b border-slate-200 bg-slate-50/70 px-5 backdrop-blur-md dark:border-white/10 dark:bg-slate-950/70 sm:px-8">
           <Link
             to="/workspaces"
