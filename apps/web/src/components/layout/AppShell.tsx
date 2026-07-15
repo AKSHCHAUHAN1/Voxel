@@ -356,12 +356,12 @@ export function AppShell() {
                     )}
                   </div>
                   <div className="max-h-80 overflow-y-auto">
-                    {notifications.map((notif) => (
+                    {notifications.map((notif, i) => (
                       <div
                         key={notif.id}
                         className="relative group p-4 flex items-start gap-3.5 bg-white dark:bg-slate-900 hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors cursor-pointer"
                       >
-                        <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${notif.read ? 'bg-slate-300 dark:bg-slate-700' : 'bg-indigo-650 dark:bg-indigo-400 shadow-[0_0_8px_rgba(79,70,229,0.7)] animate-pulse'}`} />
+                        <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${notif.read ? 'bg-slate-200 dark:bg-slate-800' : 'bg-violet-600 dark:bg-violet-400 shadow-[0_0_8px_rgba(124,58,237,0.5)] animate-pulse'}`} />
                         <div className="flex-1 min-w-0 pr-6">
                           <p className={`text-xs text-slate-900 dark:text-slate-100 leading-snug font-semibold`}>
                             {notif.text}
@@ -380,6 +380,9 @@ export function AppShell() {
                         >
                           <X size={12} />
                         </button>
+                        {i < notifications.length - 1 && (
+                          <div className="h-px w-full absolute bottom-0 left-0 bg-gradient-to-r from-transparent via-slate-100 dark:via-white/5 to-transparent opacity-60 z-0" />
+                        )}
                       </div>
                     ))}
                     {notifications.length === 0 && (
