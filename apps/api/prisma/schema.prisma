@@ -1,0 +1,156 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum WorkspaceMemberRole {
+  OWNER
+  ADMIN
+  EDITOR
+  COMMENTER
+  VIEWER
+}
+
+enum DashboardStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique
+  googleSubject String?   @unique
+  displayName   String
+  avatarUrl     String?
+  timezone      String    @default("UTC")
+  locale        String    @default("en")
+  emailVerified Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  sessions      Session[]
+  workspaces    Workspace[] @relation("WorkspaceOwner")
+  memberships   WorkspaceMember[]
+  dashboards    Dashboard[] @relation("DashboardOwner")
+  auditEvents   AuditEvent[] @relation("AuditActor")
+
+  @@index([createdAt])
+}
+
+model Session {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  lastSeenAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  tokens    RefreshToken[]
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model RefreshToken {
+  id          String   @id @default(uuid()) @db.Uuid
+  sessionId   String   @db.Uuid
+  session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  tokenHash   String   @unique
+  expiresAt   DateTime
+  rotatedAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([expiresAt])
+}
+
+model Workspace {
+  id          String   @id @default(uuid()) @db.Uuid
+  ownerId     String   @db.Uuid
+  owner       User     @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  name        String
+  slug        String   @unique
+  description String?
+  icon        String   @default("grid")
+  accentColor String   @default("violet")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+  members     WorkspaceMember[]
+  dashboards  Dashboard[]
+  auditEvents AuditEvent[]
+
+  @@index([ownerId, updatedAt])
+}
+
+model WorkspaceMember {
+  id          String              @id @default(uuid()) @db.Uuid
+  workspaceId String              @db.Uuid
+  userId      String              @db.Uuid
+  role        WorkspaceMemberRole @default(VIEWER)
+  createdAt   DateTime            @default(now())
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+model Dashboard {
+  id          String          @id @default(uuid()) @db.Uuid
+  workspaceId String          @db.Uuid
+  ownerId     String          @db.Uuid
+  name        String
+  slug        String
+  description String?
+  status      DashboardStatus @default(DRAFT)
+  scene       Json            @default("{}")
+  version     Int             @default(1)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  deletedAt   DateTime?
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner       User            @relation("DashboardOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  versions    DashboardVersion[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId, updatedAt])
+}
+
+model DashboardVersion {
+  id          String   @id @default(uuid()) @db.Uuid
+  dashboardId String   @db.Uuid
+  version     Int
+  scene       Json
+  createdAt   DateTime @default(now())
+  dashboard   Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  @@unique([dashboardId, version])
+  @@index([dashboardId, createdAt])
+}
+
+model AuditEvent {
+  id           String   @id @default(uuid()) @db.Uuid
+  actorId      String?  @db.Uuid
+  workspaceId  String?  @db.Uuid
+  action       String
+  resourceType String
+  resourceId   String
+  before       Json?
+  after        Json?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+  actor        User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  workspace    Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([resourceType, resourceId])
+}
