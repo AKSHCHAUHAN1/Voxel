@@ -48,7 +48,7 @@ export function AppShell() {
   const logout = async (): Promise<void> => {
     await authService.logout();
     queryClient.clear();
-    navigate('/login');
+    navigate('/');
   };
 
   // Keyboard shortcut listener (Cmd+K and Cmd+/)
