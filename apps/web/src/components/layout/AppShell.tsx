@@ -43,12 +43,25 @@ export function AppShell() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
-  // Seeded notifications
+  // Seeded notifications matching reference Header.jsx list
   const [notifications, setNotifications] = useState([
-    { id: 1, text: '🟢 Database service fully connected to Postgres', read: false },
-    { id: 2, text: '🛠️ Guest user credentials successfully initialized', read: false },
-    { id: 3, text: '🔒 Google OAuth callback proxy verified', read: false },
+    { id: 1, text: "System update completed successfully.", time: "2m ago", read: false },
+    { id: 2, text: "New login from unknown device. Please review.", time: "1h ago", read: false },
+    { id: 3, text: "Monthly expense report is ready to download.", time: "3h ago", read: false },
   ]);
+
+  // Fetch current user details
+  const userQuery = useQuery({
+    queryKey: ['auth', 'me'],
+    queryFn: authService.me,
+    retry: false,
+  });
+
+  const user = userQuery.data;
+  const isGoogleLogin = user && user.email !== 'guest@voxel.com';
+  const displayName = user?.displayName || 'Guest User';
+  const email = user?.email || 'guest@voxel.com';
+  const avatarInitials = displayName.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase() || 'GU';
 
   // Fetch workspaces list for search lookup
   const workspaces = useQuery({
@@ -207,12 +220,12 @@ export function AppShell() {
             <div className="bg-slate-100 dark:bg-white/5 rounded-xl p-3">
               <div className="flex items-center gap-3">
                 <span className="grid size-9 place-items-center rounded-full bg-violet-600 text-xs font-bold text-white shrink-0">
-                  GU
+                  {avatarInitials}
                 </span>
                 <div className="min-w-0 whitespace-nowrap overflow-hidden">
-                  <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">Guest User</div>
+                  <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{displayName}</div>
                   <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">
-                    Verified Member
+                    {isGoogleLogin ? 'Verified Member' : 'Guest Member'}
                   </div>
                 </div>
               </div>
@@ -220,7 +233,7 @@ export function AppShell() {
           </div>
           <div className={`overflow-hidden transition-all duration-300 ${collapsed ? 'max-h-16 opacity-100' : 'max-h-0 opacity-0'}`}>
             <span className="w-12 h-12 mx-auto rounded-xl bg-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
-              GU
+              {avatarInitials}
             </span>
           </div>
           <button
@@ -329,33 +342,50 @@ export function AppShell() {
               </button>
               
               {notificationsOpen && (
-                <div className="absolute right-0 top-14 w-80 rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-white/10 dark:bg-slate-900 z-50 origin-top animate-scale-in">
-                  <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-white/5">
-                    <h3 className="text-xs font-semibold">Notifications</h3>
-                    {unreadCount > 0 && (
+                <div className="absolute right-0 top-14 w-80 rounded-2xl border border-slate-200 bg-white p-0 shadow-dramatic dark:border-white/10 dark:bg-slate-900 z-50 origin-top animate-scale-in">
+                  <div className="p-4 border-b border-slate-100 dark:border-white/5 flex items-center justify-between">
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">Notifications</h3>
+                    {notifications.length > 0 && (
                       <button
-                        onClick={() =>
-                          setNotifications(notifications.map((n) => ({ ...n, read: true })))
-                        }
-                        className="text-[10px] text-violet-500 hover:underline"
+                        onClick={() => setNotifications([])}
+                        className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 hover:text-rose-500 transition-colors"
                       >
-                        Mark all read
+                        Clear All
                       </button>
                     )}
                   </div>
-                  <div className="mt-3 space-y-2 max-h-60 overflow-y-auto">
-                    {notifications.map((n) => (
+                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-white/5">
+                    {notifications.map((notif) => (
                       <div
-                        key={n.id}
-                        className={`text-xs p-2 rounded-xl transition ${
-                          n.read ? 'text-slate-400' : 'bg-violet-50/50 dark:bg-violet-500/5 font-medium'
-                        }`}
+                        key={notif.id}
+                        className="relative group p-4 flex items-start gap-3 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
                       >
-                        {n.text}
+                        <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${notif.read ? 'bg-slate-300 dark:bg-slate-700' : 'bg-violet-600 dark:bg-violet-400 shadow-[0_0_8px_rgba(124,58,237,0.6)] animate-pulse'}`} />
+                        <div className="flex-1 min-w-0 pr-6">
+                          <p className={`text-xs text-slate-750 dark:text-slate-200 leading-snug ${notif.read ? '' : 'font-semibold'}`}>
+                            {notif.text}
+                          </p>
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 font-semibold">
+                            {notif.time}
+                          </p>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
+                          }}
+                          className="absolute right-4 top-4 text-slate-400 hover:text-rose-500 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-all hover:bg-rose-50 dark:hover:bg-rose-500/10 shrink-0"
+                          title="Dismiss"
+                        >
+                          <X size={12} />
+                        </button>
                       </div>
                     ))}
                     {notifications.length === 0 && (
-                      <p className="text-xs text-slate-400 py-4 text-center">No new notifications.</p>
+                      <div className="p-8 text-center flex flex-col items-center justify-center gap-2">
+                        <p className="text-xs font-bold text-slate-700 dark:text-slate-300">All caught up</p>
+                        <p className="text-[10px] text-slate-400">You have no new notifications.</p>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -374,8 +404,10 @@ export function AppShell() {
             {/* Profile Avatar VX dropdown area */}
             <div className="flex items-center gap-3 relative">
               <div className="text-right hidden md:block select-none leading-snug">
-                <p className="text-xs font-bold text-slate-800 dark:text-slate-200">Guest User</p>
-                <p className="text-[9px] text-slate-400 uppercase tracking-wider font-semibold opacity-70">Verified User</p>
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{displayName}</p>
+                {isGoogleLogin && (
+                  <p className="text-[9px] text-slate-400 uppercase tracking-wider font-semibold opacity-70">Verified User</p>
+                )}
               </div>
 
               <button
@@ -383,7 +415,7 @@ export function AppShell() {
                 className="flex items-center gap-1.5 rounded-full p-1 border border-slate-200/60 dark:border-white/10 bg-slate-50 dark:bg-white/5 hover:scale-105 transition-all duration-300"
               >
                 <span className="grid size-8 place-items-center rounded-full bg-violet-600 text-xs font-bold text-white shadow-md">
-                  GU
+                  {avatarInitials}
                 </span>
                 <ChevronDown size={14} className="text-slate-400" />
               </button>
@@ -391,8 +423,8 @@ export function AppShell() {
               {menuOpen && (
                 <div className="absolute right-0 top-12 w-48 rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-white/10 dark:bg-slate-900 z-50">
                   <div className="px-3 py-2 border-b border-slate-100 dark:border-white/5">
-                    <div className="text-xs font-semibold">Guest User</div>
-                    <div className="text-[10px] text-slate-400">guest@voxel.com</div>
+                    <div className="text-xs font-semibold">{displayName}</div>
+                    <div className="text-[10px] text-slate-400">{email}</div>
                   </div>
                   <Link
                     to="/settings"

@@ -295,12 +295,6 @@ export default function LandingPage() {
                 Launch Visual Canvas
                 <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
               </Link>
-              <a
-                href="#sandbox"
-                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-6 py-3.5 text-sm font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white"
-              >
-                Play Sandbox
-              </a>
             </motion.div>
           </div>
 
@@ -496,11 +490,8 @@ export default function LandingPage() {
               </p>
             </div>
             
-            {/* Embedded Rive Player */}
             <div className="mt-6 h-[80px] w-full overflow-hidden rounded-lg bg-black/40 border border-white/5">
-              <div className="w-full h-full bg-slate-900/50 flex items-center justify-center text-xs text-slate-500">
-                System Animation Active
-              </div>
+              <div className="w-full h-full bg-slate-900/50 flex items-center justify-center text-xs text-slate-500" />
             </div>
           </InteractiveTiltCard>
 
