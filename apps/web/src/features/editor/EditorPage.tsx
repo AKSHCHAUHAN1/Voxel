@@ -457,7 +457,18 @@ case '/': return b !== 0 ? a / b : 0;
     }
   }, [scene.gridStyle, scene.gridColorPreset, scene.gridOpacity, scene.gridSize, scene.gridThickness]);
 
-  const [gridPanelOpen, setGridPanelOpen] = useState(true);
+  const [gridDropdownOpen, setGridDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setGridDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
 
   // Dynamic coordinates math supporting canvas scrolling
   const recalculateCoordinates = () => {
@@ -578,181 +589,193 @@ case '/': return b !== 0 ? a / b : 0;
 
   return (
     <section className="-m-5 flex min-h-[calc(100vh-64px)] flex-col sm:-m-8 relative overflow-hidden bg-slate-50 dark:bg-[#030509]">
-      
-      {/* --- FLOATING HEADER CARD (TOP LEFT) --- */}
-      <div className="absolute top-4 left-4 z-30 flex items-center gap-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-white/5 shadow-lg rounded-2xl p-4 transition-all">
-        <Link
-          to={`/workspaces/${workspaceId}/dashboards`}
-          className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/5 dark:hover:text-slate-250 transition"
-        >
-          <ArrowLeft size={16} />
-        </Link>
-        <div className="pr-2">
-          <h1 className="text-sm font-extrabold text-slate-900 dark:text-white leading-tight">{dashboard.data?.name || 'Dashboard'}</h1>
-          <p className="text-[9px] uppercase tracking-widest text-violet-650 dark:text-violet-400 font-extrabold mt-0.5">Freeform Workspace</p>
-        </div>
-      </div>
+      <style>{`
+        .no-scrollbars::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbars {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
 
-      {/* --- FLOATING ACTIONS CARD (TOP RIGHT) --- */}
-      <div className="absolute top-4 right-4 z-30 flex items-center gap-3.5 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-white/5 shadow-lg rounded-2xl p-3">
-        {/* Preset Templates */}
-        <div className="flex items-center gap-1.5 rounded-xl border border-slate-200/60 px-2 py-1 dark:border-white/5 bg-slate-50/50 dark:bg-slate-900 text-xs font-bold">
-          <span className="text-slate-400 uppercase tracking-wider text-[8px]">Preset:</span>
-          <select
-            onChange={(e) => {
-              if (e.target.value) {
-                loadPreset(e.target.value as 'server' | 'business' | 'tasks');
-                e.target.value = '';
-              }
-            }}
-            defaultValue=""
-            className="bg-transparent font-extrabold text-[11px] focus:outline-none cursor-pointer text-slate-700 dark:text-slate-300 pr-1"
+      {/* --- CANVAS HEADER --- */}
+      <header className="flex min-h-16 flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 bg-white/80 px-5 backdrop-blur-md dark:border-white/5 dark:bg-slate-950/80 sm:px-8 relative z-30">
+        <div className="flex items-center gap-3">
+          <Link
+            to={`/workspaces/${workspaceId}/dashboards`}
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-650 dark:hover:bg-white/5 dark:hover:text-slate-355 transition"
           >
-            <option value="">Load...</option>
-            <option value="server">Server Monitor</option>
-            <option value="business">Sales</option>
-            <option value="tasks">Sprint Backlog</option>
-          </select>
-        </div>
-
-        <button
-          onClick={() => setPickerOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-bold uppercase tracking-wider hover:bg-slate-50 dark:border-white/5 dark:hover:bg-white/5 transition cursor-pointer"
-        >
-          <Plus size={14} /> Node
-        </button>
-        
-        <button
-          disabled={!draft || save.isPending}
-          onClick={() => save.mutate(scene)}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white hover:opacity-95 disabled:opacity-50 transition cursor-pointer shadow-lg shadow-violet-600/10"
-        >
-          <Save size={14} /> {save.isPending ? 'Saving…' : 'Save'}
-        </button>
-      </div>
-
-      {/* --- FLOATING GRID CONFIGURATION PANEL (BOTTOM LEFT) --- */}
-      <div className="absolute bottom-4 left-4 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-white/5 shadow-xl rounded-2xl p-4 w-72 transition-all">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-2 mb-3">
-          <div className="flex items-center gap-2">
-            <Palette size={14} className="text-violet-500" />
-            <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-white">Canvas Editor Grid</span>
+            <ArrowLeft size={16} />
+          </Link>
+          <div>
+            <h1 className="text-sm font-extrabold text-slate-900 dark:text-white leading-tight">{dashboard.data?.name || 'Dashboard'}</h1>
+            <p className="text-[9px] uppercase tracking-widest text-violet-650 dark:text-violet-400 font-extrabold mt-0.5">Freeform Workspace</p>
           </div>
-          <button
-            onClick={() => setGridPanelOpen(!gridPanelOpen)}
-            className="text-[10px] font-bold text-violet-650 hover:underline dark:text-violet-400"
-          >
-            {gridPanelOpen ? 'Hide' : 'Show'}
-          </button>
         </div>
 
-        {gridPanelOpen && (
-          <div className="space-y-4 animate-scale-in origin-bottom">
-            {/* Grid Style Toggle */}
-            <div className="space-y-1">
-              <span className="text-[8px] font-extrabold uppercase tracking-widest text-slate-400">Pattern Style</span>
-              <div className="flex items-center gap-0.5 rounded-xl border border-slate-200/60 p-0.5 dark:border-white/5 bg-slate-50/50 dark:bg-slate-900">
-                {(['dots', 'lines', 'radial', 'blank'] as GridStyle[]).map((style) => (
-                  <button
-                    key={style}
-                    onClick={() => update({ ...scene, gridStyle: style })}
-                    className={`flex-1 rounded-lg py-1.5 text-[9px] font-bold uppercase tracking-wider cursor-pointer transition-all ${
-                      scene.gridStyle === style
-                        ? 'bg-white text-violet-600 shadow-sm dark:bg-slate-800 dark:text-violet-400'
-                        : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
-                    }`}
-                  >
-                    {style}
-                  </button>
-                ))}
-              </div>
-            </div>
+        {/* Toolbar Settings */}
+        <div className="flex flex-wrap items-center gap-3 relative">
+          
+          {/* Preset templates dropdown */}
+          <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-2.5 py-1.5 dark:border-white/5 bg-slate-50 dark:bg-slate-900 text-xs font-bold">
+            <span className="text-slate-400 uppercase tracking-wider text-[8px]">Preset:</span>
+            <select
+              onChange={(e) => {
+                if (e.target.value) {
+                  loadPreset(e.target.value as 'server' | 'business' | 'tasks');
+                  e.target.value = '';
+                }
+              }}
+              defaultValue=""
+              className="bg-transparent font-bold text-xs focus:outline-none cursor-pointer text-slate-700 dark:text-slate-300"
+            >
+              <option value="">Load Template...</option>
+              <option value="server">Server Monitor</option>
+              <option value="business">Sales Performance</option>
+              <option value="tasks">Sprint Backlog</option>
+            </select>
+          </div>
 
-            {scene.gridStyle !== 'blank' && (
-              <>
-                {/* Spacing / Size Slider */}
-                {scene.gridStyle !== 'radial' && (
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-[8px] font-extrabold uppercase tracking-widest text-slate-400">
-                      <span>Grid Spacing</span>
-                      <span>{scene.gridSize ?? 24}px</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="12"
-                      max="64"
-                      value={scene.gridSize ?? 24}
-                      onChange={(e) => update({ ...scene, gridSize: parseInt(e.target.value) })}
-                      className="w-full h-1 bg-slate-200 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-violet-600"
-                    />
-                  </div>
-                )}
+          {/* Grid Settings Dropdown */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setGridDropdownOpen(!gridDropdownOpen)}
+              className={`inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-bold uppercase tracking-wider hover:bg-slate-50 dark:border-white/5 dark:hover:bg-white/5 transition cursor-pointer ${
+                gridDropdownOpen ? 'bg-slate-100 dark:bg-white/5 text-violet-650' : 'text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              <Palette size={14} /> Grid Settings
+            </button>
 
-                {/* Opacity / Strength Slider */}
-                <div className="space-y-1">
-                  <div className="flex justify-between text-[8px] font-extrabold uppercase tracking-widest text-slate-400">
-                    <span>Grid Opacity</span>
-                    <span>{Math.round((scene.gridOpacity ?? 0.06) * 100)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0.01"
-                    max="0.25"
-                    step="0.01"
-                    value={scene.gridOpacity ?? 0.06}
-                    onChange={(e) => update({ ...scene, gridOpacity: parseFloat(e.target.value) })}
-                    className="w-full h-1 bg-slate-200 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-violet-600"
-                  />
+            {gridDropdownOpen && (
+              <div className="absolute right-0 mt-2 w-72 bg-white/95 dark:bg-[#0e1320]/95 backdrop-blur-md border border-slate-200 dark:border-white/10 shadow-xl rounded-2xl p-4 z-40 space-y-4">
+                <div className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 border-b border-slate-100 dark:border-white/5 pb-2">
+                  Grid Customization
                 </div>
-
-                {/* Thickness Slider */}
-                {scene.gridStyle !== 'radial' && (
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-[8px] font-extrabold uppercase tracking-widest text-slate-400">
-                      <span>Grid Thickness</span>
-                      <span>{scene.gridThickness ?? 1.2}px</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0.5"
-                      max="3.0"
-                      step="0.1"
-                      value={scene.gridThickness ?? 1.2}
-                      onChange={(e) => update({ ...scene, gridThickness: parseFloat(e.target.value) })}
-                      className="w-full h-1 bg-slate-200 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-violet-600"
-                    />
-                  </div>
-                )}
-
-                {/* Grid Color Presets */}
+                
+                {/* Grid Style Toggle */}
                 <div className="space-y-1">
-                  <span className="text-[8px] font-extrabold uppercase tracking-widest text-slate-400">Grid Color Preset</span>
-                  <div className="flex gap-2.5 pt-1.5">
-                    {([
-                      { id: 'slate', color: 'bg-slate-400' },
-                      { id: 'blue', color: 'bg-blue-500' },
-                      { id: 'violet', color: 'bg-violet-500' },
-                      { id: 'rose', color: 'bg-rose-500' },
-                      { id: 'emerald', color: 'bg-emerald-500' },
-                    ] as const).map((preset) => (
+                  <span className="text-[8px] font-extrabold uppercase tracking-widest text-slate-400">Pattern Style</span>
+                  <div className="flex items-center gap-0.5 rounded-xl border border-slate-200/60 p-0.5 dark:border-white/5 bg-slate-50/50 dark:bg-slate-900">
+                    {(['dots', 'lines', 'radial', 'blank'] as GridStyle[]).map((style) => (
                       <button
-                        key={preset.id}
-                        type="button"
-                        onClick={() => update({ ...scene, gridColorPreset: preset.id })}
-                        className={`size-4.5 rounded-full border border-white/20 transition hover:scale-110 ${preset.color} ${
-                          (scene.gridColorPreset ?? 'violet') === preset.id
-                            ? 'ring-2 ring-violet-500 ring-offset-2 dark:ring-offset-slate-900'
-                            : ''
+                        key={style}
+                        onClick={() => update({ ...scene, gridStyle: style })}
+                        className={`flex-1 rounded-lg py-1.5 text-[9px] font-bold uppercase tracking-wider cursor-pointer transition-all ${
+                          scene.gridStyle === style
+                            ? 'bg-white text-violet-600 shadow-sm dark:bg-slate-800 dark:text-violet-400'
+                            : 'text-slate-400 hover:text-slate-655 dark:hover:text-slate-200'
                         }`}
-                      />
+                      >
+                        {style}
+                      </button>
                     ))}
                   </div>
                 </div>
-              </>
+
+                {scene.gridStyle !== 'blank' && (
+                  <>
+                    {/* Spacing / Size Slider */}
+                    {scene.gridStyle !== 'radial' && (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[8px] font-extrabold uppercase tracking-widest text-slate-400">
+                          <span>Grid Spacing</span>
+                          <span>{scene.gridSize ?? 24}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="12"
+                          max="64"
+                          value={scene.gridSize ?? 24}
+                          onChange={(e) => update({ ...scene, gridSize: parseInt(e.target.value) })}
+                          className="w-full h-1 bg-slate-200 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-violet-600"
+                        />
+                      </div>
+                    )}
+
+                    {/* Opacity / Strength Slider */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[8px] font-extrabold uppercase tracking-widest text-slate-400">
+                        <span>Grid Opacity</span>
+                        <span>{Math.round((scene.gridOpacity ?? 0.06) * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.01"
+                        max="0.25"
+                        step="0.01"
+                        value={scene.gridOpacity ?? 0.06}
+                        onChange={(e) => update({ ...scene, gridOpacity: parseFloat(e.target.value) })}
+                        className="w-full h-1 bg-slate-200 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-violet-600"
+                      />
+                    </div>
+
+                    {/* Thickness Slider */}
+                    {scene.gridStyle !== 'radial' && (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[8px] font-extrabold uppercase tracking-widest text-slate-400">
+                          <span>Grid Thickness</span>
+                          <span>{scene.gridThickness ?? 1.2}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.5"
+                          max="3.0"
+                          step="0.1"
+                          value={scene.gridThickness ?? 1.2}
+                          onChange={(e) => update({ ...scene, gridThickness: parseFloat(e.target.value) })}
+                          className="w-full h-1 bg-slate-200 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-violet-600"
+                        />
+                      </div>
+                    )}
+
+                    {/* Grid Color Presets */}
+                    <div className="space-y-1">
+                      <span className="text-[8px] font-extrabold uppercase tracking-widest text-slate-400">Grid Color Preset</span>
+                      <div className="flex gap-2.5 pt-1.5">
+                        {([
+                          { id: 'slate', color: 'bg-slate-400' },
+                          { id: 'blue', color: 'bg-blue-500' },
+                          { id: 'violet', color: 'bg-violet-500' },
+                          { id: 'rose', color: 'bg-rose-500' },
+                          { id: 'emerald', color: 'bg-emerald-500' },
+                        ] as const).map((preset) => (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => update({ ...scene, gridColorPreset: preset.id })}
+                            className={`size-4.5 rounded-full border border-white/20 transition hover:scale-110 ${preset.color} ${
+                              (scene.gridColorPreset ?? 'violet') === preset.id
+                                ? 'ring-2 ring-violet-500 ring-offset-2 dark:ring-offset-slate-900'
+                                : ''
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </div>
-        )}
-      </div>
+
+          <button
+            onClick={() => setPickerOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-bold uppercase tracking-wider hover:bg-slate-50 dark:border-white/5 dark:hover:bg-white/5 transition cursor-pointer"
+          >
+            <Plus size={14} /> Node
+          </button>
+          
+          <button
+            disabled={!draft || save.isPending}
+            onClick={() => save.mutate(scene)}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white hover:opacity-95 disabled:opacity-50 transition cursor-pointer shadow-lg shadow-violet-600/10"
+          >
+            <Save size={14} /> {save.isPending ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </header>
 
       {/* --- GRID EDITOR WORKSPACE --- */}
       <div className="flex flex-1 flex-col lg:flex-row relative">
@@ -764,7 +787,7 @@ case '/': return b !== 0 ? a / b : 0;
           {/* Scrollable Container */}
           <div
             ref={gridRef}
-            className="w-full h-full overflow-auto relative p-6"
+            className="w-full h-full overflow-auto relative p-6 no-scrollbars"
             style={{ maxHeight: 'calc(100vh - 64px)' }}
           >
             {/* The infinite board sheet */}
