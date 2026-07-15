@@ -348,7 +348,7 @@ export function AppShell() {
                     {notifications.length > 0 && (
                       <button
                         onClick={() => setNotifications([])}
-                        className="text-[10px] uppercase tracking-[0.12em] font-extrabold text-slate-400 dark:text-slate-500 hover:text-rose-500 hover:scale-105 active:scale-95 transition-all duration-300"
+                        className="text-[8px] uppercase tracking-[0.15em] font-bold text-slate-400 dark:text-slate-500 hover:text-rose-500 transition-colors"
                       >
                         CLEAR ALL
                       </button>
