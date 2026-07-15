@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   XCircle,
   Trash2,
+  ArrowLeft,
 } from 'lucide-react';
 import { workspaceService } from '@/features/workspaces/workspace-service';
 
@@ -510,30 +511,38 @@ export default function EditorPage() {
     }
   };
 
-  // Grid style background classes
+  // Grid style background classes - lightened and separated
   const gridBackgrounds = {
-    dots: 'bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] bg-[size:20px_20px]',
-    lines: 'bg-[linear-gradient(#f1f5f9_1px,transparent_1px),linear-gradient(90deg,#f1f5f9_1px,transparent_1px)] dark:bg-[linear-gradient(#1e293b_1px,transparent_1px),linear-gradient(90deg,#1e293b_1px,transparent_1px)] bg-[size:20px_20px]',
-    radial: 'bg-[radial-gradient(circle_at_center,#f8fafc_0%,#e2e8f0_100%)] dark:bg-[radial-gradient(circle_at_center,#0f172a_0%,#020617_100%)]',
-    blank: 'bg-[#f8fafc] dark:bg-[#0b0d14]',
+    dots: 'bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] dark:bg-[radial-gradient(rgba(255,255,255,0.06)_1.2px,transparent_1.2px)] bg-[size:24px_24px]',
+    lines: 'bg-[linear-gradient(rgba(226,232,240,0.4)_1px,transparent_1px),linear-gradient(90deg,rgba(226,232,240,0.4)_1px,transparent_1px)] dark:bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:20px_20px]',
+    radial: 'bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.6)_0%,#f1f5f9_100%)] dark:bg-[radial-gradient(circle_at_center,rgba(30,41,59,0.3)_0%,#0c0f1a_100%)]',
+    blank: 'bg-white dark:bg-[#0c0f1a]',
   };
 
   return (
     <section className="-m-5 flex min-h-[calc(100vh-64px)] flex-col sm:-m-8">
       
       {/* --- CANVAS HEADER --- */}
-      <header className="flex min-h-16 flex-wrap items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 dark:border-white/10 dark:bg-slate-950 sm:px-8">
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-slate-400">Customizable Workspace Canvas</p>
-          <h1 className="truncate text-sm font-semibold">{dashboard.data.name}</h1>
+      <header className="flex min-h-16 flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 bg-white/80 px-5 backdrop-blur-md dark:border-white/5 dark:bg-slate-950/80 sm:px-8 relative z-25">
+        <div className="flex items-center gap-3">
+          <Link
+            to={`/workspaces/${workspaceId}/dashboards`}
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/5 dark:hover:text-slate-300 transition"
+          >
+            <ArrowLeft size={16} />
+          </Link>
+          <div>
+            <h1 className="text-sm font-bold text-slate-800 dark:text-slate-200 leading-snug">{dashboard.data?.name || 'Dashboard'}</h1>
+            <p className="text-[9px] uppercase tracking-wider text-slate-450 dark:text-slate-400 font-bold">{dashboard.data?.description || 'Visual canvas'}</p>
+          </div>
         </div>
 
         {/* Toolbar Settings */}
         <div className="flex flex-wrap items-center gap-3">
           
           {/* Preset templates dropdown */}
-          <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1.5 dark:border-white/10 bg-slate-50 dark:bg-slate-900 text-xs">
-            <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px]">Preset:</span>
+          <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-2.5 py-1.5 dark:border-white/5 bg-slate-50 dark:bg-slate-900 text-xs font-bold">
+            <span className="text-slate-400 uppercase tracking-wider text-[9px]">Preset:</span>
             <select
               onChange={(e) => {
                 if (e.target.value) {
@@ -542,7 +551,7 @@ export default function EditorPage() {
                 }
               }}
               defaultValue=""
-              className="bg-transparent font-medium focus:outline-none cursor-pointer"
+              className="bg-transparent font-bold text-xs focus:outline-none cursor-pointer text-slate-700 dark:text-slate-300"
             >
               <option value="">Load Template...</option>
               <option value="server">Server Monitor</option>
@@ -552,13 +561,13 @@ export default function EditorPage() {
           </div>
 
           {/* Grid Toggle */}
-          <div className="flex items-center gap-1 rounded-lg border border-slate-200 p-1 dark:border-white/10 bg-slate-50 dark:bg-slate-900">
+          <div className="flex items-center gap-0.5 rounded-xl border border-slate-200 p-1 dark:border-white/5 bg-slate-50 dark:bg-slate-900">
             {(['dots', 'lines', 'radial', 'blank'] as GridStyle[]).map((style) => (
               <button
                 key={style}
                 onClick={() => setGridStyle(style)}
                 title={`Grid style: ${style}`}
-                className={`rounded px-2 py-1 text-xs font-semibold uppercase tracking-wide cursor-pointer ${
+                className={`rounded-lg px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider cursor-pointer transition ${
                   scene.gridStyle === style
                     ? 'bg-white text-violet-600 shadow-sm dark:bg-slate-800 dark:text-violet-400'
                     : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
@@ -571,30 +580,34 @@ export default function EditorPage() {
 
           <button
             onClick={() => setPickerOpen(true)}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold dark:border-white/10 hover:bg-slate-50 dark:hover:bg-slate-900 cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-bold uppercase tracking-wider hover:bg-slate-50 dark:border-white/5 dark:hover:bg-white/5 transition cursor-pointer"
           >
-            <Plus size={16} /> Node
+            <Plus size={14} /> Node
           </button>
           
           <button
             disabled={!draft || save.isPending}
             onClick={() => save.mutate(scene)}
-            className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50 cursor-pointer shadow-lg shadow-violet-600/10"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white hover:opacity-95 disabled:opacity-50 transition cursor-pointer shadow-lg shadow-violet-600/10"
           >
-            <Save size={16} /> {save.isPending ? 'Saving…' : 'Save'}
+            <Save size={14} /> {save.isPending ? 'Saving…' : 'Save'}
           </button>
         </div>
       </header>
 
       {/* --- GRID EDITOR WORKSPACE --- */}
-      <div className="flex flex-1 flex-col lg:flex-row">
+      <div className="flex flex-1 flex-col lg:flex-row relative">
         
         <main
           onClick={() => setSelectedNodeId(null)}
-          className={`flex-1 p-5 sm:p-8 overflow-y-auto relative transition-colors duration-300 min-h-[500px] ${gridBackgrounds[scene.gridStyle]}`}
+          className="flex-1 p-6 sm:p-10 overflow-y-auto bg-slate-50 dark:bg-[#030509] min-h-[600px] transition-colors duration-300 relative z-10"
         >
-          {/* Main SVG connections canvas overlay */}
-          <div ref={gridRef} className="absolute inset-0 pointer-events-none z-0">
+          {/* Centered Premium Canvas Board */}
+          <div
+            className={`mx-auto max-w-5xl w-full min-h-[650px] rounded-[24px] border border-slate-200 dark:border-white/5 bg-white dark:bg-[#0c0f1a] shadow-[0_12px_40px_rgba(0,0,0,0.04)] dark:shadow-[0_16px_48px_rgba(0,0,0,0.3)] relative p-6 sm:p-8 transition-all duration-500 overflow-hidden ${gridBackgrounds[scene.gridStyle]}`}
+          >
+            {/* Main SVG connections canvas overlay */}
+            <div ref={gridRef} className="absolute inset-0 pointer-events-none z-0">
             <svg className="w-full h-full absolute inset-0">
               <defs>
                 <marker
@@ -676,6 +689,7 @@ export default function EditorPage() {
             ) : (
               <CanvasEmpty onAdd={() => setPickerOpen(true)} />
             )}
+          </div>
           </div>
         </main>
 
