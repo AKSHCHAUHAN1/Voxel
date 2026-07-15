@@ -344,28 +344,28 @@ export function AppShell() {
               {notificationsOpen && (
                 <div className="absolute right-0 top-14 w-80 rounded-2xl border border-slate-200 bg-white p-0 shadow-dramatic dark:border-white/10 dark:bg-slate-900 z-50 origin-top animate-scale-in">
                   <div className="p-4 border-b border-slate-100 dark:border-white/5 flex items-center justify-between">
-                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">Notifications</h3>
+                    <h3 className="font-extrabold text-sm text-slate-950 dark:text-white tracking-tight">Notifications</h3>
                     {notifications.length > 0 && (
                       <button
                         onClick={() => setNotifications([])}
-                        className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 hover:text-rose-500 transition-colors"
+                        className="text-[10px] uppercase tracking-[0.12em] font-extrabold text-slate-400 dark:text-slate-500 hover:text-rose-500 hover:scale-105 active:scale-95 transition-all duration-300"
                       >
-                        Clear All
+                        CLEAR ALL
                       </button>
                     )}
                   </div>
-                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-white/5">
+                  <div className="max-h-80 overflow-y-auto">
                     {notifications.map((notif) => (
                       <div
                         key={notif.id}
-                        className="relative group p-4 flex items-start gap-3 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                        className="relative group p-4 flex items-start gap-3.5 bg-white dark:bg-slate-900 hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors cursor-pointer"
                       >
-                        <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${notif.read ? 'bg-slate-300 dark:bg-slate-700' : 'bg-violet-600 dark:bg-violet-400 shadow-[0_0_8px_rgba(124,58,237,0.6)] animate-pulse'}`} />
+                        <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${notif.read ? 'bg-slate-300 dark:bg-slate-700' : 'bg-indigo-650 dark:bg-indigo-400 shadow-[0_0_8px_rgba(79,70,229,0.7)] animate-pulse'}`} />
                         <div className="flex-1 min-w-0 pr-6">
-                          <p className={`text-xs text-slate-750 dark:text-slate-200 leading-snug ${notif.read ? '' : 'font-semibold'}`}>
+                          <p className={`text-xs text-slate-900 dark:text-slate-100 leading-snug font-semibold`}>
                             {notif.text}
                           </p>
-                          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 font-semibold">
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 font-bold">
                             {notif.time}
                           </p>
                         </div>

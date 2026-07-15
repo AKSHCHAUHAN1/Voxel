@@ -219,7 +219,7 @@ export const registerWorkspaceRoutes = async (
       })
       .parse(request.body);
 
-    await requireMembership(params.workspaceId, user.id, ['OWNER', 'ADMIN']);
+    await requireMembership(params.workspaceId, user.id, ['OWNER', 'ADMIN', 'EDITOR']);
 
     const updated = await prisma.workspace.update({
       where: { id: params.workspaceId },
@@ -235,10 +235,25 @@ export const registerWorkspaceRoutes = async (
     const user = await requireUser(request, auth);
     const params = z.object({ workspaceId: idSchema }).parse(request.params);
 
-    await requireMembership(params.workspaceId, user.id, ['OWNER', 'ADMIN']);
+    await requireMembership(params.workspaceId, user.id, ['OWNER', 'ADMIN', 'EDITOR']);
 
     const deleted = await prisma.workspace.update({
       where: { id: params.workspaceId },
+      data: { deletedAt: new Date() },
+    });
+    return reply.send(success({ id: deleted.id, deleted: true }, createRequestId(request.id)));
+  });
+
+  app.delete('/api/v1/dashboards/:dashboardId', async (request, reply) => {
+    const user = await requireUser(request, auth);
+    const params = z.object({ dashboardId: idSchema }).parse(request.params);
+    const dashboard = await prisma.dashboard.findFirst({
+      where: { id: params.dashboardId, deletedAt: null },
+    });
+    if (!dashboard) throw new RequestError('Dashboard was not found.', 404);
+    await requireMembership(dashboard.workspaceId, user.id, ['OWNER', 'ADMIN', 'EDITOR']);
+    const deleted = await prisma.dashboard.update({
+      where: { id: dashboard.id },
       data: { deletedAt: new Date() },
     });
     return reply.send(success({ id: deleted.id, deleted: true }, createRequestId(request.id)));

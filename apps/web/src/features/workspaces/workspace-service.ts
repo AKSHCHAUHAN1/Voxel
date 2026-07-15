@@ -50,4 +50,6 @@ export const workspaceService = {
     request(`/api/v1/workspaces/${workspaceId}`, { method: 'PATCH', body: JSON.stringify(input) }),
   delete: (workspaceId: string): Promise<{ id: string; deleted: boolean }> =>
     request(`/api/v1/workspaces/${workspaceId}`, { method: 'DELETE' }),
+  deleteDashboard: (dashboardId: string): Promise<{ id: string; deleted: boolean }> =>
+    request(`/api/v1/dashboards/${dashboardId}`, { method: 'DELETE' }),
 };
