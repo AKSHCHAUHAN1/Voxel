@@ -6,7 +6,6 @@ import {
   BarChart3,
   FileText,
   GripVertical,
-  LayoutPanelTop,
   Plus,
   Save,
   Sparkles,
@@ -20,6 +19,7 @@ import {
   XCircle,
   Trash2,
   ArrowLeft,
+  Palette,
 } from 'lucide-react';
 import { workspaceService } from '@/features/workspaces/workspace-service';
 
@@ -65,6 +65,10 @@ type Scene = {
   nodes: CanvasNode[];
   connections: Connection[];
   gridStyle: GridStyle;
+  gridColorPreset?: 'slate' | 'blue' | 'violet' | 'rose' | 'emerald';
+  gridSize?: number;
+  gridOpacity?: number;
+  gridThickness?: number;
 };
 
 const emptyScene: Scene = { 
@@ -204,133 +208,7 @@ export default function EditorPage() {
     },
   });
 
-  // Calculate coordinates for connection lines
-  const recalculateCoordinates = () => {
-    if (!gridRef.current) return;
-    const gridRect = gridRef.current.getBoundingClientRect();
-    const coords: Record<string, { x: number; y: number }> = {};
-    
-    scene.nodes.forEach((node) => {
-      const element = document.getElementById(`node-card-${node.id}`);
-      if (element) {
-        const rect = element.getBoundingClientRect();
-        coords[node.id] = {
-          x: rect.left + rect.width / 2 - gridRect.left,
-          y: rect.top + rect.height / 2 - gridRect.top,
-        };
-      }
-    });
-    setCoordinates(coords);
-  };
 
-  useEffect(() => {
-    // Timeout to let DOM layout complete
-    const timer = setTimeout(recalculateCoordinates, 100);
-    window.addEventListener('resize', recalculateCoordinates);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('resize', recalculateCoordinates);
-    };
-  }, [scene.nodes, draft, selectedNodeId]);
-
-  if (!workspaceId || !dashboardId) return null;
-  if (dashboard.isPending) return <EditorSkeleton />;
-  if (dashboard.isError || !dashboard.data)
-    return (
-      <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-rose-700">
-        This dashboard could not be loaded.
-      </div>
-    );
-
-  const update = (next: Scene) => setDraft(next);
-
-  const add = (type: CanvasNode['type']) => {
-    update({ ...scene, nodes: [...scene.nodes, newNode(type)] });
-    setPickerOpen(false);
-  };
-
-  const handleDragStart = (e: React.MouseEvent, nodeId: string) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-
-    const node = scene.nodes.find((n) => n.id === nodeId);
-    if (!node) return;
-
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const initX = node.x ?? 100;
-    const initY = node.y ?? 100;
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const dx = moveEvent.clientX - startX;
-      const dy = moveEvent.clientY - startY;
-
-      setDraft((prevDraft) => {
-        const current = prevDraft ?? scene;
-        return {
-          ...current,
-          nodes: current.nodes.map((n) =>
-            n.id === nodeId
-              ? { ...n, x: Math.max(0, initX + dx), y: Math.max(0, initY + dy) }
-              : n
-          ),
-        };
-      });
-    };
-
-    const handleMouseUp = () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  };
-
-  const updateNode = (id: string, updates: Partial<CanvasNode>) => {
-    const nextNodes = scene.nodes.map((node) =>
-      node.id === id ? { ...node, ...updates } : node
-    );
-    update({ ...scene, nodes: nextNodes });
-  };
-
-  const deleteNode = (id: string) => {
-    const nextNodes = scene.nodes.filter((node) => node.id !== id);
-    // Remove references to this node from connections
-    const nextConnections = scene.connections.filter(
-      (c) => c.fromId !== id && c.toId !== id
-    );
-    update({ ...scene, nodes: nextNodes, connections: nextConnections });
-    if (selectedNodeId === id) {
-      setSelectedNodeId(null);
-    }
-  };
-
-  // Add / remove connection
-  const addConnection = (fromId: string, toId: string) => {
-    if (fromId === toId) return;
-    // Check if connection already exists
-    const exists = scene.connections.some(
-      (c) => (c.fromId === fromId && c.toId === toId) || (c.fromId === toId && c.toId === fromId)
-    );
-    if (exists) return;
-
-    update({
-      ...scene,
-      connections: [...scene.connections, { fromId, toId, style: 'solid' }],
-    });
-  };
-
-  const deleteConnection = (index: number) => {
-    const nextConns = [...scene.connections];
-    nextConns.splice(index, 1);
-    update({ ...scene, connections: nextConns });
-  };
-
-  // Grid style selector
-  const setGridStyle = (gridStyle: GridStyle) => {
-    update({ ...scene, gridStyle });
-  };
 
   // Templates implementation
   const loadPreset = (preset: 'server' | 'business' | 'tasks') => {
@@ -538,190 +416,439 @@ export default function EditorPage() {
       case '+': return a + b;
       case '-': return a - b;
       case '*': return a * b;
-      case '/': return b !== 0 ? a / b : 0;
+case '/': return b !== 0 ? a / b : 0;
       default: return 0;
     }
   };
 
-  // Grid style background classes - lightened and separated
-  const gridBackgrounds = {
-    dots: 'bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] dark:bg-[radial-gradient(rgba(255,255,255,0.06)_1.2px,transparent_1.2px)] bg-[size:24px_24px]',
-    lines: 'bg-[linear-gradient(rgba(226,232,240,0.4)_1px,transparent_1px),linear-gradient(90deg,rgba(226,232,240,0.4)_1px,transparent_1px)] dark:bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:20px_20px]',
-    radial: 'bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.6)_0%,#f1f5f9_100%)] dark:bg-[radial-gradient(circle_at_center,rgba(30,41,59,0.3)_0%,#0c0f1a_100%)]',
-    blank: 'bg-white dark:bg-[#0c0f1a]',
+  // Dynamic Grid Background Inline Styles
+  const gridStyleInline = useMemo(() => {
+    const colorPresets = {
+      slate: '100, 116, 139',
+      blue: '59, 130, 246',
+      violet: '124, 58, 237',
+      rose: '244, 63, 94',
+      emerald: '16, 185, 129',
+    };
+    
+    const preset = scene.gridColorPreset ?? 'violet';
+    const rgb = colorPresets[preset];
+    const opacity = scene.gridOpacity ?? 0.06;
+    const thickness = scene.gridThickness ?? 1.2;
+    const size = scene.gridSize ?? 24;
+    
+    switch (scene.gridStyle) {
+      case 'dots':
+        return {
+          backgroundImage: `radial-gradient(circle, rgba(${rgb}, ${opacity}) ${thickness}px, transparent ${thickness}px)`,
+          backgroundSize: `${size}px ${size}px`,
+        };
+      case 'lines':
+        return {
+          backgroundImage: `linear-gradient(rgba(${rgb}, ${opacity}) ${thickness}px, transparent ${thickness}px), linear-gradient(90deg, rgba(${rgb}, ${opacity}) ${thickness}px, transparent ${thickness}px)`,
+          backgroundSize: `${size}px ${size}px`,
+        };
+      case 'radial':
+        return {
+          backgroundImage: `radial-gradient(circle at center, rgba(${rgb}, ${opacity * 3.5}) 0%, transparent 100%)`,
+        };
+      default:
+        return {};
+    }
+  }, [scene.gridStyle, scene.gridColorPreset, scene.gridOpacity, scene.gridSize, scene.gridThickness]);
+
+  const [gridPanelOpen, setGridPanelOpen] = useState(true);
+
+  // Dynamic coordinates math supporting canvas scrolling
+  const recalculateCoordinates = () => {
+    if (!gridRef.current) return;
+    const gridRect = gridRef.current.getBoundingClientRect();
+    const coords: Record<string, { x: number; y: number }> = {};
+    
+    scene.nodes.forEach((node) => {
+      const element = document.getElementById(`node-card-${node.id}`);
+      if (element) {
+        const rect = element.getBoundingClientRect();
+        coords[node.id] = {
+          x: rect.left + rect.width / 2 - gridRect.left + (gridRef.current?.scrollLeft || 0),
+          y: rect.top + rect.height / 2 - gridRect.top + (gridRef.current?.scrollTop || 0),
+        };
+      }
+    });
+    setCoordinates(coords);
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(recalculateCoordinates, 100);
+    const scrollContainer = gridRef.current;
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', recalculateCoordinates);
+    }
+    window.addEventListener('resize', recalculateCoordinates);
+    return () => {
+      clearTimeout(timer);
+      if (scrollContainer) {
+        scrollContainer.removeEventListener('scroll', recalculateCoordinates);
+      }
+      window.removeEventListener('resize', recalculateCoordinates);
+    };
+  }, [scene.nodes, draft]);
+
+  if (!workspaceId || !dashboardId) return null;
+  if (dashboard.isPending) return <EditorSkeleton />;
+  if (dashboard.isError || !dashboard.data)
+    return (
+      <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-rose-700">
+        This dashboard could not be loaded.
+      </div>
+    );
+
+  const update = (next: Scene) => setDraft(next);
+
+  const add = (type: CanvasNode['type']) => {
+    update({ ...scene, nodes: [...scene.nodes, newNode(type)] });
+    setPickerOpen(false);
+  };
+
+  const handleDragStart = (e: React.MouseEvent, nodeId: string) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+
+    const node = scene.nodes.find((n) => n.id === nodeId);
+    if (!node) return;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const initX = node.x ?? 100;
+    const initY = node.y ?? 100;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+
+      setDraft((prevDraft) => {
+        const current = prevDraft ?? scene;
+        return {
+          ...current,
+          nodes: current.nodes.map((n) =>
+            n.id === nodeId
+              ? { ...n, x: Math.max(0, initX + dx), y: Math.max(0, initY + dy) }
+              : n
+          ),
+        };
+      });
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const updateNode = (id: string, updates: Partial<CanvasNode>) => {
+    const nextNodes = scene.nodes.map((node) =>
+      node.id === id ? { ...node, ...updates } : node
+    );
+    update({ ...scene, nodes: nextNodes });
+  };
+
+  const deleteNode = (id: string) => {
+    update({
+      ...scene,
+      nodes: scene.nodes.filter((node) => node.id !== id),
+      connections: scene.connections.filter((c) => c.fromId !== id && c.toId !== id),
+    });
+    setSelectedNodeId(null);
+  };
+
+  const addConnection = (fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    if (scene.connections.some((c) => c.fromId === fromId && c.toId === toId)) return;
+    update({ ...scene, connections: [...scene.connections, { fromId, toId, style: 'solid' }] });
+  };
+
+
+
+  const deleteConnection = (index: number) => {
+    update({ ...scene, connections: scene.connections.filter((_, i) => i !== index) });
   };
 
   return (
-    <section className="-m-5 flex min-h-[calc(100vh-64px)] flex-col sm:-m-8">
+    <section className="-m-5 flex min-h-[calc(100vh-64px)] flex-col sm:-m-8 relative overflow-hidden bg-slate-50 dark:bg-[#030509]">
       
-      {/* --- CANVAS HEADER --- */}
-      <header className="flex min-h-16 flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 bg-white/80 px-5 backdrop-blur-md dark:border-white/5 dark:bg-slate-950/80 sm:px-8 relative z-25">
-        <div className="flex items-center gap-3">
-          <Link
-            to={`/workspaces/${workspaceId}/dashboards`}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/5 dark:hover:text-slate-300 transition"
+      {/* --- FLOATING HEADER CARD (TOP LEFT) --- */}
+      <div className="absolute top-4 left-4 z-30 flex items-center gap-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-white/5 shadow-lg rounded-2xl p-4 transition-all">
+        <Link
+          to={`/workspaces/${workspaceId}/dashboards`}
+          className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/5 dark:hover:text-slate-250 transition"
+        >
+          <ArrowLeft size={16} />
+        </Link>
+        <div className="pr-2">
+          <h1 className="text-sm font-extrabold text-slate-900 dark:text-white leading-tight">{dashboard.data?.name || 'Dashboard'}</h1>
+          <p className="text-[9px] uppercase tracking-widest text-violet-650 dark:text-violet-400 font-extrabold mt-0.5">Freeform Workspace</p>
+        </div>
+      </div>
+
+      {/* --- FLOATING ACTIONS CARD (TOP RIGHT) --- */}
+      <div className="absolute top-4 right-4 z-30 flex items-center gap-3.5 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-white/5 shadow-lg rounded-2xl p-3">
+        {/* Preset Templates */}
+        <div className="flex items-center gap-1.5 rounded-xl border border-slate-200/60 px-2 py-1 dark:border-white/5 bg-slate-50/50 dark:bg-slate-900 text-xs font-bold">
+          <span className="text-slate-400 uppercase tracking-wider text-[8px]">Preset:</span>
+          <select
+            onChange={(e) => {
+              if (e.target.value) {
+                loadPreset(e.target.value as 'server' | 'business' | 'tasks');
+                e.target.value = '';
+              }
+            }}
+            defaultValue=""
+            className="bg-transparent font-extrabold text-[11px] focus:outline-none cursor-pointer text-slate-700 dark:text-slate-300 pr-1"
           >
-            <ArrowLeft size={16} />
-          </Link>
-          <div>
-            <h1 className="text-sm font-bold text-slate-800 dark:text-slate-200 leading-snug">{dashboard.data?.name || 'Dashboard'}</h1>
-            <p className="text-[9px] uppercase tracking-wider text-slate-450 dark:text-slate-400 font-bold">{dashboard.data?.description || 'Visual canvas'}</p>
-          </div>
+            <option value="">Load...</option>
+            <option value="server">Server Monitor</option>
+            <option value="business">Sales</option>
+            <option value="tasks">Sprint Backlog</option>
+          </select>
         </div>
 
-        {/* Toolbar Settings */}
-        <div className="flex flex-wrap items-center gap-3">
-          
-          {/* Preset templates dropdown */}
-          <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-2.5 py-1.5 dark:border-white/5 bg-slate-50 dark:bg-slate-900 text-xs font-bold">
-            <span className="text-slate-400 uppercase tracking-wider text-[9px]">Preset:</span>
-            <select
-              onChange={(e) => {
-                if (e.target.value) {
-                  loadPreset(e.target.value as 'server' | 'business' | 'tasks');
-                  e.target.value = ''; // Reset select
-                }
-              }}
-              defaultValue=""
-              className="bg-transparent font-bold text-xs focus:outline-none cursor-pointer text-slate-700 dark:text-slate-300"
-            >
-              <option value="">Load Template...</option>
-              <option value="server">Server Monitor</option>
-              <option value="business">Sales Performance</option>
-              <option value="tasks">Sprint Backlog</option>
-            </select>
-          </div>
+        <button
+          onClick={() => setPickerOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-bold uppercase tracking-wider hover:bg-slate-50 dark:border-white/5 dark:hover:bg-white/5 transition cursor-pointer"
+        >
+          <Plus size={14} /> Node
+        </button>
+        
+        <button
+          disabled={!draft || save.isPending}
+          onClick={() => save.mutate(scene)}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white hover:opacity-95 disabled:opacity-50 transition cursor-pointer shadow-lg shadow-violet-600/10"
+        >
+          <Save size={14} /> {save.isPending ? 'Saving…' : 'Save'}
+        </button>
+      </div>
 
-          {/* Grid Toggle */}
-          <div className="flex items-center gap-0.5 rounded-xl border border-slate-200 p-1 dark:border-white/5 bg-slate-50 dark:bg-slate-900">
-            {(['dots', 'lines', 'radial', 'blank'] as GridStyle[]).map((style) => (
-              <button
-                key={style}
-                onClick={() => setGridStyle(style)}
-                title={`Grid style: ${style}`}
-                className={`rounded-lg px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider cursor-pointer transition ${
-                  scene.gridStyle === style
-                    ? 'bg-white text-violet-600 shadow-sm dark:bg-slate-800 dark:text-violet-400'
-                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
-                }`}
-              >
-                {style}
-              </button>
-            ))}
+      {/* --- FLOATING GRID CONFIGURATION PANEL (BOTTOM LEFT) --- */}
+      <div className="absolute bottom-4 left-4 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-white/5 shadow-xl rounded-2xl p-4 w-72 transition-all">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-2 mb-3">
+          <div className="flex items-center gap-2">
+            <Palette size={14} className="text-violet-500" />
+            <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-white">Canvas Editor Grid</span>
           </div>
-
           <button
-            onClick={() => setPickerOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-bold uppercase tracking-wider hover:bg-slate-50 dark:border-white/5 dark:hover:bg-white/5 transition cursor-pointer"
+            onClick={() => setGridPanelOpen(!gridPanelOpen)}
+            className="text-[10px] font-bold text-violet-650 hover:underline dark:text-violet-400"
           >
-            <Plus size={14} /> Node
-          </button>
-          
-          <button
-            disabled={!draft || save.isPending}
-            onClick={() => save.mutate(scene)}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white hover:opacity-95 disabled:opacity-50 transition cursor-pointer shadow-lg shadow-violet-600/10"
-          >
-            <Save size={14} /> {save.isPending ? 'Saving…' : 'Save'}
+            {gridPanelOpen ? 'Hide' : 'Show'}
           </button>
         </div>
-      </header>
+
+        {gridPanelOpen && (
+          <div className="space-y-4 animate-scale-in origin-bottom">
+            {/* Grid Style Toggle */}
+            <div className="space-y-1">
+              <span className="text-[8px] font-extrabold uppercase tracking-widest text-slate-400">Pattern Style</span>
+              <div className="flex items-center gap-0.5 rounded-xl border border-slate-200/60 p-0.5 dark:border-white/5 bg-slate-50/50 dark:bg-slate-900">
+                {(['dots', 'lines', 'radial', 'blank'] as GridStyle[]).map((style) => (
+                  <button
+                    key={style}
+                    onClick={() => update({ ...scene, gridStyle: style })}
+                    className={`flex-1 rounded-lg py-1.5 text-[9px] font-bold uppercase tracking-wider cursor-pointer transition-all ${
+                      scene.gridStyle === style
+                        ? 'bg-white text-violet-600 shadow-sm dark:bg-slate-800 dark:text-violet-400'
+                        : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    {style}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {scene.gridStyle !== 'blank' && (
+              <>
+                {/* Spacing / Size Slider */}
+                {scene.gridStyle !== 'radial' && (
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[8px] font-extrabold uppercase tracking-widest text-slate-400">
+                      <span>Grid Spacing</span>
+                      <span>{scene.gridSize ?? 24}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="12"
+                      max="64"
+                      value={scene.gridSize ?? 24}
+                      onChange={(e) => update({ ...scene, gridSize: parseInt(e.target.value) })}
+                      className="w-full h-1 bg-slate-200 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-violet-600"
+                    />
+                  </div>
+                )}
+
+                {/* Opacity / Strength Slider */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[8px] font-extrabold uppercase tracking-widest text-slate-400">
+                    <span>Grid Opacity</span>
+                    <span>{Math.round((scene.gridOpacity ?? 0.06) * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.01"
+                    max="0.25"
+                    step="0.01"
+                    value={scene.gridOpacity ?? 0.06}
+                    onChange={(e) => update({ ...scene, gridOpacity: parseFloat(e.target.value) })}
+                    className="w-full h-1 bg-slate-200 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-violet-600"
+                  />
+                </div>
+
+                {/* Thickness Slider */}
+                {scene.gridStyle !== 'radial' && (
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[8px] font-extrabold uppercase tracking-widest text-slate-400">
+                      <span>Grid Thickness</span>
+                      <span>{scene.gridThickness ?? 1.2}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="3.0"
+                      step="0.1"
+                      value={scene.gridThickness ?? 1.2}
+                      onChange={(e) => update({ ...scene, gridThickness: parseFloat(e.target.value) })}
+                      className="w-full h-1 bg-slate-200 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-violet-600"
+                    />
+                  </div>
+                )}
+
+                {/* Grid Color Presets */}
+                <div className="space-y-1">
+                  <span className="text-[8px] font-extrabold uppercase tracking-widest text-slate-400">Grid Color Preset</span>
+                  <div className="flex gap-2.5 pt-1.5">
+                    {([
+                      { id: 'slate', color: 'bg-slate-400' },
+                      { id: 'blue', color: 'bg-blue-500' },
+                      { id: 'violet', color: 'bg-violet-500' },
+                      { id: 'rose', color: 'bg-rose-500' },
+                      { id: 'emerald', color: 'bg-emerald-500' },
+                    ] as const).map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => update({ ...scene, gridColorPreset: preset.id })}
+                        className={`size-4.5 rounded-full border border-white/20 transition hover:scale-110 ${preset.color} ${
+                          (scene.gridColorPreset ?? 'violet') === preset.id
+                            ? 'ring-2 ring-violet-500 ring-offset-2 dark:ring-offset-slate-900'
+                            : ''
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* --- GRID EDITOR WORKSPACE --- */}
       <div className="flex flex-1 flex-col lg:flex-row relative">
         
         <main
           onClick={() => setSelectedNodeId(null)}
-          className="flex-1 p-6 sm:p-10 overflow-y-auto bg-slate-50 dark:bg-[#030509] min-h-[600px] transition-colors duration-300 relative z-10"
+          className="flex-1 overflow-hidden relative bg-slate-50 dark:bg-[#030509] min-h-[500px] z-10"
         >
-          {/* Centered Premium Canvas Board */}
+          {/* Scrollable Container */}
           <div
-            className={`mx-auto max-w-5xl w-full min-h-[650px] rounded-[24px] border border-slate-200 dark:border-white/5 bg-white dark:bg-[#0c0f1a] shadow-[0_12px_40px_rgba(0,0,0,0.04)] dark:shadow-[0_16px_48px_rgba(0,0,0,0.3)] relative p-6 sm:p-8 transition-all duration-500 overflow-hidden ${gridBackgrounds[scene.gridStyle]}`}
+            ref={gridRef}
+            className="w-full h-full overflow-auto relative p-6"
+            style={{ maxHeight: 'calc(100vh - 64px)' }}
           >
-            {/* Main SVG connections canvas overlay */}
-            <div ref={gridRef} className="absolute inset-0 pointer-events-none z-0">
-            <svg className="w-full h-full absolute inset-0">
-              <defs>
-                <marker
-                  id="arrow"
-                  viewBox="0 0 10 10"
-                  refX="6"
-                  refY="5"
-                  markerWidth="5"
-                  markerHeight="5"
-                  orient="auto-start-reverse"
-                >
-                  <path d="M 0 1 L 10 5 L 0 9 z" fill="#8b5cf6" />
-                </marker>
-                
-                <linearGradient id="connGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#818cf8" />
-                  <stop offset="100%" stopColor="#a78bfa" />
-                </linearGradient>
-              </defs>
+            {/* The infinite board sheet */}
+            <div
+              className="relative select-none transition-all duration-300"
+              style={{
+                width: '3200px',
+                height: '2200px',
+                ...gridStyleInline,
+              }}
+            >
+              {/* Main SVG connections canvas overlay */}
+              <svg className="w-full h-full absolute inset-0 pointer-events-none z-0">
+                <defs>
+                  <marker
+                    id="arrow"
+                    viewBox="0 0 10 10"
+                    refX="6"
+                    refY="5"
+                    markerWidth="5"
+                    markerHeight="5"
+                    orient="auto-start-reverse"
+                  >
+                    <path d="M 0 1 L 10 5 L 0 9 z" fill="#8b5cf6" />
+                  </marker>
+                  
+                  <linearGradient id="connGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#818cf8" />
+                    <stop offset="100%" stopColor="#a78bfa" />
+                  </linearGradient>
+                </defs>
 
-              {scene.connections.map((conn, idx) => {
-                const from = coordinates[conn.fromId];
-                const to = coordinates[conn.toId];
-                if (!from || !to) return null;
+                {scene.connections.map((conn, idx) => {
+                  const from = coordinates[conn.fromId];
+                  const to = coordinates[conn.toId];
+                  if (!from || !to) return null;
 
-                const dx = to.x - from.x;
-                const pathD = `M ${from.x} ${from.y} C ${from.x + dx / 2} ${from.y}, ${from.x + dx / 2} ${to.y}, ${to.x} ${to.y}`;
+                  const dx = to.x - from.x;
+                  const pathD = `M ${from.x} ${from.y} C ${from.x + dx / 2} ${from.y}, ${from.x + dx / 2} ${to.y}, ${to.x} ${to.y}`;
 
-                const isPulsing = conn.style === 'pulsing';
-                const isGlowing = conn.style === 'glowing';
+                  const isPulsing = conn.style === 'pulsing';
+                  const isGlowing = conn.style === 'glowing';
 
-                return (
-                  <g key={idx}>
-                    {/* Glowing blur path */}
-                    {(isGlowing || isPulsing) && (
+                  return (
+                    <g key={idx}>
+                      {/* Glowing blur path */}
+                      {(isGlowing || isPulsing) && (
+                        <path
+                          d={pathD}
+                          fill="none"
+                          stroke="#a78bfa"
+                          strokeWidth="5"
+                          className="opacity-20 blur-sm"
+                        />
+                      )}
                       <path
                         d={pathD}
                         fill="none"
-                        stroke="#a78bfa"
-                        strokeWidth="5"
-                        className="opacity-20 blur-sm"
+                        stroke="url(#connGrad)"
+                        strokeWidth={isGlowing ? 3 : 2}
+                        markerEnd="url(#arrow)"
+                        strokeDasharray={isPulsing ? '8 6' : undefined}
+                        className={isPulsing ? 'animate-[dash_1.5s_linear_infinite]' : ''}
                       />
-                    )}
-                    <path
-                      d={pathD}
-                      fill="none"
-                      stroke="url(#connGrad)"
-                      strokeWidth={isGlowing ? 3 : 2}
-                      markerEnd="url(#arrow)"
-                      strokeDasharray={isPulsing ? '8 6' : undefined}
-                      className={isPulsing ? 'animate-[dash_1.5s_linear_infinite]' : ''}
-                    />
-                  </g>
-                );
-              })}
-            </svg>
-          </div>
+                    </g>
+                  );
+                })}
+              </svg>
 
-          {/* Grid Layout Container */}
-          <div className="relative z-10 w-full">
-            
-            <div className="mb-5 flex items-center justify-between text-xs text-slate-400">
-              <div className="flex items-center gap-2 font-medium">
-                <LayoutPanelTop size={14} /> Freeform canvas board
+              {/* Grid Layout Container */}
+              <div className="relative z-10 w-full h-full p-12">
+                {scene.nodes.length ? (
+                  <NodeGrid
+                    nodes={scene.nodes}
+                    selectedNodeId={selectedNodeId}
+                    onSelectNode={setSelectedNodeId}
+                    resolveNodeValue={resolveNodeValue}
+                    onDragStart={handleDragStart}
+                  />
+                ) : (
+                  <CanvasEmpty onAdd={() => setPickerOpen(true)} />
+                )}
               </div>
-              <span className="font-mono text-[10px]">
-                {scene.nodes.length} Nodes · {scene.connections.length} Connections
-              </span>
             </div>
-
-            {scene.nodes.length ? (
-              <NodeGrid
-                nodes={scene.nodes}
-                selectedNodeId={selectedNodeId}
-                onSelectNode={setSelectedNodeId}
-                resolveNodeValue={resolveNodeValue}
-                onDragStart={handleDragStart}
-              />
-            ) : (
-              <CanvasEmpty onAdd={() => setPickerOpen(true)} />
-            )}
-          </div>
           </div>
         </main>
 
