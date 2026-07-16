@@ -205,7 +205,7 @@ export default function LandingPage() {
       <header className="sticky top-0 z-50 border-b border-white/5 bg-[#04060d]/60 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center">
-            <img src={horizontalLogo} alt="Voxel" className="h-12 object-contain dark:invert" />
+            <img src={horizontalLogo} alt="Voxel" className="h-16 object-contain dark:invert" />
           </div>
 
           <nav className="hidden items-center gap-8 text-sm font-medium text-slate-400 md:flex">
