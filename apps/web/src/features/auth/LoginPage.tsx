@@ -21,7 +21,7 @@ export function LoginPage() {
       <section className="grid w-full max-w-5xl overflow-hidden rounded-3xl border border-white/10 bg-[#101522] shadow-2xl shadow-black/30 lg:grid-cols-[1.1fr_.9fr]">
         <div className="hidden min-h-[580px] flex-col justify-between bg-[radial-gradient(circle_at_20%_20%,rgba(139,92,246,.38),transparent_32%),radial-gradient(circle_at_80%_70%,rgba(56,189,248,.2),transparent_28%)] p-12 lg:flex">
           <div className="flex items-center">
-            <img src={horizontalLogo} alt="Voxel" className="h-8 object-contain dark:invert" />
+            <img src={horizontalLogo} alt="Voxel" className="h-16 object-contain dark:invert" />
           </div>
           <div>
             <p className="mb-4 text-sm font-semibold uppercase tracking-[.2em] text-violet-200">

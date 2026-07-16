@@ -177,7 +177,7 @@ export function AppShell() {
             {collapsed ? (
               <img src={appIcon} alt="Voxel" className="w-10 h-10 object-contain" />
             ) : (
-              <img src={horizontalLogo} alt="Voxel" className="h-8 object-contain dark:invert" />
+              <img src={horizontalLogo} alt="Voxel" className="h-16 object-contain dark:invert" />
             )}
           </Link>
         </div>
