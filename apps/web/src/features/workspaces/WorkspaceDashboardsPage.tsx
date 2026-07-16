@@ -17,6 +17,8 @@ import {
   Copy,
   MessageCircle,
   Send,
+  Loader2,
+  Upload,
 } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { workspaceService, type Dashboard } from './workspace-service';
@@ -36,6 +38,8 @@ export default function WorkspaceDashboardsPage() {
   const [downloadDashboard, setDownloadDashboard] = useState<Dashboard | null>(null);
   const [deleteDashboard, setDeleteDashboard] = useState<Dashboard | null>(null);
   const [copied, setCopied] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -231,10 +235,70 @@ Sync Nodes: Active
     setDownloadDashboard(null);
   };
 
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    const reader = new FileReader();
+
+    reader.onload = async (event) => {
+      try {
+        const payload = JSON.parse(event.target?.result as string);
+        
+        let dbName = '';
+        let dbDesc = '';
+        let dbScene = null;
+
+        if (payload.dashboard && payload.dashboard.name) {
+          dbName = payload.dashboard.name;
+          dbDesc = payload.dashboard.description || '';
+          dbScene = payload.dashboard.scene;
+        } else if (payload.workspace && Array.isArray(payload.dashboards) && payload.dashboards.length > 0) {
+          const firstDb = payload.dashboards[0];
+          dbName = firstDb.name;
+          dbDesc = firstDb.description || '';
+          dbScene = firstDb.scene;
+        } else {
+          throw new Error('Invalid Voxel Dashboard JSON structure.');
+        }
+
+        const newDb = await workspaceService.createDashboard(workspaceId!, {
+          name: `${dbName} (Imported)`,
+          description: dbDesc || 'Imported dashboard design.',
+        });
+
+        if (dbScene) {
+          await workspaceService.updateDashboard(newDb.id, {
+            scene: dbScene,
+            version: newDb.version,
+          });
+        }
+
+        await queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'dashboards'] });
+        setImporting(false);
+      } catch (err) {
+        setImporting(false);
+        alert(err instanceof Error ? err.message : 'Failed to parse dashboard JSON.');
+      }
+    };
+
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   if (!workspaceId) return null;
 
   return (
-    <section>
+    <section className="relative">
+      {importing && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/65 backdrop-blur-md">
+          <Loader2 className="animate-spin text-violet-500" size={48} />
+          <h2 className="mt-4 text-lg font-semibold text-white">Importing Voxel Dashboard…</h2>
+          <p className="mt-1.5 text-sm text-slate-400">Rebuilding node grid visual system layouts</p>
+        </div>
+      )}
+
       <Link
         to="/workspaces"
         className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-violet-600"
@@ -251,12 +315,27 @@ Sync Nodes: Active
             Right-click any dashboard to edit, delete, share, or download canvas sheets.
           </p>
         </div>
-        <button
-          onClick={() => setDialogOpen(true)}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/20 hover:bg-violet-500"
-        >
-          <Plus size={17} /> New dashboard
-        </button>
+        <div className="flex gap-2.5">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleImportFile}
+            accept=".json"
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold shadow-sm hover:bg-slate-50 dark:border-white/10 dark:bg-slate-900 dark:hover:bg-slate-800"
+          >
+            <Upload size={16} /> Import dashboard
+          </button>
+          <button
+            onClick={() => setDialogOpen(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/20 hover:bg-violet-500"
+          >
+            <Plus size={17} /> New dashboard
+          </button>
+        </div>
       </div>
       {dashboards.isPending && (
         <div className="mt-8 h-48 animate-pulse rounded-2xl bg-slate-200 dark:bg-white/5" />

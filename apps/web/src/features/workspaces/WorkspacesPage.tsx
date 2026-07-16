@@ -12,8 +12,6 @@ import {
   X,
   Edit2,
   Trash2,
-  Upload,
-  Loader2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { workspaceService, type Workspace } from './workspace-service';
@@ -29,12 +27,10 @@ export default function WorkspacesPage() {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; workspace: Workspace } | null>(null);
   const [editWorkspace, setEditWorkspace] = useState<Workspace | null>(null);
   const [deleteWorkspace, setDeleteWorkspace] = useState<Workspace | null>(null);
-  const [importing, setImporting] = useState(false);
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const menuRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const workspaces = useQuery({
     queryKey: ['workspaces'],
@@ -87,66 +83,10 @@ export default function WorkspacesPage() {
     });
   };
 
-  // Import Workspace Parser Logic
-  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
 
-    setImporting(true);
-    const reader = new FileReader();
-
-    reader.onload = async (event) => {
-      try {
-        const payload = JSON.parse(event.target?.result as string);
-        if (!payload.workspace || !payload.workspace.name) {
-          throw new Error('Invalid Voxel workspace JSON structure.');
-        }
-
-        // Create the imported workspace card
-        const newWs = await workspaceService.create({
-          name: `${payload.workspace.name} (Imported)`,
-          description: payload.workspace.description || 'Imported voxel workspace design.',
-        });
-
-        // sequentially import each dashboard scene configuration
-        if (payload.dashboards && Array.isArray(payload.dashboards)) {
-          for (const db of payload.dashboards) {
-            const newDb = await workspaceService.createDashboard(newWs.id, {
-              name: db.name,
-              description: db.description || '',
-            });
-            if (db.scene) {
-              await workspaceService.updateDashboard(newDb.id, {
-                scene: db.scene,
-                version: newDb.version,
-              });
-            }
-          }
-        }
-
-        await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
-        setImporting(false);
-        navigate(`/workspaces/${newWs.id}/dashboards`);
-      } catch (err) {
-        setImporting(false);
-        alert(err instanceof Error ? err.message : 'Failed to parse workspace JSON.');
-      }
-    };
-
-    reader.readAsText(file);
-    e.target.value = ''; // clear input
-  };
 
   return (
-    <section className="relative">
-      {importing && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/65 backdrop-blur-md">
-          <Loader2 className="animate-spin text-violet-500" size={48} />
-          <h2 className="mt-4 text-lg font-semibold text-white">Importing Voxel Workspace…</h2>
-          <p className="mt-1.5 text-sm text-slate-400">Rebuilding node grid visual system layouts</p>
-        </div>
-      )}
-
+    <section>
       <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[.16em] text-violet-500">
@@ -158,19 +98,6 @@ export default function WorkspacesPage() {
           </p>
         </div>
         <div className="flex gap-2.5">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleImportFile}
-            accept=".json"
-            className="hidden"
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold shadow-sm hover:bg-slate-50 dark:border-white/10 dark:bg-slate-900 dark:hover:bg-slate-800"
-          >
-            <Upload size={16} /> Import
-          </button>
           <button
             onClick={() => setDialogOpen(true)}
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/20 hover:bg-violet-500"
