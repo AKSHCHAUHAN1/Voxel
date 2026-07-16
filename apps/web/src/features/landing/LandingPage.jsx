@@ -4,35 +4,24 @@ import { useQuery } from '@tanstack/react-query';
 import appIcon from '@/assets/app-icon.png';
 import horizontalLogo from '@/assets/horizontal-logo.png';
 import { motion, useMotionValue, useTransform, useSpring } from 'framer-motion';
-import { 
-  ArrowRight, 
-  Sparkles, 
-  Plus, 
-  Activity, 
-  GitBranch, 
-  Zap, 
-  MousePointerClick, 
+import {
+  ArrowRight,
+  Sparkles,
+  Plus,
+  Activity,
+  GitBranch,
+  Zap,
+  MousePointerClick,
   RefreshCw,
   Cpu,
   Layers,
   Database,
-  ArrowUpRight
+  ArrowUpRight,
 } from 'lucide-react';
 import { authService } from '../auth/auth-service';
 
-// --- Types for Sandbox ---
-interface SandboxNode {
-  id: string;
-  title: string;
-  type: 'source' | 'logic' | 'display';
-  x: number;
-  y: number;
-  value: number;
-  icon: React.ReactNode;
-}
-
 // --- Card 3D Tilt Wrapper Component ---
-function InteractiveTiltCard({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+function InteractiveTiltCard({ children, className = '' }) {
   const x = useMotionValue(0);
   const y = useMotionValue(0);
 
@@ -44,7 +33,7 @@ function InteractiveTiltCard({ children, className = '' }: { children: React.Rea
   const rx = useSpring(rotateX, springConfig);
   const ry = useSpring(rotateY, springConfig);
 
-  function handleMouseMove(event: React.MouseEvent<HTMLDivElement, MouseEvent>) {
+  function handleMouseMove(event) {
     const rect = event.currentTarget.getBoundingClientRect();
     const width = rect.width;
     const height = rect.height;
@@ -76,8 +65,7 @@ function InteractiveTiltCard({ children, className = '' }: { children: React.Rea
 }
 
 export default function LandingPage() {
-  const containerRef = useRef<HTMLDivElement>(null);
-
+  const containerRef = useRef(null);
 
   // Check auth state
   const { data: user, isSuccess } = useQuery({
@@ -88,7 +76,7 @@ export default function LandingPage() {
   });
 
   // --- Interactive Sandbox State ---
-  const [nodes, setNodes] = useState<SandboxNode[]>([
+  const [nodes, setNodes] = useState([
     {
       id: 'traffic',
       title: 'Traffic Source',
@@ -118,21 +106,20 @@ export default function LandingPage() {
     },
   ]);
 
-  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
+  const [draggingNodeId, setDraggingNodeId] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [sandboxPulse, setSandboxPulse] = useState(false);
 
-  const trafficVal = nodes.find(n => n.id === 'traffic')?.value || 0;
-  const conversionVal = nodes.find(n => n.id === 'conversion')?.value || 0;
+  const trafficVal = nodes.find((n) => n.id === 'traffic')?.value || 0;
+  const conversionVal = nodes.find((n) => n.id === 'conversion')?.value || 0;
 
   // Update calculated node value when dependencies change
   useEffect(() => {
     const sales = Math.round((trafficVal * conversionVal) / 100);
 
-    setNodes(prev =>
-      prev.map(node => (node.id === 'revenue' ? { ...node, value: sales } : node))
+    setNodes((prev) =>
+      prev.map((node) => (node.id === 'revenue' ? { ...node, value: sales } : node)),
     );
-    
     // Trigger animated link pulse
     setSandboxPulse(true);
     const timer = setTimeout(() => setSandboxPulse(false), 800);
@@ -140,9 +127,9 @@ export default function LandingPage() {
   }, [trafficVal, conversionVal]);
 
   // Drag Handlers for Sandbox
-  const handleMouseDown = (e: React.MouseEvent, id: string) => {
+  const handleMouseDown = (e, id) => {
     e.preventDefault();
-    const node = nodes.find(n => n.id === id);
+    const node = nodes.find((n) => n.id === id);
     if (!node) return;
 
     // Use currentTarget bounding box to get click offset relative to node card
@@ -154,21 +141,20 @@ export default function LandingPage() {
     setDraggingNodeId(id);
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  const handleMouseMove = (e) => {
     if (!draggingNodeId || !containerRef.current) return;
     const containerRect = containerRef.current.getBoundingClientRect();
-    
     const nextX = Math.max(
       10,
-      Math.min(containerRect.width - 240, e.clientX - containerRect.left - dragOffset.x)
+      Math.min(containerRect.width - 240, e.clientX - containerRect.left - dragOffset.x),
     );
     const nextY = Math.max(
       10,
-      Math.min(containerRect.height - 110, e.clientY - containerRect.top - dragOffset.y)
+      Math.min(containerRect.height - 110, e.clientY - containerRect.top - dragOffset.y),
     );
 
-    setNodes(prev =>
-      prev.map(n => (n.id === draggingNodeId ? { ...n, x: nextX, y: nextY } : n))
+    setNodes((prev) =>
+      prev.map((n) => (n.id === draggingNodeId ? { ...n, x: nextX, y: nextY } : n)),
     );
   };
 
@@ -176,9 +162,9 @@ export default function LandingPage() {
     setDraggingNodeId(null);
   };
 
-  const incrementNode = (id: string, amount: number) => {
-    setNodes(prev =>
-      prev.map(n => {
+  const incrementNode = (id, amount) => {
+    setNodes((prev) =>
+      prev.map((n) => {
         if (n.id === id) {
           if (n.id === 'conversion') {
             return { ...n, value: Math.max(0.1, parseFloat((n.value + amount).toFixed(1))) };
@@ -186,12 +172,12 @@ export default function LandingPage() {
           return { ...n, value: Math.max(10, n.value + amount) };
         }
         return n;
-      })
+      }),
     );
   };
 
   return (
-    <div 
+    <div
       className="min-h-screen overflow-x-hidden bg-[#04060d] text-slate-100 selection:bg-violet-500/30 selection:text-violet-200"
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -209,9 +195,15 @@ export default function LandingPage() {
           </div>
 
           <nav className="hidden items-center gap-8 text-sm font-medium text-slate-400 md:flex">
-            <a href="#features" className="transition hover:text-slate-100">Features</a>
-            <a href="#sandbox" className="transition hover:text-slate-100">Interactive Demo</a>
-            <a href="#integration" className="transition hover:text-slate-100">Integrations</a>
+            <a href="#features" className="transition hover:text-slate-100">
+              Features
+            </a>
+            <a href="#sandbox" className="transition hover:text-slate-100">
+              Interactive Demo
+            </a>
+            <a href="#integration" className="transition hover:text-slate-100">
+              Integrations
+            </a>
           </nav>
 
           <div className="flex items-center gap-4">
@@ -245,7 +237,6 @@ export default function LandingPage() {
       {/* --- HERO SECTION --- */}
       <section className="relative mx-auto max-w-7xl px-6 pt-16 pb-24 md:pt-24 lg:pt-32">
         <div className="grid gap-16 lg:grid-cols-12 lg:items-center">
-          
           {/* Hero Content */}
           <div className="space-y-8 lg:col-span-5">
             <motion.div
@@ -275,7 +266,9 @@ export default function LandingPage() {
               transition={{ duration: 0.6, delay: 0.2 }}
               className="text-lg leading-relaxed text-slate-400"
             >
-              Voxel combines reactive math nodes, streaming databases, and interactive metric components into a single visual canvas. Track logic, map workflows, and present data instantly.
+              Voxel combines reactive math nodes, streaming databases, and interactive metric
+              components into a single visual canvas. Track logic, map workflows, and present data
+              instantly.
             </motion.p>
 
             <motion.div
@@ -331,8 +324,8 @@ export default function LandingPage() {
 
                   {/* Connect Traffic to Revenue */}
                   {(() => {
-                    const traffic = nodes.find(n => n.id === 'traffic')!;
-                    const revenue = nodes.find(n => n.id === 'revenue')!;
+                    const traffic = nodes.find((n) => n.id === 'traffic');
+                    const revenue = nodes.find((n) => n.id === 'revenue');
                     const x1 = traffic.x + 220;
                     const y1 = traffic.y + 35;
                     const x2 = revenue.x;
@@ -346,6 +339,7 @@ export default function LandingPage() {
                           strokeWidth={sandboxPulse ? 3 : 2}
                           className="transition-all duration-300"
                         />
+
                         <path
                           d={`M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`}
                           fill="none"
@@ -361,8 +355,8 @@ export default function LandingPage() {
 
                   {/* Connect Conversion to Revenue */}
                   {(() => {
-                    const conversion = nodes.find(n => n.id === 'conversion')!;
-                    const revenue = nodes.find(n => n.id === 'revenue')!;
+                    const conversion = nodes.find((n) => n.id === 'conversion');
+                    const revenue = nodes.find((n) => n.id === 'revenue');
                     const x1 = conversion.x + 220;
                     const y1 = conversion.y + 35;
                     const x2 = revenue.x;
@@ -376,6 +370,7 @@ export default function LandingPage() {
                           strokeWidth={sandboxPulse ? 3 : 2}
                           className="transition-all duration-300"
                         />
+
                         <path
                           d={`M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`}
                           fill="none"
@@ -391,7 +386,7 @@ export default function LandingPage() {
                 </svg>
 
                 {/* Nodes rendering */}
-                {nodes.map(node => (
+                {nodes.map((node) => (
                   <div
                     key={node.id}
                     style={{ left: node.x, top: node.y }}
@@ -415,13 +410,17 @@ export default function LandingPage() {
                       {node.type !== 'display' && (
                         <div className="flex gap-1.5" onMouseDown={(e) => e.stopPropagation()}>
                           <button
-                            onClick={() => incrementNode(node.id, node.id === 'conversion' ? -0.1 : -100)}
+                            onClick={() =>
+                              incrementNode(node.id, node.id === 'conversion' ? -0.1 : -100)
+                            }
                             className="flex size-6 items-center justify-center rounded-md border border-white/10 bg-white/5 text-slate-400 transition hover:bg-white/10 hover:text-white"
                           >
                             -
                           </button>
                           <button
-                            onClick={() => incrementNode(node.id, node.id === 'conversion' ? 0.1 : 100)}
+                            onClick={() =>
+                              incrementNode(node.id, node.id === 'conversion' ? 0.1 : 100)
+                            }
                             className="flex size-6 items-center justify-center rounded-md border border-white/10 bg-white/5 text-slate-400 transition hover:bg-white/10 hover:text-white"
                           >
                             <Plus size={12} />
@@ -434,7 +433,6 @@ export default function LandingPage() {
               </div>
             </motion.div>
           </div>
-
         </div>
       </section>
 
@@ -448,19 +446,20 @@ export default function LandingPage() {
             A visual data workflow engine like no other.
           </p>
           <p className="text-slate-400 text-base">
-            Replace static reports with interactive node-based systems that run instantly in the browser.
+            Replace static reports with interactive node-based systems that run instantly in the
+            browser.
           </p>
         </div>
 
         <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-          
           <InteractiveTiltCard>
             <div className="mb-5 flex size-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-400">
               <GitBranch size={20} />
             </div>
             <h3 className="text-lg font-bold text-white">Logic Node Trees</h3>
             <p className="mt-2.5 text-sm leading-relaxed text-slate-400">
-              Wire input data into calculated math models. Formula dependencies update automatically whenever inputs change.
+              Wire input data into calculated math models. Formula dependencies update automatically
+              whenever inputs change.
             </p>
           </InteractiveTiltCard>
 
@@ -470,7 +469,8 @@ export default function LandingPage() {
             </div>
             <h3 className="text-lg font-bold text-white">Real-Time Streams</h3>
             <p className="mt-2.5 text-sm leading-relaxed text-slate-400">
-              Stream live server data directly into metric blocks. Render responsive gauges, trendlines, and threshold warning states.
+              Stream live server data directly into metric blocks. Render responsive gauges,
+              trendlines, and threshold warning states.
             </p>
           </InteractiveTiltCard>
 
@@ -482,15 +482,15 @@ export default function LandingPage() {
               </div>
               <h3 className="text-lg font-bold text-white">Interactive Rive Component</h3>
               <p className="mt-2.5 text-sm leading-relaxed text-slate-400">
-                Rive-powered interactive visual state controllers that respond to system updates dynamically.
+                Rive-powered interactive visual state controllers that respond to system updates
+                dynamically.
               </p>
             </div>
-            
+
             <div className="mt-6 h-[80px] w-full overflow-hidden rounded-lg bg-black/40 border border-white/5">
               <div className="w-full h-full bg-slate-900/50 flex items-center justify-center text-xs text-slate-500" />
             </div>
           </InteractiveTiltCard>
-
         </div>
       </section>
 
@@ -498,7 +498,6 @@ export default function LandingPage() {
       <section id="integration" className="border-t border-white/5 bg-slate-950/40 py-24 md:py-32">
         <div className="mx-auto max-w-7xl px-6">
           <div className="grid gap-16 lg:grid-cols-12 lg:items-center">
-            
             {/* Visuals */}
             <div className="order-2 lg:order-1 lg:col-span-7 grid grid-cols-2 gap-4">
               <div className="space-y-4">
@@ -529,7 +528,8 @@ export default function LandingPage() {
                 <div className="rounded-2xl border border-white/5 bg-gradient-to-br from-violet-600/20 to-indigo-600/20 p-6 shadow-lg border-violet-500/20">
                   <h4 className="text-sm font-semibold text-white">Connect anything</h4>
                   <p className="mt-2 text-xs text-slate-400">
-                    Input files, Webhook relays, Postgres, or Redis caches are modeled as simple nodes.
+                    Input files, Webhook relays, Postgres, or Redis caches are modeled as simple
+                    nodes.
                   </p>
                 </div>
               </div>
@@ -544,23 +544,26 @@ export default function LandingPage() {
                 Consolidate your stack into one visual logic map
               </h3>
               <p className="text-slate-400 leading-relaxed">
-                Why jump between Grafana, spreadsheets, and script runners? Voxel lets you map database connections directly into logic units that transform and display metrics visually in real-time.
+                Why jump between Grafana, spreadsheets, and script runners? Voxel lets you map
+                database connections directly into logic units that transform and display metrics
+                visually in real-time.
               </p>
-              
+
               <div className="pt-4 flex flex-col gap-3.5">
                 {[
                   'Automated type-checking across connected nodes',
                   'Support for custom Javascript math calculations',
-                  'Sub-millisecond visual updates using Zustand reactive bindings'
+                  'Sub-millisecond visual updates using Zustand reactive bindings',
                 ].map((item, idx) => (
                   <div key={idx} className="flex items-center gap-3 text-sm text-slate-300">
-                    <span className="flex size-5 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400 font-bold text-xs">✓</span>
+                    <span className="flex size-5 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400 font-bold text-xs">
+                      ✓
+                    </span>
                     {item}
                   </div>
                 ))}
               </div>
             </div>
-
           </div>
         </div>
       </section>
@@ -569,14 +572,19 @@ export default function LandingPage() {
       <section className="mx-auto max-w-7xl px-6 py-24 md:py-32">
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0c1228] to-[#060814] px-8 py-16 text-center border border-white/10 shadow-2xl">
           <div className="absolute top-0 left-1/2 -z-10 h-64 w-64 -translate-x-1/2 rounded-full bg-violet-600/10 blur-[80px]" />
-          
+
           <div className="max-w-2xl mx-auto space-y-6">
-            <img src={appIcon} alt="Voxel" className="mx-auto w-12 h-12 object-contain animate-[pulse_2s_infinite]" />
+            <img
+              src={appIcon}
+              alt="Voxel"
+              className="mx-auto w-12 h-12 object-contain animate-[pulse_2s_infinite]"
+            />
             <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl text-white">
               Ready to construct your workspace?
             </h2>
             <p className="text-slate-400 text-base max-w-lg mx-auto">
-              Create your account, design dashboards using visual nodes, and connect your team's live systems in minutes.
+              Create your account, design dashboards using visual nodes, and connect your team's
+              live systems in minutes.
             </p>
             <div className="pt-4">
               <Link
@@ -594,7 +602,8 @@ export default function LandingPage() {
       <footer className="border-t border-white/5 py-12 text-center text-xs text-slate-500 bg-[#020307]">
         <div className="mx-auto max-w-7xl px-6 flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3 font-semibold text-slate-400">
-            <img src={appIcon} alt="Voxel Logo" className="w-5 h-5 object-contain" /> Voxel Workspace Platform
+            <img src={appIcon} alt="Voxel Logo" className="w-5 h-5 object-contain" /> Voxel
+            Workspace Platform
           </div>
           <p>© {new Date().getFullYear()} Voxel Inc. All rights reserved.</p>
         </div>

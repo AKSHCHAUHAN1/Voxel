@@ -1,18 +1,13 @@
-import type { Dashboard, Prisma, User, WorkspaceMemberRole } from '@prisma/client';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { createRequestId } from '@voxel/contracts';
-import type { Environment } from '../../config/environment.js';
 import { prisma } from '../../database/prisma.js';
 import { AuthService } from '../auth/auth-service.js';
 import { success } from '../../lib/api-response.js';
 
 class RequestError extends Error {
-  public constructor(
-    message: string,
-    public readonly statusCode: number,
-  ) {
+  constructor(message, statusCode) {
     super(message);
+    this.statusCode = statusCode;
   }
 }
 
@@ -36,27 +31,27 @@ const dashboardUpdateSchema = z.object({
   version: z.number().int().positive(),
 });
 
-const slugify = (value: string): string =>
+const slugify = (value) =>
   value
     .toLowerCase()
     .normalize('NFKD')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '');
 
-const uniqueSlug = (value: string): string =>
+const uniqueSlug = (value) =>
   `${slugify(value) || 'untitled'}-${crypto.randomUUID().slice(0, 8)}`;
 
-const requireUser = async (request: FastifyRequest, auth: AuthService): Promise<User> => {
+const requireUser = async (request, auth) => {
   const user = await auth.getAuthenticatedUser(request.cookies.voxel_access);
   if (!user) throw new RequestError('Authentication is required.', 401);
   return user;
 };
 
 const requireMembership = async (
-  workspaceId: string,
-  userId: string,
-  roles: readonly WorkspaceMemberRole[],
-): Promise<void> => {
+  workspaceId,
+  userId,
+  roles,
+) => {
   const membership = await prisma.workspaceMember.findUnique({
     where: { workspaceId_userId: { workspaceId, userId } },
   });
@@ -65,7 +60,7 @@ const requireMembership = async (
   }
 };
 
-const serializeDashboard = (dashboard: Dashboard) => ({
+const serializeDashboard = (dashboard) => ({
   id: dashboard.id,
   workspaceId: dashboard.workspaceId,
   name: dashboard.name,
@@ -78,9 +73,9 @@ const serializeDashboard = (dashboard: Dashboard) => ({
 });
 
 export const registerWorkspaceRoutes = async (
-  app: FastifyInstance,
-  environment: Environment,
-): Promise<void> => {
+  app,
+  environment,
+) => {
   const auth = new AuthService(prisma, environment);
 
   app.get('/api/v1/workspaces', async (request, reply) => {
@@ -189,11 +184,11 @@ export const registerWorkspaceRoutes = async (
     if (input.version !== dashboard.version)
       throw new RequestError('Dashboard changed elsewhere. Refresh and retry.', 412);
 
-    const data: Prisma.DashboardUpdateInput = {
+    const data = {
       version: { increment: 1 },
       ...(input.name ? { name: input.name } : {}),
       ...(input.description !== undefined ? { description: input.description } : {}),
-      ...(input.scene ? { scene: input.scene as Prisma.InputJsonValue } : {}),
+      ...(input.scene ? { scene: input.scene } : {}),
     };
     const updated = await prisma.$transaction(async (transaction) => {
       const next = await transaction.dashboard.update({ where: { id: dashboard.id }, data });
@@ -201,7 +196,7 @@ export const registerWorkspaceRoutes = async (
         data: {
           dashboardId: next.id,
           version: next.version,
-          scene: next.scene as Prisma.InputJsonValue,
+          scene: next.scene,
         },
       });
       return next;

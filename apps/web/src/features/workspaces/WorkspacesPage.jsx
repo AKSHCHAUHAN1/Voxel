@@ -14,23 +14,22 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { workspaceService, type Workspace } from './workspace-service';
+import { workspaceService } from './workspace-service';
 
 const schema = z.object({
   name: z.string().trim().min(2, 'Use at least 2 characters.').max(80),
   description: z.string().trim().max(280).optional(),
 });
-type WorkspaceForm = z.infer<typeof schema>;
 
 export default function WorkspacesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; workspace: Workspace } | null>(null);
-  const [editWorkspace, setEditWorkspace] = useState<Workspace | null>(null);
-  const [deleteWorkspace, setDeleteWorkspace] = useState<Workspace | null>(null);
+  const [contextMenu, setContextMenu] = useState(null);
+  const [editWorkspace, setEditWorkspace] = useState(null);
+  const [deleteWorkspace, setDeleteWorkspace] = useState(null);
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const menuRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef(null);
 
   const workspaces = useQuery({
     queryKey: ['workspaces'],
@@ -47,7 +46,7 @@ export default function WorkspacesPage() {
   });
 
   const rename = useMutation({
-    mutationFn: ({ id, name, description }: { id: string; name: string; description?: string | null }) =>
+    mutationFn: ({ id, name, description }) =>
       workspaceService.update(id, { name, description: description ?? null }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
@@ -65,8 +64,8 @@ export default function WorkspacesPage() {
 
   // Global click listener to close context menu
   useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+    const handleOutsideClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
         setContextMenu(null);
       }
     };
@@ -74,7 +73,7 @@ export default function WorkspacesPage() {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  const handleRightClick = (e: React.MouseEvent, workspace: Workspace) => {
+  const handleRightClick = (e, workspace) => {
     e.preventDefault();
     setContextMenu({
       x: e.clientX,
@@ -82,8 +81,6 @@ export default function WorkspacesPage() {
       workspace,
     });
   };
-
-
 
   return (
     <section>
@@ -186,7 +183,9 @@ export default function WorkspacesPage() {
           >
             <h3 className="text-base font-semibold text-rose-600">Delete Workspace</h3>
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400 leading-5">
-              Are you sure you want to delete <b>{deleteWorkspace.name}</b>? All dashboard designs and connected node canvas assets will be soft-deleted. This action can be undone by system administrators.
+              Are you sure you want to delete <b>{deleteWorkspace.name}</b>? All dashboard designs
+              and connected node canvas assets will be soft-deleted. This action can be undone by
+              system administrators.
             </p>
             <div className="mt-6 flex justify-end gap-2 text-xs">
               <button
@@ -211,15 +210,7 @@ export default function WorkspacesPage() {
   );
 }
 
-function WorkspaceCard({
-  workspace,
-  onOpen,
-  onContextMenu,
-}: {
-  workspace: Workspace;
-  onOpen: () => void;
-  onContextMenu: (e: React.MouseEvent) => void;
-}) {
+function WorkspaceCard({ workspace, onOpen, onContextMenu }) {
   return (
     <button
       onClick={onOpen}
@@ -245,18 +236,8 @@ function WorkspaceCard({
   );
 }
 
-function EditWorkspaceDialog({
-  workspace,
-  pending,
-  onClose,
-  onSubmit,
-}: {
-  workspace: Workspace;
-  pending: boolean;
-  onClose: () => void;
-  onSubmit: (name: string, description?: string | null) => void;
-}) {
-  const { register, handleSubmit } = useForm<WorkspaceForm>({
+function EditWorkspaceDialog({ workspace, pending, onClose, onSubmit }) {
+  const { register, handleSubmit } = useForm({
     resolver: zodResolver(schema),
     defaultValues: { name: workspace.name, description: workspace.description || '' },
   });
@@ -317,7 +298,7 @@ function EditWorkspaceDialog({
   );
 }
 
-function EmptyState({ onCreate }: { onCreate: () => void }) {
+function EmptyState({ onCreate }) {
   return (
     <div className="col-span-full rounded-2xl border border-dashed border-violet-300 bg-violet-50/70 p-12 text-center dark:border-violet-500/40 dark:bg-violet-500/5">
       <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-white text-violet-600 shadow-sm dark:bg-slate-900">
@@ -338,7 +319,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-function ErrorState({ onRetry }: { onRetry: () => void }) {
+function ErrorState({ onRetry }) {
   return (
     <div className="mt-8 rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center dark:border-rose-500/30 dark:bg-rose-500/10">
       <h2 className="font-semibold text-rose-700 dark:text-rose-200">
@@ -364,18 +345,8 @@ function WorkspaceSkeleton() {
   );
 }
 
-function WorkspaceDialog({
-  pending,
-  error,
-  onClose,
-  onSubmit,
-}: {
-  pending: boolean;
-  error?: string | undefined;
-  onClose: () => void;
-  onSubmit: (values: WorkspaceForm) => void;
-}) {
-  const form = useForm<WorkspaceForm>({
+function WorkspaceDialog({ pending, error, onClose, onSubmit }) {
+  const form = useForm({
     resolver: zodResolver(schema),
     defaultValues: { name: '', description: '' },
   });

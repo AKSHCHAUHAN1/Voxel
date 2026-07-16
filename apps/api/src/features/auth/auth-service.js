@@ -1,44 +1,21 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
-import type { PrismaClient, User } from '@prisma/client';
-import type { Environment } from '../../config/environment.js';
 
 const ACCESS_TOKEN_LIFETIME_SECONDS = 15 * 60;
 const REFRESH_TOKEN_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 
-export interface GoogleIdentity {
-  readonly subject: string;
-  readonly email: string;
-  readonly emailVerified: boolean;
-  readonly displayName: string;
-  readonly avatarUrl?: string;
-}
-
-export interface SessionTokens {
-  readonly accessToken: string;
-  readonly refreshToken: string;
-}
-
-interface AccessTokenPayload {
-  readonly subject: string;
-  readonly sessionId: string;
-}
-
-const digest = (value: string): string => createHash('sha256').update(value).digest('hex');
-const secret = (environment: Environment): Uint8Array =>
+const digest = (value) => createHash('sha256').update(value).digest('hex');
+const secret = (environment) =>
   new TextEncoder().encode(environment.SESSION_SECRET);
-const newRefreshToken = (): string => randomBytes(48).toString('base64url');
+const newRefreshToken = () => randomBytes(48).toString('base64url');
 
 export class AuthService {
-  public constructor(
-    private readonly database: PrismaClient,
-    private readonly environment: Environment,
-  ) {}
+  constructor(database, environment) {
+    this.database = database;
+    this.environment = environment;
+  }
 
-  public async createSession(
-    identity: GoogleIdentity,
-    metadata: { ip?: string; userAgent?: string },
-  ): Promise<SessionTokens> {
+  async createSession(identity, metadata) {
     if (!identity.emailVerified) {
       throw new Error('The Google account email address must be verified.');
     }
@@ -80,7 +57,7 @@ export class AuthService {
     return { accessToken: await this.signAccessToken(user, session.id), refreshToken };
   }
 
-  public async rotateSession(refreshToken: string): Promise<SessionTokens> {
+  async rotateSession(refreshToken) {
     const existing = await this.database.refreshToken.findUnique({
       where: { tokenHash: digest(refreshToken) },
       include: { session: { include: { user: true } } },
@@ -125,7 +102,7 @@ export class AuthService {
     };
   }
 
-  public async revokeSession(refreshToken?: string): Promise<void> {
+  async revokeSession(refreshToken) {
     if (!refreshToken) return;
     await this.database.refreshToken.updateMany({
       where: { tokenHash: digest(refreshToken), revokedAt: null },
@@ -133,14 +110,14 @@ export class AuthService {
     });
   }
 
-  public async getAuthenticatedUser(accessToken?: string): Promise<User | null> {
+  async getAuthenticatedUser(accessToken) {
     if (!accessToken) return null;
     const payload = await this.verifyAccessToken(accessToken).catch(() => null);
     if (!payload) return null;
     return this.database.user.findFirst({ where: { id: payload.subject, deletedAt: null } });
   }
 
-  private async signAccessToken(user: User, sessionId: string): Promise<string> {
+  async signAccessToken(user, sessionId) {
     return new SignJWT({ sid: sessionId })
       .setProtectedHeader({ alg: 'HS256' })
       .setSubject(user.id)
@@ -151,7 +128,7 @@ export class AuthService {
       .sign(secret(this.environment));
   }
 
-  private async verifyAccessToken(accessToken: string): Promise<AccessTokenPayload> {
+  async verifyAccessToken(accessToken) {
     const { payload } = await jwtVerify(accessToken, secret(this.environment), {
       issuer: 'voxel-api',
       audience: 'voxel-web',

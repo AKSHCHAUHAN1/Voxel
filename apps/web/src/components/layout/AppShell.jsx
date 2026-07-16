@@ -30,26 +30,25 @@ export function AppShell() {
   const [commandOpen, setCommandOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  
   // Theme state and bubble animation state
   const theme = useThemeStore((state) => state.theme);
   const setTheme = useThemeStore((state) => state.setTheme);
-  const [bubble, setBubble] = useState<{ x: number; y: number; active: boolean; color: string } | null>(null);
+  const [bubble, setBubble] = useState(null);
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
 
-  const searchRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const notifRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef(null);
+  const searchInputRef = useRef(null);
+  const notifRef = useRef(null);
 
   // Seeded notifications matching reference Header.jsx list
   const [notifications, setNotifications] = useState([
-    { id: 1, text: "System update completed successfully.", time: "2m ago", read: false },
-    { id: 2, text: "New login from unknown device. Please review.", time: "1h ago", read: false },
-    { id: 3, text: "Monthly expense report is ready to download.", time: "3h ago", read: false },
+    { id: 1, text: 'System update completed successfully.', time: '2m ago', read: false },
+    { id: 2, text: 'New login from unknown device. Please review.', time: '1h ago', read: false },
+    { id: 3, text: 'Monthly expense report is ready to download.', time: '3h ago', read: false },
   ]);
 
   // Fetch current user details
@@ -63,7 +62,13 @@ export function AppShell() {
   const isGoogleLogin = user && user.email !== 'guest@voxel.com';
   const displayName = user?.displayName || 'Guest User';
   const email = user?.email || 'guest@voxel.com';
-  const avatarInitials = displayName.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase() || 'GU';
+  const avatarInitials =
+    displayName
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .substring(0, 2)
+      .toUpperCase() || 'GU';
 
   // Fetch workspaces list for search lookup
   const workspaces = useQuery({
@@ -71,7 +76,7 @@ export function AppShell() {
     queryFn: workspaceService.list,
   });
 
-  const logout = async (): Promise<void> => {
+  const logout = async () => {
     await authService.logout();
     queryClient.clear();
     navigate('/');
@@ -79,7 +84,7 @@ export function AppShell() {
 
   // Keyboard shortcut listener (Cmd+K and Cmd+/)
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         searchInputRef.current?.focus();
@@ -96,11 +101,11 @@ export function AppShell() {
 
   // Close search dropdown and notifications outside click
   useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+    const handleOutsideClick = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
         setSearchDropdownOpen(false);
       }
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
         setNotificationsOpen(false);
       }
     };
@@ -109,7 +114,7 @@ export function AppShell() {
   }, []);
 
   // Theme switch bubble transition effect
-  const handleThemeToggle = (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleThemeToggle = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = rect.left + rect.width / 2;
     const y = rect.top + rect.height / 2;
@@ -117,7 +122,6 @@ export function AppShell() {
     const color = nextTheme === 'dark' ? '#020617' : '#f8fafc'; // background color of target theme
 
     setBubble({ x, y, active: false, color });
-    
     // Trigger expansion
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -137,9 +141,7 @@ export function AppShell() {
   };
 
   const filteredWorkspaces = workspaces.data
-    ? workspaces.data.filter((ws) =>
-        ws.name.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+    ? workspaces.data.filter((ws) => ws.name.toLowerCase().includes(searchQuery.toLowerCase()))
     : [];
 
   const unreadCount = notifications.filter((n) => !n.read).length;
@@ -167,7 +169,9 @@ export function AppShell() {
         />
       )}
 
-      <aside className={`flex flex-col fixed left-0 top-0 h-full bg-white dark:bg-slate-950 z-50 transition-all duration-300 overflow-hidden border-r border-slate-200 dark:border-white/10 ${collapsed ? 'w-20' : 'w-64'}`}>
+      <aside
+        className={`flex flex-col fixed left-0 top-0 h-full bg-white dark:bg-slate-950 z-50 transition-all duration-300 overflow-hidden border-r border-slate-200 dark:border-white/10 ${collapsed ? 'w-20' : 'w-64'}`}
+      >
         {/* Brand Logo header */}
         <div className="py-8 px-4 transition-all duration-300">
           <Link
@@ -185,8 +189,18 @@ export function AppShell() {
         {/* Navigation Items */}
         <nav className="flex-1 px-4 space-y-1.5">
           {[
-            { path: '/workspaces', label: 'Workspaces', icon: PanelsTopLeft, activeCheck: (p: string) => p.startsWith('/workspaces') },
-            { path: '/settings', label: 'Settings', icon: Settings, activeCheck: (p: string) => p === '/settings' },
+            {
+              path: '/workspaces',
+              label: 'Workspaces',
+              icon: PanelsTopLeft,
+              activeCheck: (p) => p.startsWith('/workspaces'),
+            },
+            {
+              path: '/settings',
+              label: 'Settings',
+              icon: Settings,
+              activeCheck: (p) => p === '/settings',
+            },
           ].map((item) => {
             const active = item.activeCheck(location.pathname);
             const Icon = item.icon;
@@ -195,9 +209,10 @@ export function AppShell() {
                 key={item.path}
                 to={item.path}
                 className={`flex items-center gap-3 rounded-xl transition-all duration-300 group relative overflow-hidden border
-                  ${active
-                    ? 'text-violet-600 dark:text-violet-200 bg-violet-50 dark:bg-violet-500/10 border-violet-100/50 dark:border-violet-500/20 shadow-sm font-bold'
-                    : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 border-transparent'
+                  ${
+                    active
+                      ? 'text-violet-600 dark:text-violet-200 bg-violet-50 dark:bg-violet-500/10 border-violet-100/50 dark:border-violet-500/20 shadow-sm font-bold'
+                      : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 border-transparent'
                   }
                   ${collapsed ? 'justify-center w-12 h-12 mx-auto p-0' : 'px-4 py-3'}
                 `}
@@ -205,8 +220,14 @@ export function AppShell() {
                 {active && (
                   <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-violet-600 rounded-l-full" />
                 )}
-                <Icon size={20} strokeWidth={active ? 2.2 : 1.8} className="shrink-0 relative z-10" />
-                <span className={`text-sm font-semibold relative z-10 whitespace-nowrap overflow-hidden transition-all duration-300 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}>
+                <Icon
+                  size={20}
+                  strokeWidth={active ? 2.2 : 1.8}
+                  className="shrink-0 relative z-10"
+                />
+                <span
+                  className={`text-sm font-semibold relative z-10 whitespace-nowrap overflow-hidden transition-all duration-300 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}
+                >
                   {item.label}
                 </span>
               </Link>
@@ -216,14 +237,18 @@ export function AppShell() {
 
         {/* User profile & Collapse controls at bottom */}
         <div className="p-4 mt-auto transition-all duration-300">
-          <div className={`overflow-hidden transition-all duration-300 ${collapsed ? 'max-h-0 opacity-0' : 'max-h-24 opacity-100'}`}>
+          <div
+            className={`overflow-hidden transition-all duration-300 ${collapsed ? 'max-h-0 opacity-0' : 'max-h-24 opacity-100'}`}
+          >
             <div className="bg-slate-100 dark:bg-white/5 rounded-xl p-3">
               <div className="flex items-center gap-3">
                 <span className="grid size-9 place-items-center rounded-full bg-violet-600 text-xs font-bold text-white shrink-0">
                   {avatarInitials}
                 </span>
                 <div className="min-w-0 whitespace-nowrap overflow-hidden">
-                  <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{displayName}</div>
+                  <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
+                    {displayName}
+                  </div>
                   <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">
                     {isGoogleLogin ? 'Verified Member' : 'Guest Member'}
                   </div>
@@ -231,7 +256,9 @@ export function AppShell() {
               </div>
             </div>
           </div>
-          <div className={`overflow-hidden transition-all duration-300 ${collapsed ? 'max-h-16 opacity-100' : 'max-h-0 opacity-0'}`}>
+          <div
+            className={`overflow-hidden transition-all duration-300 ${collapsed ? 'max-h-16 opacity-100' : 'max-h-0 opacity-0'}`}
+          >
             <span className="w-12 h-12 mx-auto rounded-xl bg-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
               {avatarInitials}
             </span>
@@ -241,13 +268,21 @@ export function AppShell() {
             className={`mt-3 flex items-center justify-center gap-2 rounded-xl text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all duration-300 ${collapsed ? 'w-12 h-12 mx-auto p-0' : 'w-full py-2'}`}
           >
             {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-            <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}>
+            <span
+              className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}
+            >
               Collapse
             </span>
           </button>
         </div>
       </aside>
-      <div className={collapsed ? "lg:pl-20 transition-all duration-300" : "lg:pl-64 transition-all duration-300"}>
+      <div
+        className={
+          collapsed
+            ? 'lg:pl-20 transition-all duration-300'
+            : 'lg:pl-64 transition-all duration-300'
+        }
+      >
         <header className="sticky top-0 z-40 flex h-20 items-center justify-between border-b border-slate-200 bg-slate-50/70 px-5 backdrop-blur-md dark:border-white/10 dark:bg-slate-950/70 sm:px-8">
           <Link
             to="/workspaces"
@@ -258,7 +293,10 @@ export function AppShell() {
 
           {/* Inline Dropdown Search Bar */}
           <div className="relative w-full max-w-md" ref={searchRef}>
-            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+            <Search
+              size={18}
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500"
+            />
             <input
               ref={searchInputRef}
               type="text"
@@ -271,10 +309,12 @@ export function AppShell() {
               onFocus={() => setSearchDropdownOpen(true)}
               className="w-full bg-slate-100 dark:bg-white/5 border-none rounded-full pl-12 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-violet-500/40 focus:bg-white dark:focus:bg-slate-900 transition-all text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none"
             />
-            
+
             {searchDropdownOpen && (
               <div className="absolute top-full left-0 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl dark:border-white/10 dark:bg-slate-900 z-50 overflow-hidden max-h-80 overflow-y-auto">
-                <p className="text-[10px] font-bold text-slate-400 px-3 py-1 uppercase tracking-wider">Workspaces</p>
+                <p className="text-[10px] font-bold text-slate-400 px-3 py-1 uppercase tracking-wider">
+                  Workspaces
+                </p>
                 {filteredWorkspaces.map((ws) => (
                   <button
                     key={ws.id}
@@ -287,15 +327,21 @@ export function AppShell() {
                     <Boxes size={15} className="text-violet-500" />
                     <div>
                       <div className="font-semibold">{ws.name}</div>
-                      <div className="text-[10px] text-slate-400">{ws.description || 'View dashboards'}</div>
+                      <div className="text-[10px] text-slate-400">
+                        {ws.description || 'View dashboards'}
+                      </div>
                     </div>
                   </button>
                 ))}
                 {filteredWorkspaces.length === 0 && (
-                  <p className="text-xs text-slate-400 py-2 px-3">No workspaces match your query.</p>
+                  <p className="text-xs text-slate-400 py-2 px-3">
+                    No workspaces match your query.
+                  </p>
                 )}
 
-                <p className="text-[10px] font-bold text-slate-400 px-3 py-1 uppercase tracking-wider mt-2">Settings Shortcuts</p>
+                <p className="text-[10px] font-bold text-slate-400 px-3 py-1 uppercase tracking-wider mt-2">
+                  Settings Shortcuts
+                </p>
                 {[
                   { label: 'Profile preferences', path: '/settings' },
                   { label: 'Workspace members & collaboration', path: '/settings' },
@@ -340,11 +386,13 @@ export function AppShell() {
                   <span className="absolute top-2.5 right-2.5 size-2 rounded-full bg-rose-500 animate-pulse" />
                 )}
               </button>
-              
+
               {notificationsOpen && (
                 <div className="absolute right-0 top-14 w-80 rounded-2xl border border-slate-200 bg-white p-0 shadow-dramatic dark:border-white/10 dark:bg-slate-900 z-50 origin-top animate-scale-in">
                   <div className="p-4 border-b border-slate-100 dark:border-white/5 flex items-center justify-between">
-                    <h3 className="font-extrabold text-sm text-slate-950 dark:text-white tracking-tight">Notifications</h3>
+                    <h3 className="font-extrabold text-sm text-slate-950 dark:text-white tracking-tight">
+                      Notifications
+                    </h3>
                     {notifications.length > 0 && (
                       <button
                         onClick={() => setNotifications([])}
@@ -361,9 +409,13 @@ export function AppShell() {
                         key={notif.id}
                         className="relative group p-4 flex items-start gap-3.5 bg-white dark:bg-slate-900 hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors cursor-pointer"
                       >
-                        <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${notif.read ? 'bg-slate-200 dark:bg-slate-800' : 'bg-violet-600 dark:bg-violet-400 shadow-[0_0_8px_rgba(124,58,237,0.5)] animate-pulse'}`} />
+                        <div
+                          className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${notif.read ? 'bg-slate-200 dark:bg-slate-800' : 'bg-violet-600 dark:bg-violet-400 shadow-[0_0_8px_rgba(124,58,237,0.5)] animate-pulse'}`}
+                        />
                         <div className="flex-1 min-w-0 pr-6">
-                          <p className={`text-xs text-slate-900 dark:text-slate-100 leading-snug font-semibold`}>
+                          <p
+                            className={`text-xs text-slate-900 dark:text-slate-100 leading-snug font-semibold`}
+                          >
                             {notif.text}
                           </p>
                           <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 font-bold">
@@ -387,7 +439,9 @@ export function AppShell() {
                     ))}
                     {notifications.length === 0 && (
                       <div className="p-8 text-center flex flex-col items-center justify-center gap-2">
-                        <p className="text-xs font-bold text-slate-700 dark:text-slate-300">All caught up</p>
+                        <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          All caught up
+                        </p>
                         <p className="text-[10px] text-slate-400">You have no new notifications.</p>
                       </div>
                     )}
@@ -408,9 +462,13 @@ export function AppShell() {
             {/* Profile Avatar VX dropdown area */}
             <div className="flex items-center gap-3 relative">
               <div className="text-right hidden md:block select-none leading-snug">
-                <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{displayName}</p>
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  {displayName}
+                </p>
                 {isGoogleLogin && (
-                  <p className="text-[9px] text-slate-400 uppercase tracking-wider font-semibold opacity-70">Verified User</p>
+                  <p className="text-[9px] text-slate-400 uppercase tracking-wider font-semibold opacity-70">
+                    Verified User
+                  </p>
                 )}
               </div>
 

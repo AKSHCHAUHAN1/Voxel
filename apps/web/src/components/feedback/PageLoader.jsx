@@ -49,7 +49,7 @@ export function PageLoader() {
       className="relative flex min-h-screen flex-col items-center justify-center bg-[#070a13] overflow-hidden text-slate-100 font-sans select-none"
     >
       {/* Immersive Game Grid Background */}
-      <div 
+      <div
         className="absolute inset-0 opacity-[0.03] dark:opacity-[0.04] pointer-events-none"
         style={{
           backgroundImage: `linear-gradient(rgba(99, 102, 241, 0.3) 1px, transparent 1px), 
@@ -75,45 +75,42 @@ export function PageLoader() {
 
       {/* Central Immersive Panel */}
       <div className="relative flex flex-col items-center text-center max-w-sm px-6 space-y-8 z-10">
-        
         {/* Core Ring Scanner + Logo */}
         <div className="relative flex items-center justify-center w-36 h-36">
           {/* Outer Cyberpunk Ring Spinner */}
-          <div 
-            className="absolute inset-0 rounded-full border-2 border-dashed border-violet-500/30 opacity-60 w-full h-full animate-[rotate-ring_12s_linear_infinite]"
-          />
+          <div className="absolute inset-0 rounded-full border-2 border-dashed border-violet-500/30 opacity-60 w-full h-full animate-[rotate-ring_12s_linear_infinite]" />
+
           {/* Inner Fast Ring Spinner */}
-          <div 
-            className="absolute inset-2 rounded-full border border-violet-400/40 border-t-transparent border-b-transparent w-[calc(100%-16px)] h-[calc(100%-16px)] animate-[rotate-ring_3s_linear_infinite_reverse]"
-          />
+          <div className="absolute inset-2 rounded-full border border-violet-400/40 border-t-transparent border-b-transparent w-[calc(100%-16px)] h-[calc(100%-16px)] animate-[rotate-ring_3s_linear_infinite_reverse]" />
 
           {/* Glowing center aura */}
           <div className="absolute w-20 h-20 bg-violet-600/10 rounded-full blur-xl animate-pulse" />
 
           {/* Brand Icon */}
-          <img 
-            src={appIcon} 
-            alt="Voxel Logo" 
-            className="w-20 h-20 object-contain relative z-10 animate-bounce" 
+          <img
+            src={appIcon}
+            alt="Voxel Logo"
+            className="w-20 h-20 object-contain relative z-10 animate-bounce"
           />
         </div>
 
         {/* Loading Progress & Tip Messages */}
         <div className="w-full space-y-4">
-          
           {/* Status Text Info */}
           <div className="space-y-1">
             <div className="text-[10px] font-extrabold tracking-[0.25em] text-violet-400 uppercase">
               SYSTEM CONSTRUCT INITIALIZATION
             </div>
             <div className="text-xs font-mono font-medium text-slate-300 tracking-wider h-5 flex items-center justify-center">
-              {progress < 100 ? loadingTips[tipIndex] : 'DECRYPTION COMPLETE. LAUNCHING WORKSPACE...'}
+              {progress < 100
+                ? loadingTips[tipIndex]
+                : 'DECRYPTION COMPLETE. LAUNCHING WORKSPACE...'}
             </div>
           </div>
 
           {/* Segmented Progress Bar */}
           <div className="relative w-full h-2.5 bg-slate-900 border border-white/5 rounded-full overflow-hidden p-0.5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]">
-            <div 
+            <div
               className="h-full rounded-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-indigo-500 transition-all duration-300 ease-out shadow-[0_0_10px_rgba(168,85,247,0.5)]"
               style={{ width: `${progress}%` }}
             />
@@ -125,7 +122,7 @@ export function PageLoader() {
           </div>
         </div>
       </div>
-      
+
       {/* Cyberpunk corner details */}
       <div className="absolute bottom-6 left-6 text-[9px] font-mono text-slate-650 uppercase tracking-widest">
         SECURE GATEWAY v0.1.0 // ACTIVE

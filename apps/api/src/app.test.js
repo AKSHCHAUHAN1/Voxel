@@ -1,9 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { FastifyInstance } from 'fastify';
 import { buildApp } from './app.js';
-import type { Environment } from './config/environment.js';
 
-const environment: Environment = {
+const environment = {
   NODE_ENV: 'test',
   API_HOST: '127.0.0.1',
   API_PORT: 3000,
@@ -16,7 +14,7 @@ const environment: Environment = {
   GOOGLE_CLIENT_SECRET: 'test-client-secret',
 };
 
-let app: FastifyInstance | undefined;
+let app;
 
 afterEach(async () => {
   await app?.close();

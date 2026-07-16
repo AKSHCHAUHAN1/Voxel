@@ -2,19 +2,18 @@ import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { ZodError } from 'zod';
-import { createRequestId, type ApiErrorCode, type RequestId } from '@voxel/contracts';
-import type { Environment } from './config/environment.js';
+import { createRequestId } from '@voxel/contracts';
 import { prisma } from './database/prisma.js';
 import { registerAuthRoutes } from './features/auth/auth-routes.js';
 import { registerWorkspaceRoutes } from './features/workspaces/workspace-routes.js';
 import { failure, success } from './lib/api-response.js';
 
-const toRequestId = (value: string): RequestId => createRequestId(value);
+const toRequestId = (value) => createRequestId(value);
 
-const mapErrorCode = (statusCode: number): ApiErrorCode => {
+const mapErrorCode = (statusCode) => {
   if (statusCode === 401) return 'AUTHENTICATION_REQUIRED';
   if (statusCode === 403) return 'AUTHORIZATION_DENIED';
   if (statusCode === 404) return 'RESOURCE_NOT_FOUND';
@@ -24,10 +23,10 @@ const mapErrorCode = (statusCode: number): ApiErrorCode => {
   return 'INTERNAL_ERROR';
 };
 
-const isHttpError = (error: unknown): error is Error & { readonly statusCode: number } =>
+const isHttpError = (error) =>
   error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number';
 
-export const buildApp = async (environment: Environment): Promise<FastifyInstance> => {
+export const buildApp = async (environment) => {
   const app = Fastify({
     logger: {
       level: environment.NODE_ENV === 'production' ? 'info' : 'warn',

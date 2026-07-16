@@ -13,7 +13,4 @@ const environmentSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().min(1),
 });
 
-export type Environment = z.infer<typeof environmentSchema>;
-
-export const parseEnvironment = (input: NodeJS.ProcessEnv): Environment =>
-  environmentSchema.parse(input);
+export const parseEnvironment = (input) => environmentSchema.parse(input);

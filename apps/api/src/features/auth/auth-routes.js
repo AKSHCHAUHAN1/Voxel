@@ -1,11 +1,9 @@
 import oauthPlugin from '@fastify/oauth2';
-import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../../database/prisma.js';
-import type { Environment } from '../../config/environment.js';
 import { createRequestId } from '@voxel/contracts';
 import { success } from '../../lib/api-response.js';
-import { AuthService, type GoogleIdentity, type SessionTokens } from './auth-service.js';
+import { AuthService } from './auth-service.js';
 
 const GOOGLE_USER_INFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 const googleIdentitySchema = z.object({
@@ -22,14 +20,17 @@ const accessCookieAge = 15 * 60;
 const refreshCookieAge = 30 * 24 * 60 * 60;
 
 class AuthenticationError extends Error {
-  public readonly statusCode = 401;
+  constructor(message) {
+    super(message);
+    this.statusCode = 401;
+  }
 }
 
 const applySessionCookies = (
-  reply: FastifyReply,
-  tokens: SessionTokens,
-  environment: Environment,
-): void => {
+  reply,
+  tokens,
+  environment,
+) => {
   const secure = environment.NODE_ENV === 'production';
   reply.setCookie(ACCESS_COOKIE, tokens.accessToken, {
     httpOnly: true,
@@ -48,9 +49,9 @@ const applySessionCookies = (
 };
 
 export const registerAuthRoutes = async (
-  app: FastifyInstance,
-  environment: Environment,
-): Promise<void> => {
+  app,
+  environment,
+) => {
   const authService = new AuthService(prisma, environment);
   await app.register(oauthPlugin, {
     name: 'googleOAuth2',
@@ -77,9 +78,9 @@ export const registerAuthRoutes = async (
       headers: { Authorization: `Bearer ${token.access_token}` },
     });
     if (!response.ok) throw new AuthenticationError('Google identity could not be verified.');
-    const rawIdentity: unknown = await response.json();
+    const rawIdentity = await response.json();
     const parsed = googleIdentitySchema.parse(rawIdentity);
-    const identity: GoogleIdentity = {
+    const identity = {
       subject: parsed.sub,
       email: parsed.email,
       emailVerified: parsed.email_verified,
@@ -110,10 +111,10 @@ export const registerAuthRoutes = async (
   });
 
   app.post('/api/v1/auth/guest-login', async (request, reply) => {
-    if (environment.NODE_ENV !== 'development') {
+    if (environment.NODE_ENV !== 'development' && environment.NODE_ENV !== 'test') {
       throw new AuthenticationError('Guest login is only available in development.');
     }
-    const identity: GoogleIdentity = {
+    const identity = {
       subject: 'guest-google-sub',
       email: 'guest@voxel.com',
       emailVerified: true,

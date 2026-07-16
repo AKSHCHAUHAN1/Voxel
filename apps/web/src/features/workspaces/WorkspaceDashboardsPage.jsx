@@ -20,40 +20,39 @@ import {
   Upload,
 } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { workspaceService, type Dashboard } from './workspace-service';
+import { workspaceService } from './workspace-service';
 import QRCode from 'qrcode';
 
 const schema = z.object({
   name: z.string().trim().min(2, 'Use at least 2 characters.').max(120),
   description: z.string().trim().max(280).optional(),
 });
-type DashboardForm = z.infer<typeof schema>;
 
 export default function WorkspaceDashboardsPage() {
   const { workspaceId } = useParams();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; dashboard: Dashboard } | null>(null);
-  const [editDashboard, setEditDashboard] = useState<Dashboard | null>(null);
-  const [shareDashboard, setShareDashboard] = useState<Dashboard | null>(null);
-  const [downloadDashboard, setDownloadDashboard] = useState<Dashboard | null>(null);
-  const [deleteDashboard, setDeleteDashboard] = useState<Dashboard | null>(null);
+  const [contextMenu, setContextMenu] = useState(null);
+  const [editDashboard, setEditDashboard] = useState(null);
+  const [shareDashboard, setShareDashboard] = useState(null);
+  const [downloadDashboard, setDownloadDashboard] = useState(null);
+  const [deleteDashboard, setDeleteDashboard] = useState(null);
   const [copied, setCopied] = useState(false);
   const [importing, setImporting] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef(null);
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const menuRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef(null);
 
   const dashboards = useQuery({
     queryKey: ['workspaces', workspaceId, 'dashboards'],
-    queryFn: () => workspaceService.dashboards(workspaceId!),
+    queryFn: () => workspaceService.dashboards(workspaceId),
     enabled: Boolean(workspaceId),
   });
 
   const create = useMutation({
-    mutationFn: (input: DashboardForm) => workspaceService.createDashboard(workspaceId!, input),
+    mutationFn: (input) => workspaceService.createDashboard(workspaceId, input),
     onSuccess: async (dashboard) => {
       await queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'dashboards'] });
       navigate(`/workspaces/${workspaceId}/dashboards/${dashboard.id}`);
@@ -61,7 +60,7 @@ export default function WorkspaceDashboardsPage() {
   });
 
   const rename = useMutation({
-    mutationFn: ({ id, name, description }: { id: string; name: string; description?: string | null }) =>
+    mutationFn: ({ id, name, description }) =>
       workspaceService.updateDashboard(id, { name, description: description ?? null, version: 1 }), // Send mock version parameter to skip conflict
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'dashboards'] });
@@ -70,7 +69,7 @@ export default function WorkspaceDashboardsPage() {
   });
 
   const remove = useMutation({
-    mutationFn: (id: string) => workspaceService.deleteDashboard(id),
+    mutationFn: (id) => workspaceService.deleteDashboard(id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'dashboards'] });
       setDeleteDashboard(null);
@@ -78,8 +77,8 @@ export default function WorkspaceDashboardsPage() {
   });
 
   useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+    const handleOutsideClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
         setContextMenu(null);
       }
     };
@@ -95,19 +94,21 @@ export default function WorkspaceDashboardsPage() {
         width: 250,
         color: {
           dark: '#ffffff',
-          light: '#1e293b'
-        }
-      }).then(url => {
-        setQrCodeUrl(url);
-      }).catch(err => {
-        console.error(err);
-      });
+          light: '#1e293b',
+        },
+      })
+        .then((url) => {
+          setQrCodeUrl(url);
+        })
+        .catch((err) => {
+          console.error(err);
+        });
     } else {
       setQrCodeUrl('');
     }
   }, [shareDashboard, workspaceId]);
 
-  const handleRightClick = (e: React.MouseEvent, dashboard: Dashboard) => {
+  const handleRightClick = (e, dashboard) => {
     e.preventDefault();
     setContextMenu({
       x: e.clientX,
@@ -116,7 +117,7 @@ export default function WorkspaceDashboardsPage() {
     });
   };
 
-  const copyShareLink = (dashboardId: string) => {
+  const copyShareLink = (dashboardId) => {
     const link = `${window.location.origin}/workspaces/${workspaceId}/dashboards/${dashboardId}`;
     navigator.clipboard.writeText(link);
     setCopied(true);
@@ -124,7 +125,7 @@ export default function WorkspaceDashboardsPage() {
   };
 
   // Canvas render downloads
-  const handleDownloadJSON = (dashboard: Dashboard) => {
+  const handleDownloadJSON = (dashboard) => {
     const payload = {
       schemaVersion: 1,
       dashboard: {
@@ -145,7 +146,7 @@ export default function WorkspaceDashboardsPage() {
     setDownloadDashboard(null);
   };
 
-  const handleDownloadImage = (dashboard: Dashboard, format: 'image/png' | 'image/jpeg') => {
+  const handleDownloadImage = (dashboard, format) => {
     const canvas = document.createElement('canvas');
     canvas.width = 1200;
     canvas.height = 630;
@@ -228,7 +229,7 @@ export default function WorkspaceDashboardsPage() {
     setDownloadDashboard(null);
   };
 
-  const handleDownloadPDF = (dashboard: Dashboard) => {
+  const handleDownloadPDF = (dashboard) => {
     const mockContent = `
 ========================================
             VOXEL CANVAS EXPORT
@@ -255,7 +256,7 @@ Sync Nodes: Active
     setDownloadDashboard(null);
   };
 
-  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -264,8 +265,7 @@ Sync Nodes: Active
 
     reader.onload = async (event) => {
       try {
-        const payload = JSON.parse(event.target?.result as string);
-        
+        const payload = JSON.parse(event.target?.result);
         let dbName = '';
         let dbDesc = '';
         let dbScene = null;
@@ -274,7 +274,11 @@ Sync Nodes: Active
           dbName = payload.dashboard.name;
           dbDesc = payload.dashboard.description || '';
           dbScene = payload.dashboard.scene;
-        } else if (payload.workspace && Array.isArray(payload.dashboards) && payload.dashboards.length > 0) {
+        } else if (
+          payload.workspace &&
+          Array.isArray(payload.dashboards) &&
+          payload.dashboards.length > 0
+        ) {
           const firstDb = payload.dashboards[0];
           dbName = firstDb.name;
           dbDesc = firstDb.description || '';
@@ -283,7 +287,7 @@ Sync Nodes: Active
           throw new Error('Invalid Voxel Dashboard JSON structure.');
         }
 
-        const newDb = await workspaceService.createDashboard(workspaceId!, {
+        const newDb = await workspaceService.createDashboard(workspaceId, {
           name: `${dbName} (Imported)`,
           description: dbDesc || 'Imported dashboard design.',
         });
@@ -295,7 +299,9 @@ Sync Nodes: Active
           });
         }
 
-        await queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'dashboards'] });
+        await queryClient.invalidateQueries({
+          queryKey: ['workspaces', workspaceId, 'dashboards'],
+        });
         setImporting(false);
       } catch (err) {
         setImporting(false);
@@ -315,7 +321,9 @@ Sync Nodes: Active
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/65 backdrop-blur-md">
           <Loader2 className="animate-spin text-violet-500" size={48} />
           <h2 className="mt-4 text-lg font-semibold text-white">Importing Voxel Dashboard…</h2>
-          <p className="mt-1.5 text-sm text-slate-400">Rebuilding node grid visual system layouts</p>
+          <p className="mt-1.5 text-sm text-slate-400">
+            Rebuilding node grid visual system layouts
+          </p>
         </div>
       )}
 
@@ -343,6 +351,7 @@ Sync Nodes: Active
             accept=".json"
             className="hidden"
           />
+
           <button
             onClick={() => fileInputRef.current?.click()}
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold shadow-sm hover:bg-slate-50 dark:border-white/10 dark:bg-slate-900 dark:hover:bg-slate-800"
@@ -505,7 +514,11 @@ Sync Nodes: Active
             {/* Real dynamic QR Code */}
             <div className="flex flex-col items-center justify-center p-4 mb-4 rounded-xl bg-slate-50 dark:bg-[#1e293b] border border-slate-100 dark:border-white/5">
               {qrCodeUrl ? (
-                <img src={qrCodeUrl} alt="Voxel canvas QR Code" className="size-36 object-contain" />
+                <img
+                  src={qrCodeUrl}
+                  alt="Voxel canvas QR Code"
+                  className="size-36 object-contain"
+                />
               ) : (
                 <div className="size-36 flex items-center justify-center">
                   <span className="size-6 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
@@ -522,6 +535,7 @@ Sync Nodes: Active
                 value={`${window.location.origin}/workspaces/${workspaceId}/dashboards/${shareDashboard.id}`}
                 className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs outline-none dark:border-white/10 dark:bg-white/5"
               />
+
               <button
                 onClick={() => copyShareLink(shareDashboard.id)}
                 className="rounded-lg bg-violet-600 px-3 py-2 text-white hover:bg-violet-505 transition cursor-pointer"
@@ -532,12 +546,17 @@ Sync Nodes: Active
 
             {/* Direct messaging apps */}
             <div className="mt-5 border-t border-slate-100 pt-4 dark:border-white/5">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Direct share</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                Direct share
+              </p>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => {
                     const link = `${window.location.origin}/workspaces/${workspaceId}/dashboards/${shareDashboard.id}`;
-                    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(`Check out my visual canvas: ${link}`)}`, '_blank');
+                    window.open(
+                      `https://api.whatsapp.com/send?text=${encodeURIComponent(`Check out my visual canvas: ${link}`)}`,
+                      '_blank',
+                    );
                   }}
                   className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-2 text-xs font-semibold hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/5 cursor-pointer"
                 >
@@ -546,35 +565,47 @@ Sync Nodes: Active
                 <button
                   onClick={() => {
                     const link = `${window.location.origin}/workspaces/${workspaceId}/dashboards/${shareDashboard.id}`;
-                    window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(`Check out my visual canvas: ${link}`)}`, '_blank');
+                    window.open(
+                      `https://x.com/intent/tweet?text=${encodeURIComponent(`Check out my visual canvas: ${link}`)}`,
+                      '_blank',
+                    );
                   }}
                   className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-2 text-xs font-semibold hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/5 cursor-pointer text-slate-900 dark:text-white"
                 >
                   <svg className="size-3.5 fill-current" viewBox="0 0 24 24">
                     <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                  </svg> X
+                  </svg>{' '}
+                  X
                 </button>
                 <button
                   onClick={() => {
                     const link = `${window.location.origin}/workspaces/${workspaceId}/dashboards/${shareDashboard.id}`;
-                    window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Check out my visual canvas!')}`, '_blank');
+                    window.open(
+                      `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Check out my visual canvas!')}`,
+                      '_blank',
+                    );
                   }}
                   className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-2 text-xs font-semibold hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/5 cursor-pointer text-sky-600 dark:text-sky-400"
                 >
                   <svg className="size-3.5 fill-current" viewBox="0 0 24 24">
-                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.161c-.18.717-.962 4.084-1.362 5.484-.169.589-.481.787-.704.808-.49.045-.859-.324-1.332-.633-.74-.484-1.158-.785-1.879-1.258-.832-.547-.293-.848.181-1.339.124-.129 2.278-2.09 2.32-2.268.005-.022.01-.102-.038-.144-.047-.042-.116-.028-.166-.017-.071.016-1.207.766-3.41 2.254-.323.222-.616.331-.877.325-.288-.006-.843-.163-1.256-.297-.506-.164-.908-.251-.873-.53.018-.145.218-.294.598-.446 2.343-1.021 3.905-1.694 4.686-2.02 2.228-.93 2.69-1.091 2.993-1.096.066-.001.216.015.312.093.08.066.102.155.11.223.008.069.014.22-.002.324z"/>
-                  </svg> Telegram
+                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.161c-.18.717-.962 4.084-1.362 5.484-.169.589-.481.787-.704.808-.49.045-.859-.324-1.332-.633-.74-.484-1.158-.785-1.879-1.258-.832-.547-.293-.848.181-1.339.124-.129 2.278-2.09 2.32-2.268.005-.022.01-.102-.038-.144-.047-.042-.116-.028-.166-.017-.071.016-1.207.766-3.41 2.254-.323.222-.616.331-.877.325-.288-.006-.843-.163-1.256-.297-.506-.164-.908-.251-.873-.53.018-.145.218-.294.598-.446 2.343-1.021 3.905-1.694 4.686-2.02 2.228-.93 2.69-1.091 2.993-1.096.066-.001.216.015.312.093.08.066.102.155.11.223.008.069.014.22-.002.324z" />
+                  </svg>{' '}
+                  Telegram
                 </button>
                 <button
                   onClick={() => {
                     const link = `${window.location.origin}/workspaces/${workspaceId}/dashboards/${shareDashboard.id}`;
-                    window.open(`mailto:?subject=${encodeURIComponent('Voxel Visual Canvas')}&body=${encodeURIComponent(`Check out my visual canvas: ${link}`)}`, '_blank');
+                    window.open(
+                      `mailto:?subject=${encodeURIComponent('Voxel Visual Canvas')}&body=${encodeURIComponent(`Check out my visual canvas: ${link}`)}`,
+                      '_blank',
+                    );
                   }}
                   className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-2 text-xs font-semibold hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/5 cursor-pointer text-red-500 dark:text-red-400"
                 >
                   <svg className="size-3.5 fill-current" viewBox="0 0 24 24">
-                    <path d="M24 4.5v15c0 .85-.65 1.5-1.5 1.5H21V7.39l-9 5.58-9-5.58V21H1.5C.65 21 0 20.35 0 19.5v-15c0-.85.65-1.5 1.5-1.5H3l9 5.58L21 3h1.5c.85 0 1.5.65 1.5 1.5z"/>
-                  </svg> Gmail
+                    <path d="M24 4.5v15c0 .85-.65 1.5-1.5 1.5H21V7.39l-9 5.58-9-5.58V21H1.5C.65 21 0 20.35 0 19.5v-15c0-.85.65-1.5 1.5-1.5H3l9 5.58L21 3h1.5c.85 0 1.5.65 1.5 1.5z" />
+                  </svg>{' '}
+                  Gmail
                 </button>
               </div>
             </div>
@@ -659,7 +690,8 @@ Sync Nodes: Active
           >
             <h3 className="text-base font-semibold text-rose-600">Delete Dashboard</h3>
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400 leading-5">
-              Are you sure you want to delete <b>{deleteDashboard.name}</b>? All workspace designs and connected node canvas assets will be deleted.
+              Are you sure you want to delete <b>{deleteDashboard.name}</b>? All workspace designs
+              and connected node canvas assets will be deleted.
             </p>
             <div className="mt-6 flex justify-end gap-2 text-xs">
               <button
@@ -684,18 +716,8 @@ Sync Nodes: Active
   );
 }
 
-function DashboardDialog({
-  pending,
-  error,
-  onClose,
-  onSubmit,
-}: {
-  pending: boolean;
-  error?: string | undefined;
-  onClose: () => void;
-  onSubmit: (values: DashboardForm) => void;
-}) {
-  const form = useForm<DashboardForm>({
+function DashboardDialog({ pending, error, onClose, onSubmit }) {
+  const form = useForm({
     resolver: zodResolver(schema),
     defaultValues: { name: '', description: '' },
   });
@@ -766,18 +788,8 @@ function DashboardDialog({
   );
 }
 
-function EditDashboardDialog({
-  dashboard,
-  pending,
-  onClose,
-  onSubmit,
-}: {
-  dashboard: Dashboard;
-  pending: boolean;
-  onClose: () => void;
-  onSubmit: (name: string, description?: string | null) => void;
-}) {
-  const { register, handleSubmit } = useForm<DashboardForm>({
+function EditDashboardDialog({ dashboard, pending, onClose, onSubmit }) {
+  const { register, handleSubmit } = useForm({
     resolver: zodResolver(schema),
     defaultValues: { name: dashboard.name, description: dashboard.description || '' },
   });

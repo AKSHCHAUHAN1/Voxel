@@ -25,6 +25,7 @@ export default function App() {
               path="/workspaces/:workspaceId/dashboards"
               element={<WorkspaceDashboardsPage />}
             />
+
             <Route
               path="/workspaces/:workspaceId/dashboards/:dashboardId"
               element={<EditorPage />}

@@ -4,12 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    }
+    ".": "./src/index.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "echo 'No build step needed'"
   }
 }

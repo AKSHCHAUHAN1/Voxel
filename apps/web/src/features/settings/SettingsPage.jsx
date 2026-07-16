@@ -1,24 +1,8 @@
 import { useState } from 'react';
-import {
-  User,
-  Users,
-  Check,
-  Plus,
-  Trash2,
-  Lock,
-  Computer,
-  X,
-} from 'lucide-react';
+import { User, Users, Check, Plus, Trash2, Lock, Computer, X } from 'lucide-react';
 import { useThemeStore } from '@/store/theme-store';
 
-interface Member {
-  id: string;
-  name: string;
-  email: string;
-  role: 'OWNER' | 'ADMIN' | 'EDITOR' | 'COMMENTER' | 'VIEWER';
-}
-
-const INITIAL_MEMBERS: Member[] = [
+const INITIAL_MEMBERS = [
   { id: '1', name: 'Guest User', email: 'guest@voxel.com', role: 'OWNER' },
   { id: '2', name: 'Alice Vance', email: 'alice@voxel.com', role: 'EDITOR' },
   { id: '3', name: 'Bob Smith', email: 'bob@voxel.com', role: 'VIEWER' },
@@ -29,13 +13,13 @@ export default function SettingsPage() {
   const [displayName, setDisplayName] = useState('Guest User');
   const [email, setEmail] = useState('guest@voxel.com');
   const [avatarColor, setAvatarColor] = useState('bg-violet-600');
-  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState(null);
 
   // Workspace members state
-  const [members, setMembers] = useState<Member[]>(INITIAL_MEMBERS);
+  const [members, setMembers] = useState(INITIAL_MEMBERS);
   const [inviteName, setInviteName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<'ADMIN' | 'EDITOR' | 'VIEWER'>('EDITOR');
+  const [inviteRole, setInviteRole] = useState('EDITOR');
   const [inviteOpen, setInviteOpen] = useState(false);
 
   // Theme settings
@@ -43,7 +27,7 @@ export default function SettingsPage() {
   const setTheme = useThemeStore((state) => state.setTheme);
   const [selectedGrid, setSelectedGrid] = useState('Dots');
 
-  const handleProfileSave = (e: React.FormEvent) => {
+  const handleProfileSave = (e) => {
     e.preventDefault();
     setSaveStatus('Saving…');
     setTimeout(() => {
@@ -52,10 +36,10 @@ export default function SettingsPage() {
     }, 800);
   };
 
-  const handleInvite = (e: React.FormEvent) => {
+  const handleInvite = (e) => {
     e.preventDefault();
     if (!inviteName || !inviteEmail) return;
-    const newMember: Member = {
+    const newMember = {
       id: Math.random().toString(),
       name: inviteName,
       email: inviteEmail,
@@ -67,7 +51,7 @@ export default function SettingsPage() {
     setInviteOpen(false);
   };
 
-  const removeMember = (id: string) => {
+  const removeMember = (id) => {
     setMembers(members.filter((m) => m.id !== id));
   };
 
@@ -78,44 +62,57 @@ export default function SettingsPage() {
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight">Platform Settings</h1>
           <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400 max-w-2xl leading-relaxed">
-            Manage your visual identities, visual themes, collaborators, and security access logs in a unified workspace settings dashboard.
+            Manage your visual identities, visual themes, collaborators, and security access logs in
+            a unified workspace settings dashboard.
           </p>
         </div>
       </div>
 
       {/* Unified Settings Grid Layout */}
       <div className="grid grid-cols-12 gap-8 items-start">
-        
         {/* Left Column: Profile & Team Collaboration */}
         <div className="col-span-12 lg:col-span-8 space-y-8">
-          
           {/* Card 1: Profile Settings */}
           <div className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-white/10 dark:bg-slate-900/60 shadow-sm relative overflow-hidden">
             <div className="absolute top-0 right-0 p-8 opacity-[0.02] dark:opacity-[0.03] pointer-events-none">
               <User size={150} />
             </div>
-            
+
             <div className="flex items-center gap-3 mb-5">
               <div className="w-1 h-6 bg-violet-600 rounded-full" />
               <h2 className="text-base font-bold tracking-tight">Profile & Persona</h2>
             </div>
-            <p className="text-xs text-slate-500 mb-6">Manage your Voxel display details and visual avatar color theme.</p>
+            <p className="text-xs text-slate-500 mb-6">
+              Manage your Voxel display details and visual avatar color theme.
+            </p>
 
             <form onSubmit={handleProfileSave} className="space-y-6">
               <div className="flex items-center gap-4 p-4 rounded-xl border border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/5 w-fit">
-                <div className={`grid size-14 place-items-center rounded-2xl ${avatarColor} text-xl font-bold text-white shadow-inner transition-colors duration-300 shrink-0`}>
+                <div
+                  className={`grid size-14 place-items-center rounded-2xl ${avatarColor} text-xl font-bold text-white shadow-inner transition-colors duration-300 shrink-0`}
+                >
                   {displayName.slice(0, 2).toUpperCase() || 'GU'}
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Avatar Theme</p>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    Avatar Theme
+                  </p>
                   <div className="flex gap-2">
-                    {['bg-violet-600', 'bg-emerald-600', 'bg-blue-600', 'bg-rose-600', 'bg-amber-600'].map((color) => (
+                    {[
+                      'bg-violet-600',
+                      'bg-emerald-600',
+                      'bg-blue-600',
+                      'bg-rose-600',
+                      'bg-amber-600',
+                    ].map((color) => (
                       <button
                         key={color}
                         type="button"
                         onClick={() => setAvatarColor(color)}
                         className={`size-5 rounded-full border border-white/20 transition hover:scale-110 ${color} ${
-                          avatarColor === color ? 'ring-2 ring-violet-500 ring-offset-2 dark:ring-offset-slate-900' : ''
+                          avatarColor === color
+                            ? 'ring-2 ring-violet-500 ring-offset-2 dark:ring-offset-slate-900'
+                            : ''
                         }`}
                       />
                     ))}
@@ -178,7 +175,9 @@ export default function SettingsPage() {
                 <Plus size={14} /> Add Member
               </button>
             </div>
-            <p className="text-xs text-slate-500 mb-6">Manage team access controls and invite new peers to your organization workspaces.</p>
+            <p className="text-xs text-slate-500 mb-6">
+              Manage team access controls and invite new peers to your organization workspaces.
+            </p>
 
             <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-white/10 mt-4">
               <table className="w-full text-left text-xs">
@@ -191,19 +190,26 @@ export default function SettingsPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-white/5">
                   {members.map((member) => (
-                    <tr key={member.id} className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors">
+                    <tr
+                      key={member.id}
+                      className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors"
+                    >
                       <td className="px-4 py-3.5">
-                        <div className="font-semibold text-slate-800 dark:text-slate-200 text-xs">{member.name}</div>
+                        <div className="font-semibold text-slate-800 dark:text-slate-200 text-xs">
+                          {member.name}
+                        </div>
                         <div className="text-[10px] text-slate-400 mt-0.5">{member.email}</div>
                       </td>
                       <td className="px-4 py-3.5">
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
-                          member.role === 'OWNER'
-                            ? 'bg-violet-100 text-violet-750 dark:bg-violet-500/10 dark:text-violet-200'
-                            : member.role === 'EDITOR'
-                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200'
-                            : 'bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-slate-400'
-                        }`}>
+                        <span
+                          className={`inline-block rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                            member.role === 'OWNER'
+                              ? 'bg-violet-100 text-violet-750 dark:bg-violet-500/10 dark:text-violet-200'
+                              : member.role === 'EDITOR'
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200'
+                                : 'bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-slate-400'
+                          }`}
+                        >
                           {member.role}
                         </span>
                       </td>
@@ -224,12 +230,10 @@ export default function SettingsPage() {
               </table>
             </div>
           </div>
-
         </div>
 
         {/* Right Column: Visual Atelier & Security details */}
         <div className="col-span-12 lg:col-span-4 space-y-8">
-          
           {/* Card 3: Visual Atelier (Theme Mode & Grid styles) */}
           <div className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-white/10 dark:bg-slate-900/60 shadow-sm">
             <div className="flex items-center gap-3 mb-5">
@@ -240,7 +244,9 @@ export default function SettingsPage() {
 
             <div className="space-y-4">
               <div className="p-3.5 rounded-xl border border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/5">
-                <p className="text-xs font-bold text-slate-450 dark:text-slate-400 uppercase tracking-wider mb-3">Theme Selection</p>
+                <p className="text-xs font-bold text-slate-450 dark:text-slate-400 uppercase tracking-wider mb-3">
+                  Theme Selection
+                </p>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => setTheme('light')}
@@ -250,7 +256,8 @@ export default function SettingsPage() {
                         : 'border-slate-200 text-slate-500 hover:bg-slate-100 dark:border-white/5 dark:hover:bg-white/5'
                     }`}
                   >
-                    <Check size={12} className={theme === 'light' ? 'opacity-100' : 'opacity-0'} /> Light
+                    <Check size={12} className={theme === 'light' ? 'opacity-100' : 'opacity-0'} />{' '}
+                    Light
                   </button>
                   <button
                     onClick={() => setTheme('dark')}
@@ -260,13 +267,16 @@ export default function SettingsPage() {
                         : 'border-slate-200 text-slate-500 hover:bg-slate-100 dark:border-white/5 dark:hover:bg-white/5'
                     }`}
                   >
-                    <Check size={12} className={theme === 'dark' ? 'opacity-100' : 'opacity-0'} /> Dark
+                    <Check size={12} className={theme === 'dark' ? 'opacity-100' : 'opacity-0'} />{' '}
+                    Dark
                   </button>
                 </div>
               </div>
 
               <div className="p-3.5 rounded-xl border border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/5">
-                <p className="text-xs font-bold text-slate-450 dark:text-slate-400 uppercase tracking-wider mb-3">Background Grid</p>
+                <p className="text-xs font-bold text-slate-450 dark:text-slate-400 uppercase tracking-wider mb-3">
+                  Background Grid
+                </p>
                 <div className="grid grid-cols-2 gap-2">
                   {['Dots', 'Grid Lines', 'Radial Glow', 'Blank'].map((style) => (
                     <button
@@ -293,11 +303,15 @@ export default function SettingsPage() {
               <div className="w-1 h-6 bg-violet-600 rounded-full" />
               <h2 className="text-base font-bold tracking-tight">Security & Access</h2>
             </div>
-            <p className="text-xs text-slate-500 mb-6">Review connected browser sessions and organization logs.</p>
+            <p className="text-xs text-slate-500 mb-6">
+              Review connected browser sessions and organization logs.
+            </p>
 
             <div className="space-y-4">
               <div className="p-3.5 rounded-xl border border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/5 space-y-3">
-                <p className="text-xs font-bold text-slate-450 dark:text-slate-400 uppercase tracking-wider">Active Session</p>
+                <p className="text-xs font-bold text-slate-450 dark:text-slate-400 uppercase tracking-wider">
+                  Active Session
+                </p>
                 <div className="flex justify-between items-center">
                   <div className="flex gap-2.5 items-center">
                     <Computer className="text-slate-400" size={16} />
@@ -318,7 +332,8 @@ export default function SettingsPage() {
                   <h3 className="text-xs font-bold uppercase tracking-wider">Danger Zone</h3>
                 </div>
                 <p className="text-[11px] text-rose-600/80 dark:text-rose-400/80 leading-5">
-                  Closing your account permanently soft-deletes all visual canvas workspace credentials. This action is irreversible.
+                  Closing your account permanently soft-deletes all visual canvas workspace
+                  credentials. This action is irreversible.
                 </p>
                 <button
                   type="button"
@@ -329,13 +344,15 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
-
         </div>
       </div>
 
       {/* Invite Member modal */}
       {inviteOpen && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-sm" onMouseDown={() => setInviteOpen(false)}>
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-sm"
+          onMouseDown={() => setInviteOpen(false)}
+        >
           <form
             onSubmit={handleInvite}
             onMouseDown={(e) => e.stopPropagation()}
@@ -378,7 +395,7 @@ export default function SettingsPage() {
                 Workspace Role
                 <select
                   value={inviteRole}
-                  onChange={(e) => setInviteRole(e.target.value as any)}
+                  onChange={(e) => setInviteRole(e.target.value)}
                   className="mt-2 w-full rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-500 dark:border-white/10 dark:bg-slate-900"
                 >
                   <option value="ADMIN">ADMIN</option>
