@@ -16,12 +16,12 @@ import {
   Check,
   Copy,
   MessageCircle,
-  Send,
   Loader2,
   Upload,
 } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { workspaceService, type Dashboard } from './workspace-service';
+import QRCode from 'qrcode';
 
 const schema = z.object({
   name: z.string().trim().min(2, 'Use at least 2 characters.').max(120),
@@ -39,6 +39,7 @@ export default function WorkspaceDashboardsPage() {
   const [deleteDashboard, setDeleteDashboard] = useState<Dashboard | null>(null);
   const [copied, setCopied] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const queryClient = useQueryClient();
@@ -76,7 +77,6 @@ export default function WorkspaceDashboardsPage() {
     },
   });
 
-  // Global click listener to close context menu
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -86,6 +86,26 @@ export default function WorkspaceDashboardsPage() {
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
+
+  useEffect(() => {
+    if (shareDashboard) {
+      const link = `${window.location.origin}/workspaces/${workspaceId}/dashboards/${shareDashboard.id}`;
+      QRCode.toDataURL(link, {
+        margin: 2,
+        width: 250,
+        color: {
+          dark: '#ffffff',
+          light: '#1e293b'
+        }
+      }).then(url => {
+        setQrCodeUrl(url);
+      }).catch(err => {
+        console.error(err);
+      });
+    } else {
+      setQrCodeUrl('');
+    }
+  }, [shareDashboard, workspaceId]);
 
   const handleRightClick = (e: React.MouseEvent, dashboard: Dashboard) => {
     e.preventDefault();
@@ -482,24 +502,15 @@ Sync Nodes: Active
               </button>
             </div>
 
-            {/* Simulated Vector QR Code */}
-            <div className="flex flex-col items-center justify-center p-4 mb-4 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/5">
-              <svg className="size-36 text-slate-800 dark:text-white" viewBox="0 0 100 100" fill="currentColor">
-                <rect x="5" y="5" width="25" height="25" rx="3" fill="none" stroke="currentColor" strokeWidth="4" />
-                <rect x="11" y="11" width="13" height="13" rx="1" />
-                <rect x="70" y="5" width="25" height="25" rx="3" fill="none" stroke="currentColor" strokeWidth="4" />
-                <rect x="76" y="11" width="13" height="13" rx="1" />
-                <rect x="5" y="70" width="25" height="25" rx="3" fill="none" stroke="currentColor" strokeWidth="4" />
-                <rect x="11" y="76" width="13" height="13" rx="1" />
-                <rect x="40" y="5" width="6" height="6" />
-                <rect x="50" y="12" width="6" height="6" />
-                <rect x="45" y="24" width="6" height="6" />
-                <rect x="55" y="35" width="6" height="6" />
-                <rect x="15" y="45" width="6" height="6" />
-                <rect x="70" y="45" width="6" height="6" />
-                <rect x="45" y="65" width="6" height="6" />
-                <rect x="75" y="75" width="6" height="6" />
-              </svg>
+            {/* Real dynamic QR Code */}
+            <div className="flex flex-col items-center justify-center p-4 mb-4 rounded-xl bg-slate-50 dark:bg-[#1e293b] border border-slate-100 dark:border-white/5">
+              {qrCodeUrl ? (
+                <img src={qrCodeUrl} alt="Voxel canvas QR Code" className="size-36 object-contain" />
+              ) : (
+                <div className="size-36 flex items-center justify-center">
+                  <span className="size-6 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
+                </div>
+              )}
               <p className="mt-2 text-[10px] text-slate-400">Scan QR to load Voxel visual canvas</p>
             </div>
 
@@ -513,7 +524,7 @@ Sync Nodes: Active
               />
               <button
                 onClick={() => copyShareLink(shareDashboard.id)}
-                className="rounded-lg bg-violet-600 px-3 py-2 text-white hover:bg-violet-500"
+                className="rounded-lg bg-violet-600 px-3 py-2 text-white hover:bg-violet-505 transition cursor-pointer"
               >
                 {copied ? <Check size={14} /> : <Copy size={14} />}
               </button>
@@ -522,24 +533,48 @@ Sync Nodes: Active
             {/* Direct messaging apps */}
             <div className="mt-5 border-t border-slate-100 pt-4 dark:border-white/5">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Direct share</p>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => {
                     const link = `${window.location.origin}/workspaces/${workspaceId}/dashboards/${shareDashboard.id}`;
                     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(`Check out my visual canvas: ${link}`)}`, '_blank');
                   }}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-2 text-xs font-semibold hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/5"
+                  className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-2 text-xs font-semibold hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/5 cursor-pointer"
                 >
                   <MessageCircle size={14} className="text-emerald-500" /> WhatsApp
                 </button>
                 <button
                   onClick={() => {
                     const link = `${window.location.origin}/workspaces/${workspaceId}/dashboards/${shareDashboard.id}`;
-                    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Check out my visual canvas: ${link}`)}`, '_blank');
+                    window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(`Check out my visual canvas: ${link}`)}`, '_blank');
                   }}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-2 text-xs font-semibold hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/5"
+                  className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-2 text-xs font-semibold hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/5 cursor-pointer text-slate-900 dark:text-white"
                 >
-                  <Send size={14} className="text-sky-500" /> Twitter
+                  <svg className="size-3.5 fill-current" viewBox="0 0 24 24">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                  </svg> X
+                </button>
+                <button
+                  onClick={() => {
+                    const link = `${window.location.origin}/workspaces/${workspaceId}/dashboards/${shareDashboard.id}`;
+                    window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Check out my visual canvas!')}`, '_blank');
+                  }}
+                  className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-2 text-xs font-semibold hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/5 cursor-pointer text-sky-600 dark:text-sky-400"
+                >
+                  <svg className="size-3.5 fill-current" viewBox="0 0 24 24">
+                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.161c-.18.717-.962 4.084-1.362 5.484-.169.589-.481.787-.704.808-.49.045-.859-.324-1.332-.633-.74-.484-1.158-.785-1.879-1.258-.832-.547-.293-.848.181-1.339.124-.129 2.278-2.09 2.32-2.268.005-.022.01-.102-.038-.144-.047-.042-.116-.028-.166-.017-.071.016-1.207.766-3.41 2.254-.323.222-.616.331-.877.325-.288-.006-.843-.163-1.256-.297-.506-.164-.908-.251-.873-.53.018-.145.218-.294.598-.446 2.343-1.021 3.905-1.694 4.686-2.02 2.228-.93 2.69-1.091 2.993-1.096.066-.001.216.015.312.093.08.066.102.155.11.223.008.069.014.22-.002.324z"/>
+                  </svg> Telegram
+                </button>
+                <button
+                  onClick={() => {
+                    const link = `${window.location.origin}/workspaces/${workspaceId}/dashboards/${shareDashboard.id}`;
+                    window.open(`mailto:?subject=${encodeURIComponent('Voxel Visual Canvas')}&body=${encodeURIComponent(`Check out my visual canvas: ${link}`)}`, '_blank');
+                  }}
+                  className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-2 text-xs font-semibold hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/5 cursor-pointer text-red-500 dark:text-red-400"
+                >
+                  <svg className="size-3.5 fill-current" viewBox="0 0 24 24">
+                    <path d="M24 4.5v15c0 .85-.65 1.5-1.5 1.5H21V7.39l-9 5.58-9-5.58V21H1.5C.65 21 0 20.35 0 19.5v-15c0-.85.65-1.5 1.5-1.5H3l9 5.58L21 3h1.5c.85 0 1.5.65 1.5 1.5z"/>
+                  </svg> Gmail
                 </button>
               </div>
             </div>
