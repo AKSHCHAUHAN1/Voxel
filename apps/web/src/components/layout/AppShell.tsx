@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
+import appIcon from '@/assets/app-icon.png';
+import horizontalLogo from '@/assets/horizontal-logo.png';
 import {
   Bell,
   Boxes,
@@ -172,13 +174,11 @@ export function AppShell() {
             to="/workspaces"
             className={`flex items-center transition-all duration-300 ${collapsed ? 'justify-center' : 'gap-3 px-2'}`}
           >
-            <div className={`rounded-xl bg-violet-600 flex items-center justify-center shrink-0 transition-all duration-300 shadow-lg shadow-violet-500/20 ${collapsed ? 'w-10 h-10' : 'w-8 h-8'}`}>
-              <span className="text-white font-extrabold text-sm"><Boxes size={16} /></span>
-            </div>
-            <div className={`whitespace-nowrap overflow-hidden transition-all duration-300 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}>
-              <div className="text-base font-bold tracking-tight text-slate-900 dark:text-white leading-tight">Voxel</div>
-              <div className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">Visual systems</div>
-            </div>
+            {collapsed ? (
+              <img src={appIcon} alt="Voxel" className="w-10 h-10 object-contain" />
+            ) : (
+              <img src={horizontalLogo} alt="Voxel" className="h-8 object-contain dark:invert" />
+            )}
           </Link>
         </div>
 
@@ -251,9 +251,9 @@ export function AppShell() {
         <header className="sticky top-0 z-40 flex h-20 items-center justify-between border-b border-slate-200 bg-slate-50/70 px-5 backdrop-blur-md dark:border-white/10 dark:bg-slate-950/70 sm:px-8">
           <Link
             to="/workspaces"
-            className="grid size-9 place-items-center rounded-xl bg-violet-600 text-white lg:hidden"
+            className="flex items-center justify-center size-9 rounded-xl bg-violet-600 text-white lg:hidden overflow-hidden"
           >
-            <Boxes size={17} />
+            <img src={appIcon} alt="Voxel" className="w-6 h-6 object-contain" />
           </Link>
 
           {/* Inline Dropdown Search Bar */}

@@ -1,6 +1,8 @@
-import { ArrowRight, Boxes, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { authService } from './auth-service';
+import appIcon from '@/assets/app-icon.png';
+import horizontalLogo from '@/assets/horizontal-logo.png';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -18,11 +20,8 @@ export function LoginPage() {
     <main className="grid min-h-screen place-items-center bg-[#080a12] p-6 text-slate-100">
       <section className="grid w-full max-w-5xl overflow-hidden rounded-3xl border border-white/10 bg-[#101522] shadow-2xl shadow-black/30 lg:grid-cols-[1.1fr_.9fr]">
         <div className="hidden min-h-[580px] flex-col justify-between bg-[radial-gradient(circle_at_20%_20%,rgba(139,92,246,.38),transparent_32%),radial-gradient(circle_at_80%_70%,rgba(56,189,248,.2),transparent_28%)] p-12 lg:flex">
-          <div className="flex items-center gap-3 font-semibold">
-            <span className="grid size-9 place-items-center rounded-xl bg-white text-violet-700">
-              <Boxes size={18} />
-            </span>{' '}
-            Voxel
+          <div className="flex items-center">
+            <img src={horizontalLogo} alt="Voxel" className="h-8 object-contain dark:invert" />
           </div>
           <div>
             <p className="mb-4 text-sm font-semibold uppercase tracking-[.2em] text-violet-200">
@@ -43,9 +42,7 @@ export function LoginPage() {
         </div>
         <div className="flex min-h-[580px] flex-col justify-center p-8 sm:p-12">
           <div className="mb-10 lg:hidden">
-            <span className="grid size-9 place-items-center rounded-xl bg-violet-500 text-white">
-              <Boxes size={18} />
-            </span>
+            <img src={appIcon} alt="Voxel" className="w-10 h-10 object-contain" />
           </div>
           <p className="mb-3 flex items-center gap-2 text-sm font-medium text-violet-300">
             <Sparkles size={15} /> Welcome to Voxel

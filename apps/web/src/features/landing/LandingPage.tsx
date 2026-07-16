@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import appIcon from '@/assets/app-icon.png';
+import horizontalLogo from '@/assets/horizontal-logo.png';
 import { motion, useMotionValue, useTransform, useSpring } from 'framer-motion';
 import { 
-  Boxes, 
   ArrowRight, 
   Sparkles, 
   Plus, 
@@ -203,13 +204,8 @@ export default function LandingPage() {
       {/* --- HEADER --- */}
       <header className="sticky top-0 z-50 border-b border-white/5 bg-[#04060d]/60 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3 font-bold tracking-tight">
-            <span className="grid size-9 place-items-center rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-500 text-white shadow-lg shadow-violet-500/25">
-              <Boxes size={18} />
-            </span>
-            <span className="bg-gradient-to-r from-white to-slate-300 bg-clip-text text-xl text-transparent">
-              Voxel
-            </span>
+          <div className="flex items-center">
+            <img src={horizontalLogo} alt="Voxel" className="h-8 object-contain dark:invert" />
           </div>
 
           <nav className="hidden items-center gap-8 text-sm font-medium text-slate-400 md:flex">
@@ -575,7 +571,7 @@ export default function LandingPage() {
           <div className="absolute top-0 left-1/2 -z-10 h-64 w-64 -translate-x-1/2 rounded-full bg-violet-600/10 blur-[80px]" />
           
           <div className="max-w-2xl mx-auto space-y-6">
-            <Boxes className="mx-auto text-violet-500 animate-pulse" size={48} />
+            <img src={appIcon} alt="Voxel" className="mx-auto w-12 h-12 object-contain animate-[pulse_2s_infinite]" />
             <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl text-white">
               Ready to construct your workspace?
             </h2>
@@ -597,8 +593,8 @@ export default function LandingPage() {
       {/* --- FOOTER --- */}
       <footer className="border-t border-white/5 py-12 text-center text-xs text-slate-500 bg-[#020307]">
         <div className="mx-auto max-w-7xl px-6 flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2 font-semibold text-slate-400">
-            <Boxes size={15} /> Voxel Workspace Platform
+          <div className="flex items-center gap-3 font-semibold text-slate-400">
+            <img src={appIcon} alt="Voxel Logo" className="w-5 h-5 object-contain" /> Voxel Workspace Platform
           </div>
           <p>© {new Date().getFullYear()} Voxel Inc. All rights reserved.</p>
         </div>
