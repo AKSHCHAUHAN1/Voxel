@@ -20,3 +20,10 @@ createRoot(document.getElementById('root')).render(
     </QueryClientProvider>
   </StrictMode>,
 );
+
+// Prevent frozen single-page app or white screens when returning via back button
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) {
+    window.location.reload();
+  }
+});
