@@ -23,7 +23,12 @@ createRoot(document.getElementById('root')).render(
 
 // Prevent frozen single-page app or white screens when returning via back button
 window.addEventListener('pageshow', (event) => {
-  if (event.persisted) {
+  const isBackNavigation =
+    event.persisted ||
+    (typeof window.performance !== 'undefined' &&
+      window.performance.getEntriesByType('navigation')[0]?.type === 'back_forward');
+
+  if (isBackNavigation) {
     window.location.reload();
   }
 });
