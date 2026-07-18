@@ -23,11 +23,15 @@ import {
 import { authService } from '@/features/auth/auth-service';
 import { useThemeStore } from '@/store/theme-store';
 import { workspaceService } from '@/features/workspaces/workspace-service';
+import { CommandPalette } from '@/components/command/CommandPalette';
+import { attachGlobalShortcuts, detachGlobalShortcuts, useShortcut } from '@/lib/keyboard';
+import { useNotificationStore } from '@/store/notification-store';
 
 export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   // Theme state and bubble animation state
@@ -44,12 +48,30 @@ export function AppShell() {
   const searchInputRef = useRef(null);
   const notifRef = useRef(null);
 
-  // Seeded notifications matching reference Header.jsx list
-  const [notifications, setNotifications] = useState([
-    { id: 1, text: 'System update completed successfully.', time: '2m ago', read: false },
-    { id: 2, text: 'New login from unknown device. Please review.', time: '1h ago', read: false },
-    { id: 3, text: 'Monthly expense report is ready to download.', time: '3h ago', read: false },
-  ]);
+  const notifications = useNotificationStore((s) => s.notifications);
+  const dismiss = useNotificationStore((s) => s.dismiss);
+  const markAllAsRead = useNotificationStore((s) => s.markAllAsRead);
+  const clearAll = useNotificationStore((s) => s.clearAll);
+  const addNotification = useNotificationStore((s) => s.add);
+  const toasts = useNotificationStore((s) => s.toasts);
+  const removeToast = useNotificationStore((s) => s.removeToast);
+
+  // Simulate mock-live notifications periodically
+  useEffect(() => {
+    const mockMessages = [
+      { text: 'Core Postgres scaling sequence completed.', type: 'success' },
+      { text: 'Alice Vance updated the Operations Center layout.', type: 'info' },
+      { text: 'System check verified 100% operational relay.', type: 'success' },
+      { text: 'New login detected from Safari (macOS).', type: 'warning' },
+    ];
+    const interval = setInterval(() => {
+      if (Math.random() < 0.25) {
+        const selected = mockMessages[Math.floor(Math.random() * mockMessages.length)];
+        addNotification(selected.text, selected.type);
+      }
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [addNotification]);
 
   // Fetch current user details
   const userQuery = useQuery({
@@ -82,22 +104,23 @@ export function AppShell() {
     navigate('/');
   };
 
-  // Keyboard shortcut listener (Cmd+K and Cmd+/)
+  // Initialize global shortcuts listener
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-        setSearchDropdownOpen(true);
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === '/') {
-        e.preventDefault();
-        setCommandOpen((prev) => !prev);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    attachGlobalShortcuts();
+    return () => detachGlobalShortcuts();
   }, []);
+
+  useShortcut('meta+k', () => setCommandPaletteOpen(true), {
+    label: 'Open command palette',
+    category: 'General',
+    allowInInput: true,
+  });
+
+  useShortcut('meta+/', () => setCommandOpen((prev) => !prev), {
+    label: 'Toggle keyboard shortcuts menu',
+    category: 'General',
+    allowInInput: true,
+  });
 
   // Close search dropdown and notifications outside click
   useEffect(() => {
@@ -112,6 +135,12 @@ export function AppShell() {
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
+
+  useEffect(() => {
+    if (notificationsOpen) {
+      markAllAsRead();
+    }
+  }, [notificationsOpen, markAllAsRead]);
 
   // Theme switch bubble transition effect
   const handleThemeToggle = (e) => {
@@ -139,6 +168,32 @@ export function AppShell() {
       setBubble(null);
     }, 750);
   };
+
+  // Fetch dashboards for search index
+  const dashboardsQueries = useQuery({
+    queryKey: ['all-dashboards', workspaces.data?.map(w => w.id)],
+    queryFn: async () => {
+      if (!workspaces.data) return [];
+      const all = [];
+      for (const ws of workspaces.data) {
+        try {
+          const res = await workspaceService.dashboards(ws.id);
+          if (res && res.data) {
+            all.push(...res.data.map(d => ({ ...d, workspaceName: ws.name })));
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+      return all;
+    },
+    enabled: Boolean(workspaces.data),
+    staleTime: 60_000,
+  });
+
+  const filteredDashboards = dashboardsQueries.data
+    ? dashboardsQueries.data.filter((d) => d.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : [];
 
   const filteredWorkspaces = workspaces.data
     ? workspaces.data.filter((ws) => ws.name.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -338,7 +393,32 @@ export function AppShell() {
                     No workspaces match your query.
                   </p>
                 )}
-
+                <p className="text-[10px] font-bold text-slate-400 px-3 py-1 uppercase tracking-wider mt-2">
+                  Dashboards
+                </p>
+                {filteredDashboards.map((d) => (
+                  <button
+                    key={d.id}
+                    onClick={() => {
+                      navigate(`/workspaces/${d.workspaceId}/dashboards/${d.id}`);
+                      setSearchDropdownOpen(false);
+                    }}
+                    className="flex w-full items-center gap-3 px-3 py-2 rounded-xl text-left text-xs hover:bg-violet-50 dark:hover:bg-violet-500/10 transition"
+                  >
+                    <PanelsTopLeft size={15} className="text-violet-500" />
+                    <div>
+                      <div className="font-semibold">{d.name}</div>
+                      <div className="text-[10px] text-slate-400">
+                        {d.workspaceName}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+                {filteredDashboards.length === 0 && (
+                  <p className="text-xs text-slate-400 py-2 px-3">
+                    No dashboards match your query.
+                  </p>
+                )}
                 <p className="text-[10px] font-bold text-slate-400 px-3 py-1 uppercase tracking-wider mt-2">
                   Settings Shortcuts
                 </p>
@@ -393,9 +473,9 @@ export function AppShell() {
                     <h3 className="font-extrabold text-sm text-slate-950 dark:text-white tracking-tight">
                       Notifications
                     </h3>
-                    {notifications.length > 0 && (
+                     {notifications.length > 0 && (
                       <button
-                        onClick={() => setNotifications([])}
+                        onClick={() => clearAll()}
                         className="uppercase font-bold text-slate-400 dark:text-slate-500 hover:text-rose-500 transition-colors"
                         style={{ fontSize: '8px', letterSpacing: '0.15em' }}
                       >
@@ -425,7 +505,7 @@ export function AppShell() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
+                            dismiss(notif.id);
                           }}
                           className="absolute right-4 top-4 text-slate-400 hover:text-rose-500 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-all hover:bg-rose-50 dark:hover:bg-rose-500/10 shrink-0"
                           title="Dismiss"
@@ -561,6 +641,39 @@ export function AppShell() {
           </div>
         </div>
       )}
+      {/* Command Palette */}
+      <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
+
+      {/* Toast Notifications Queue */}
+      <div className="fixed bottom-5 right-5 z-[150] space-y-2 pointer-events-none">
+        {toasts.map((toast) => (
+          <ToastItem key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ToastItem({ toast, onClose }) {
+  useEffect(() => {
+    const timer = setTimeout(onClose, toast.duration || 4000);
+    return () => clearTimeout(timer);
+  }, [toast.duration, onClose]);
+
+  return (
+    <div
+      className="pointer-events-auto w-80 rounded-xl border border-slate-200 bg-white p-4 shadow-xl dark:border-white/10 dark:bg-slate-900 flex items-start justify-between gap-3 animate-scale-in"
+      style={{ animationDuration: '200ms' }}
+    >
+      <div className="flex-1 text-xs font-semibold text-slate-800 dark:text-slate-200">
+        {toast.text}
+      </div>
+      <button
+        onClick={onClose}
+        className="text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+      >
+        <X size={12} />
+      </button>
     </div>
   );
 }

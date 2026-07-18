@@ -20,8 +20,19 @@ import {
   Trash2,
   ArrowLeft,
   Palette,
+  Undo2,
+  Redo2,
+  Image,
+  Code2,
+  Table,
+  Timer,
+  Minus,
+  Clock,
 } from 'lucide-react';
 import { workspaceService } from '@/features/workspaces/workspace-service';
+import { useShortcut } from '@/lib/keyboard';
+import { useHistoryStore } from '@/store/history-store';
+import { VersionHistory } from './VersionHistory';
 
 const emptyScene = {
   schemaVersion: 2,
@@ -94,6 +105,54 @@ const newNode = (type) => {
       size: 'medium',
       color: 'violet',
     },
+    image: {
+      title: 'Image Showcase',
+      imageUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&auto=format&fit=crop&q=60',
+      objectFit: 'cover',
+      size: 'medium',
+      color: 'slate',
+    },
+    embed: {
+      title: 'Figma Embed',
+      embedUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
+      size: 'wide',
+      color: 'slate',
+    },
+    table: {
+      title: 'Data Grid',
+      columns: 'Item,Qty,Status',
+      rows: 'Widget A,12,Done\nWidget B,4,Pending\nWidget C,19,Active',
+      size: 'wide',
+      color: 'slate',
+    },
+    timer: {
+      title: 'Sprint Timer',
+      duration: 300,
+      timerMode: 'countdown',
+      timerState: 'idle',
+      size: 'medium',
+      color: 'amber',
+    },
+    link: {
+      title: 'Reference Link',
+      url: 'https://github.com',
+      description: 'Check out code templates and tools.',
+      size: 'medium',
+      color: 'cyan',
+    },
+    divider: {
+      title: 'Section Divider',
+      dividerStyle: 'solid',
+      size: 'wide',
+      color: 'slate',
+    },
+    code: {
+      title: 'Utility Snippet',
+      code: 'function hello() {\n  console.log("Hello, Voxel!");\n}',
+      language: 'javascript',
+      size: 'wide',
+      color: 'slate',
+    },
   };
 
   return {
@@ -137,10 +196,14 @@ export default function EditorPage() {
   const { workspaceId, dashboardId } = useParams();
   const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [draft, setDraft] = useState(null);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [coordinates, setCoordinates] = useState({});
   const gridRef = useRef(null);
+
+  const canUndo = useHistoryStore((s) => s.past.length > 0);
+  const canRedo = useHistoryStore((s) => s.future.length > 0);
 
   const dashboard = useQuery({
     queryKey: ['dashboard', dashboardId],
@@ -261,6 +324,65 @@ export default function EditorPage() {
         },
       ];
       newConns = [{ fromId: salesId, toId: goalId, style: 'glowing' }];
+    } else if (preset === 'devhub') {
+      const codeId = crypto.randomUUID();
+      const linkId = crypto.randomUUID();
+      newNodes = [
+        {
+          id: codeId,
+          type: 'code',
+          title: 'Base API Controller',
+          code: 'class BaseController {\n  static async index(req, res) {\n    return res.status(200).json({ status: "ok" });\n  }\n}',
+          language: 'javascript',
+          size: 'large',
+          color: 'slate',
+          borderStyle: 'solid',
+        },
+        {
+          id: crypto.randomUUID(),
+          type: 'divider',
+          title: 'Development Links',
+          dividerStyle: 'dashed',
+          size: 'wide',
+          color: 'slate',
+        },
+        {
+          id: linkId,
+          type: 'link',
+          title: 'Repository Wiki',
+          url: 'https://github.com',
+          description: 'Access the main developers guidelines, deployment instructions, and API docs.',
+          size: 'medium',
+          color: 'cyan',
+          borderStyle: 'solid',
+        },
+      ];
+    } else if (preset === 'ops') {
+      const tableId = crypto.randomUUID();
+      const timerId = crypto.randomUUID();
+      newNodes = [
+        {
+          id: tableId,
+          type: 'table',
+          title: 'Active Operations List',
+          columns: 'Task,Assignee,Priority',
+          rows: 'Redis Scaling,Alice,High\nLoki Logs Config,Bob,Medium\nPrisma Migration,Guest,High',
+          size: 'large',
+          color: 'slate',
+          borderStyle: 'solid',
+        },
+        {
+          id: timerId,
+          type: 'timer',
+          title: 'Maintenance Countdown',
+          duration: 600,
+          timerMode: 'countdown',
+          timerState: 'idle',
+          size: 'medium',
+          color: 'amber',
+          borderStyle: 'glow',
+        },
+      ];
     } else {
       const g1Id = crypto.randomUUID();
       const g2Id = crypto.randomUUID();
@@ -473,7 +595,97 @@ export default function EditorPage() {
       </div>
     );
 
-  const update = (next) => setDraft(next);
+  const update = (next, skipHistory = false) => {
+    if (!skipHistory) {
+      useHistoryStore.getState().push(scene);
+    }
+    setDraft(next);
+  };
+
+  // Autosave Engine
+  useEffect(() => {
+    if (!draft) return;
+    const timer = setTimeout(() => {
+      save.mutate(draft);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [draft, save.mutate]);
+
+  const handleUndo = () => {
+    const prev = useHistoryStore.getState().undo(scene);
+    if (prev) {
+      update(prev, true);
+    }
+  };
+
+  const handleRedo = () => {
+    const next = useHistoryStore.getState().redo(scene);
+    if (next) {
+      update(next, true);
+    }
+  };
+
+  const copiedNodeRef = useRef(null);
+
+  const handleCopy = () => {
+    if (!selectedNodeId) return;
+    const selected = scene.nodes.find((n) => n.id === selectedNodeId);
+    if (selected) {
+      copiedNodeRef.current = selected;
+      localStorage.setItem('voxel_copied_node', JSON.stringify(selected));
+    }
+  };
+
+  const handlePaste = () => {
+    let raw = copiedNodeRef.current;
+    if (!raw) {
+      try {
+        const stored = localStorage.getItem('voxel_copied_node');
+        if (stored) raw = JSON.parse(stored);
+      } catch (err) {
+        // ignore
+      }
+    }
+    if (!raw) return;
+    const pasted = {
+      ...raw,
+      id: crypto.randomUUID(),
+      x: (raw.x ?? 100) + 25,
+      y: (raw.y ?? 100) + 25,
+    };
+    update({
+      ...scene,
+      nodes: [...scene.nodes, pasted],
+    });
+    setSelectedNodeId(pasted.id);
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedNodeId) {
+      deleteNode(selectedNodeId);
+    }
+  };
+
+  const handleSave = () => {
+    if (draft) {
+      save.mutate(scene);
+    }
+  };
+
+  const handleRestoreVersion = (ver) => {
+    if (window.confirm(`Are you sure you want to restore Version #${ver.version}?`)) {
+      update(ver.scene);
+    }
+  };
+
+  // Keyboard shortcut registrations
+  useShortcut('meta+z', handleUndo, { label: 'Undo change', category: 'Editor' }, [scene]);
+  useShortcut('meta+shift+z', handleRedo, { label: 'Redo change', category: 'Editor' }, [scene]);
+  useShortcut('meta+c', handleCopy, { label: 'Copy selected node', category: 'Editor' }, [selectedNodeId, scene]);
+  useShortcut('meta+v', handlePaste, { label: 'Paste copied node', category: 'Editor' }, [scene]);
+  useShortcut('backspace', handleDeleteSelected, { label: 'Delete selected node', category: 'Editor' }, [selectedNodeId, scene]);
+  useShortcut('delete', handleDeleteSelected, { label: 'Delete selected node', category: 'Editor' }, [selectedNodeId, scene]);
+  useShortcut('meta+s', handleSave, { label: 'Save dashboard changes', category: 'Editor' }, [draft, scene]);
 
   const add = (type) => {
     update({ ...scene, nodes: [...scene.nodes, newNode(type)] });
@@ -590,6 +802,8 @@ export default function EditorPage() {
               <option value="server">Server Monitor</option>
               <option value="business">Sales Performance</option>
               <option value="tasks">Sprint Backlog</option>
+              <option value="devhub">Developer Hub</option>
+              <option value="ops">Operations Center</option>
             </select>
           </div>
 
@@ -726,6 +940,46 @@ export default function EditorPage() {
             )}
           </div>
 
+          <div className="flex items-center border border-slate-200 dark:border-white/5 rounded-xl overflow-hidden mr-1">
+            <button
+              onClick={handleUndo}
+              disabled={!canUndo}
+              title="Undo (⌘Z)"
+              className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-30 transition cursor-pointer"
+            >
+              <Undo2 size={14} />
+            </button>
+            <div className="w-px h-4 bg-slate-200 dark:bg-white/5" />
+            <button
+              onClick={handleRedo}
+              disabled={!canRedo}
+              title="Redo (⌘⇧Z)"
+              className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-30 transition cursor-pointer"
+            >
+              <Redo2 size={14} />
+            </button>
+          </div>
+
+          <button
+            onClick={() => {
+              setVersionHistoryOpen((prev) => !prev);
+              setSelectedNodeId(null);
+            }}
+            title="Version History"
+            className={`p-2 rounded-xl border transition cursor-pointer flex items-center justify-center ${
+              versionHistoryOpen
+                ? 'border-violet-500 bg-violet-50/10 text-violet-600 dark:text-violet-400'
+                : 'border-slate-200 text-slate-600 dark:border-white/5 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5'
+            }`}
+          >
+            <Clock size={14} />
+          </button>
+
+          <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mr-2 flex items-center gap-1.5">
+            <span className={`inline-block size-1.5 rounded-full ${save.isPending ? 'bg-amber-500 animate-pulse' : draft ? 'bg-violet-500' : 'bg-emerald-500'}`} />
+            {save.isPending ? 'Saving…' : draft ? 'Unsaved changes (Autosaving)' : 'All changes saved'}
+          </span>
+
           <button
             onClick={() => setPickerOpen(true)}
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-bold uppercase tracking-wider hover:bg-slate-50 dark:border-white/5 dark:hover:bg-white/5 transition cursor-pointer"
@@ -839,6 +1093,16 @@ export default function EditorPage() {
             </div>
           </div>
         </main>
+
+        {/* --- VERSION HISTORY PANEL --- */}
+        {versionHistoryOpen && (
+          <VersionHistory
+            dashboardId={dashboardId}
+            activeVersion={dashboard.data?.version}
+            onClose={() => setVersionHistoryOpen(false)}
+            onRestore={handleRestoreVersion}
+          />
+        )}
 
         {/* --- NODE PROPERTY INSPECTOR --- */}
         {selectedNodeId &&
@@ -1177,6 +1441,181 @@ export default function EditorPage() {
                                 </option>
                               ))}
                           </select>
+                        </div>
+                      </div>
+                    )}
+                    {selectedNode.type === 'image' && (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                            Image URL
+                          </label>
+                          <input
+                            type="text"
+                            value={selectedNode.imageUrl || ''}
+                            onChange={(e) => updateNode(selectedNode.id, { imageUrl: e.target.value })}
+                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                            Image Layout Fit
+                          </label>
+                          <select
+                            value={selectedNode.objectFit || 'cover'}
+                            onChange={(e) => updateNode(selectedNode.id, { objectFit: e.target.value })}
+                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900"
+                          >
+                            <option value="cover">Cover (Fill Container)</option>
+                            <option value="contain">Contain (Fit Aspect Ratio)</option>
+                            <option value="fill">Fill (Stretch to fit)</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedNode.type === 'embed' && (
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                          Embed URL
+                        </label>
+                        <input
+                          type="text"
+                          value={selectedNode.embedUrl || ''}
+                          onChange={(e) => updateNode(selectedNode.id, { embedUrl: e.target.value })}
+                          className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
+                        />
+                      </div>
+                    )}
+
+                    {selectedNode.type === 'table' && (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                            Columns (Comma Separated)
+                          </label>
+                          <input
+                            type="text"
+                            value={selectedNode.columns || ''}
+                            onChange={(e) => updateNode(selectedNode.id, { columns: e.target.value })}
+                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                            Rows (Comma values per line)
+                          </label>
+                          <textarea
+                            value={selectedNode.rows || ''}
+                            rows={4}
+                            onChange={(e) => updateNode(selectedNode.id, { rows: e.target.value })}
+                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 font-mono text-xs"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedNode.type === 'timer' && (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                            Duration (Seconds)
+                          </label>
+                          <input
+                            type="number"
+                            value={selectedNode.duration || 300}
+                            onChange={(e) => updateNode(selectedNode.id, { duration: parseInt(e.target.value) || 0 })}
+                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                            Timer Mode
+                          </label>
+                          <select
+                            value={selectedNode.timerMode || 'countdown'}
+                            onChange={(e) => updateNode(selectedNode.id, { timerMode: e.target.value })}
+                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900"
+                          >
+                            <option value="countdown">Countdown</option>
+                            <option value="stopwatch">Stopwatch</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedNode.type === 'link' && (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                            Link URL
+                          </label>
+                          <input
+                            type="text"
+                            value={selectedNode.url || ''}
+                            onChange={(e) => updateNode(selectedNode.id, { url: e.target.value })}
+                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                            Link Description
+                          </label>
+                          <input
+                            type="text"
+                            value={selectedNode.description || ''}
+                            onChange={(e) => updateNode(selectedNode.id, { description: e.target.value })}
+                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedNode.type === 'divider' && (
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                          Divider Style
+                        </label>
+                        <select
+                          value={selectedNode.dividerStyle || 'solid'}
+                          onChange={(e) => updateNode(selectedNode.id, { dividerStyle: e.target.value })}
+                          className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900"
+                        >
+                          <option value="solid">Solid Line</option>
+                          <option value="dashed">Dashed Line</option>
+                          <option value="dotted">Dotted Line</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {selectedNode.type === 'code' && (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                            Language
+                          </label>
+                          <select
+                            value={selectedNode.language || 'javascript'}
+                            onChange={(e) => updateNode(selectedNode.id, { language: e.target.value })}
+                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900"
+                          >
+                            <option value="javascript">JavaScript</option>
+                            <option value="html">HTML</option>
+                            <option value="css">CSS</option>
+                            <option value="python">Python</option>
+                            <option value="json">JSON</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                            Code Block
+                          </label>
+                          <textarea
+                            value={selectedNode.code || ''}
+                            rows={6}
+                            onChange={(e) => updateNode(selectedNode.id, { code: e.target.value })}
+                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-xs focus:outline-none focus:border-violet-500 dark:border-white/10 font-mono leading-normal"
+                          />
                         </div>
                       </div>
                     )}
@@ -1645,6 +2084,162 @@ function CanvasNodeCard({ node, isSelected, onSelect, resolveNodeValue, onDragSt
             </div>
           );
         })()}
+      {/* 7. Image */}
+      {node.type === 'image' && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{node.title}</p>
+          <div className="w-full h-32 rounded-lg overflow-hidden bg-slate-100 dark:bg-white/5 relative">
+            <img
+              src={node.imageUrl}
+              alt={node.title}
+              className={`w-full h-full object-${node.objectFit || 'cover'}`}
+              onError={(e) => {
+                e.target.src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&auto=format&fit=crop&q=60';
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 8. Embed */}
+      {node.type === 'embed' && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{node.title}</p>
+          <div className="w-full h-32 rounded-lg overflow-hidden bg-slate-100 dark:bg-white/5 relative">
+            <iframe
+              src={node.embedUrl}
+              title={node.title}
+              className="w-full h-full border-0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 9. Table */}
+      {node.type === 'table' && (() => {
+        const cols = (node.columns || '').split(',').map(c => c.trim()).filter(Boolean);
+        const rows = (node.rows || '').split('\n').map(r => r.split(',').map(c => c.trim()));
+        return (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{node.title}</p>
+            <div className="w-full overflow-x-auto rounded-lg border border-slate-200/50 dark:border-white/5 no-scrollbars">
+              <table className="w-full text-[11px] text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-slate-400 border-b border-slate-200/50 dark:border-white/5">
+                    {cols.map((col, idx) => (
+                      <th key={idx} className="px-2 py-1.5 font-bold uppercase tracking-wider">{col}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                  {rows.map((row, rIdx) => (
+                    <tr key={rIdx} className="hover:bg-slate-50/50 dark:hover:bg-white/5">
+                      {row.map((cell, cIdx) => (
+                        <td key={cIdx} className="px-2 py-1.5 truncate max-w-[120px]">{cell}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 10. Timer */}
+      {node.type === 'timer' && (() => {
+        const [timeRemaining, setTimeRemaining] = useState(node.duration || 300);
+        
+        useEffect(() => {
+          let interval;
+          if (node.timerState === 'running' && timeRemaining > 0) {
+            interval = setInterval(() => {
+              setTimeRemaining(t => t - 1);
+            }, 1000);
+          }
+          return () => clearInterval(interval);
+        }, [node.timerState, timeRemaining]);
+
+        useEffect(() => {
+          setTimeRemaining(node.duration || 300);
+        }, [node.duration]);
+
+        const minutes = Math.floor(timeRemaining / 60);
+        const seconds = timeRemaining % 60;
+        const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+        return (
+          <div className="space-y-3">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{node.title}</p>
+            <div className="flex items-center justify-between">
+              <span className="text-3xl font-extrabold font-mono tracking-tight text-amber-600 dark:text-amber-400">{timeStr}</span>
+              <div className="flex gap-1.5">
+                {node.timerState !== 'running' ? (
+                  <button
+                    onClick={() => updateNode(node.id, { timerState: 'running' })}
+                    className="px-2 py-1 text-[10px] font-bold rounded bg-amber-500 hover:bg-amber-400 text-white cursor-pointer"
+                  >
+                    Start
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => updateNode(node.id, { timerState: 'paused' })}
+                    className="px-2 py-1 text-[10px] font-bold rounded bg-slate-500 hover:bg-slate-400 text-white cursor-pointer"
+                  >
+                    Pause
+                  </button>
+                )}
+                <button
+                  onClick={() => updateNode(node.id, { timerState: 'idle', duration: node.duration || 300 })}
+                  className="px-2 py-1 text-[10px] font-bold rounded border border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer text-slate-600 dark:text-slate-300"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+            <span className="text-[10px] text-slate-400 block">{node.timerMode === 'countdown' ? 'Countdown active' : 'Stopwatch active'}</span>
+          </div>
+        );
+      })()}
+
+      {/* 11. Link Card */}
+      {node.type === 'link' && (
+        <a
+          href={node.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block group/link space-y-2 cursor-pointer"
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide group-hover/link:text-violet-600 dark:group-hover/link:text-violet-400 transition-colors">{node.title}</p>
+            <LinkIcon size={12} className="text-slate-400 group-hover/link:translate-x-0.5 transition-transform" />
+          </div>
+          <div className="p-2.5 rounded-lg border border-slate-200/50 dark:border-white/5 bg-slate-50/50 dark:bg-white/5 hover:bg-slate-100/50 transition-colors">
+            <p className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate">{node.url}</p>
+            <p className="text-[10px] text-slate-400 mt-1 line-clamp-2">{node.description}</p>
+          </div>
+        </a>
+      )}
+
+      {/* 12. Divider */}
+      {node.type === 'divider' && (
+        <div className="py-2.5">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">{node.title}</p>
+          <div className={`w-full border-t border-${node.dividerStyle || 'solid'} border-slate-300 dark:border-white/10`} />
+        </div>
+      )}
+
+      {/* 13. Code Block */}
+      {node.type === 'code' && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{node.title}</p>
+          <pre className="p-2.5 rounded-lg bg-slate-900 text-slate-100 text-[10px] font-mono overflow-x-auto leading-relaxed border border-white/5">
+            <code>{node.code}</code>
+          </pre>
+        </div>
+      )}
     </article>
   );
 }
@@ -1719,6 +2314,55 @@ function NodePicker({ onClose, onAdd }) {
       desc: 'Dynamic calculations between nodes',
       icon: <Cpu size={20} />,
       color: 'text-pink-500 bg-pink-500/10',
+    },
+    {
+      type: 'image',
+      label: 'Image Showcase',
+      desc: 'Display an online image card',
+      icon: <Image size={20} />,
+      color: 'text-violet-500 bg-violet-500/10',
+    },
+    {
+      type: 'embed',
+      label: 'Third-Party Embed',
+      desc: 'Render custom iframe content',
+      icon: <Layers size={20} />,
+      color: 'text-indigo-500 bg-indigo-500/10',
+    },
+    {
+      type: 'table',
+      label: 'Data Grid Table',
+      desc: 'Editable rows and columns table',
+      icon: <Table size={20} />,
+      color: 'text-teal-500 bg-teal-500/10',
+    },
+    {
+      type: 'timer',
+      label: 'Stopwatch / Timer',
+      desc: 'Live countdown or timer clock',
+      icon: <Timer size={20} />,
+      color: 'text-amber-500 bg-amber-500/10',
+    },
+    {
+      type: 'link',
+      label: 'Reference Link',
+      desc: 'URL card with title and metadata',
+      icon: <LinkIcon size={20} />,
+      color: 'text-blue-500 bg-blue-500/10',
+    },
+    {
+      type: 'divider',
+      label: 'Section Divider',
+      desc: 'Visual line to partition canvas',
+      icon: <Minus size={20} />,
+      color: 'text-slate-500 bg-slate-500/10',
+    },
+    {
+      type: 'code',
+      label: 'Code Block',
+      desc: 'Syntax highlighted code container',
+      icon: <Code2 size={20} />,
+      color: 'text-orange-500 bg-orange-500/10',
     },
   ];
 

@@ -17,4 +17,5 @@ export const workspaceService = {
   delete: (workspaceId) => request(`/api/v1/workspaces/${workspaceId}`, { method: 'DELETE' }),
   deleteDashboard: (dashboardId) =>
     request(`/api/v1/dashboards/${dashboardId}`, { method: 'DELETE' }),
+  versions: (dashboardId) => request(`/api/v1/dashboards/${dashboardId}/versions`),
 };

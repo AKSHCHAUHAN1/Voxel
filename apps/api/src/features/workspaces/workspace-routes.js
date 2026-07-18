@@ -172,6 +172,38 @@ export const registerWorkspaceRoutes = async (
     return reply.send(success(serializeDashboard(dashboard), createRequestId(request.id)));
   });
 
+  app.get('/api/v1/dashboards/:dashboardId/versions', async (request, reply) => {
+    const user = await requireUser(request, auth);
+    const params = z.object({ dashboardId: idSchema }).parse(request.params);
+    const dashboard = await prisma.dashboard.findFirst({
+      where: { id: params.dashboardId, deletedAt: null },
+    });
+    if (!dashboard) throw new RequestError('Dashboard was not found.', 404);
+    await requireMembership(dashboard.workspaceId, user.id, [
+      'OWNER',
+      'ADMIN',
+      'EDITOR',
+      'COMMENTER',
+      'VIEWER',
+    ]);
+    const versions = await prisma.dashboardVersion.findMany({
+      where: { dashboardId: params.dashboardId },
+      orderBy: { version: 'desc' },
+      take: 30,
+    });
+    return reply.send(
+      success(
+        versions.map((v) => ({
+          id: v.id,
+          version: v.version,
+          scene: v.scene,
+          createdAt: v.createdAt.toISOString(),
+        })),
+        createRequestId(request.id),
+      ),
+    );
+  });
+
   app.patch('/api/v1/dashboards/:dashboardId', async (request, reply) => {
     const user = await requireUser(request, auth);
     const params = z.object({ dashboardId: idSchema }).parse(request.params);
