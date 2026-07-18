@@ -2149,60 +2149,9 @@ function CanvasNodeCard({ node, isSelected, onSelect, resolveNodeValue, onDragSt
       })()}
 
       {/* 10. Timer */}
-      {node.type === 'timer' && (() => {
-        const [timeRemaining, setTimeRemaining] = useState(node.duration || 300);
-        
-        useEffect(() => {
-          let interval;
-          if (node.timerState === 'running' && timeRemaining > 0) {
-            interval = setInterval(() => {
-              setTimeRemaining(t => t - 1);
-            }, 1000);
-          }
-          return () => clearInterval(interval);
-        }, [node.timerState, timeRemaining]);
-
-        useEffect(() => {
-          setTimeRemaining(node.duration || 300);
-        }, [node.duration]);
-
-        const minutes = Math.floor(timeRemaining / 60);
-        const seconds = timeRemaining % 60;
-        const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-
-        return (
-          <div className="space-y-3">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{node.title}</p>
-            <div className="flex items-center justify-between">
-              <span className="text-3xl font-extrabold font-mono tracking-tight text-amber-600 dark:text-amber-400">{timeStr}</span>
-              <div className="flex gap-1.5">
-                {node.timerState !== 'running' ? (
-                  <button
-                    onClick={() => updateNode(node.id, { timerState: 'running' })}
-                    className="px-2 py-1 text-[10px] font-bold rounded bg-amber-500 hover:bg-amber-400 text-white cursor-pointer"
-                  >
-                    Start
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => updateNode(node.id, { timerState: 'paused' })}
-                    className="px-2 py-1 text-[10px] font-bold rounded bg-slate-500 hover:bg-slate-400 text-white cursor-pointer"
-                  >
-                    Pause
-                  </button>
-                )}
-                <button
-                  onClick={() => updateNode(node.id, { timerState: 'idle', duration: node.duration || 300 })}
-                  className="px-2 py-1 text-[10px] font-bold rounded border border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer text-slate-600 dark:text-slate-300"
-                >
-                  Reset
-                </button>
-              </div>
-            </div>
-            <span className="text-[10px] text-slate-400 block">{node.timerMode === 'countdown' ? 'Countdown active' : 'Stopwatch active'}</span>
-          </div>
-        );
-      })()}
+      {node.type === 'timer' && (
+        <TimerNode node={node} updateNode={updateNode} />
+      )}
 
       {/* 11. Link Card */}
       {node.type === 'link' && (
@@ -2416,4 +2365,65 @@ function NodePicker({ onClose, onAdd }) {
 
 function EditorSkeleton() {
   return <div className="-m-5 min-h-screen animate-pulse bg-slate-100 dark:bg-slate-950 sm:-m-8" />;
+}
+
+function TimerNode({ node, updateNode }) {
+  const [timeRemaining, setTimeRemaining] = useState(node.duration || 300);
+
+  useEffect(() => {
+    let interval;
+    if (node.timerState === 'running' && timeRemaining > 0) {
+      interval = setInterval(() => {
+        setTimeRemaining((t) => t - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [node.timerState, timeRemaining]);
+
+  useEffect(() => {
+    setTimeRemaining(node.duration || 300);
+  }, [node.duration]);
+
+  const minutes = Math.floor(timeRemaining / 60);
+  const seconds = timeRemaining % 60;
+  const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{node.title}</p>
+      <div className="flex items-center justify-between">
+        <span className="text-3xl font-extrabold font-mono tracking-tight text-amber-600 dark:text-amber-400">
+          {timeStr}
+        </span>
+        <div className="flex gap-1.5">
+          {node.timerState !== 'running' ? (
+            <button
+              onClick={() => updateNode(node.id, { timerState: 'running' })}
+              className="px-2 py-1 text-[10px] font-bold rounded bg-amber-500 hover:bg-amber-400 text-white cursor-pointer"
+            >
+              Start
+            </button>
+          ) : (
+            <button
+              onClick={() => updateNode(node.id, { timerState: 'paused' })}
+              className="px-2 py-1 text-[10px] font-bold rounded bg-slate-500 hover:bg-slate-400 text-white cursor-pointer"
+            >
+              Pause
+            </button>
+          )}
+          <button
+            onClick={() =>
+              updateNode(node.id, { timerState: 'idle', duration: node.duration || 300 })
+            }
+            className="px-2 py-1 text-[10px] font-bold rounded border border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer text-slate-600 dark:text-slate-300"
+          >
+            Reset
+          </button>
+        </div>
+      </div>
+      <span className="text-[10px] text-slate-400 block">
+        {node.timerMode === 'countdown' ? 'Countdown active' : 'Stopwatch active'}
+      </span>
+    </div>
+  );
 }
