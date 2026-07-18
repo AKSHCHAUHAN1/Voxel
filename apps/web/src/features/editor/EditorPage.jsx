@@ -586,14 +586,6 @@ export default function EditorPage() {
     };
   }, [scene.nodes, draft]);
 
-  if (!workspaceId || !dashboardId) return null;
-  if (dashboard.isPending) return <EditorSkeleton />;
-  if (dashboard.isError || !dashboard.data)
-    return (
-      <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-rose-700">
-        This dashboard could not be loaded.
-      </div>
-    );
 
   const update = (next, skipHistory = false) => {
     if (!skipHistory) {
@@ -751,6 +743,15 @@ export default function EditorPage() {
   const deleteConnection = (index) => {
     update({ ...scene, connections: scene.connections.filter((_, i) => i !== index) });
   };
+
+  if (!workspaceId || !dashboardId) return null;
+  if (dashboard.isPending) return <EditorSkeleton />;
+  if (dashboard.isError || !dashboard.data)
+    return (
+      <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-rose-700">
+        This dashboard could not be loaded.
+      </div>
+    );
 
   return (
     <section className="-m-5 flex min-h-[calc(100vh-64px)] flex-col sm:-m-8 relative overflow-hidden bg-slate-50 dark:bg-[#030509]">
@@ -1085,6 +1086,7 @@ export default function EditorPage() {
                     onSelectNode={setSelectedNodeId}
                     resolveNodeValue={resolveNodeValue}
                     onDragStart={handleDragStart}
+                    updateNode={updateNode}
                   />
                 ) : (
                   <CanvasEmpty onAdd={() => setPickerOpen(true)} />
@@ -1806,7 +1808,7 @@ export default function EditorPage() {
 }
 
 // --- FREEFORM GRID SETUP ---
-function NodeGrid({ nodes, selectedNodeId, onSelectNode, resolveNodeValue, onDragStart }) {
+function NodeGrid({ nodes, selectedNodeId, onSelectNode, resolveNodeValue, onDragStart, updateNode }) {
   return (
     <div className="relative w-full min-h-[650px] z-10">
       {nodes.map((node) => (
@@ -1817,6 +1819,7 @@ function NodeGrid({ nodes, selectedNodeId, onSelectNode, resolveNodeValue, onDra
           onSelect={() => onSelectNode(node.id)}
           resolveNodeValue={resolveNodeValue}
           onDragStart={onDragStart}
+          updateNode={updateNode}
         />
       ))}
     </div>
@@ -1824,7 +1827,7 @@ function NodeGrid({ nodes, selectedNodeId, onSelectNode, resolveNodeValue, onDra
 }
 
 // --- CANVAS CARD COMPONENT ---
-function CanvasNodeCard({ node, isSelected, onSelect, resolveNodeValue, onDragStart }) {
+function CanvasNodeCard({ node, isSelected, onSelect, resolveNodeValue, onDragStart, updateNode }) {
   const displayValue = resolveNodeValue(node);
   // Icon picker based on type
   const nodeIcon = useMemo(() => {
