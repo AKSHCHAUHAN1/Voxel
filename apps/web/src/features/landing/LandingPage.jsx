@@ -463,7 +463,7 @@ export default function LandingPage() {
         <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
           <InteractiveTiltCard className="group">
             <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400 group-hover:scale-110 transition-transform duration-300">
-              <GitBranch size={20} className="animate-[spin_8s_linear_infinite]" />
+              <GitBranch size={20} />
             </div>
             <h3 className="text-lg font-bold text-slate-950 dark:text-white">Logic Node Trees</h3>
             <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
@@ -474,7 +474,7 @@ export default function LandingPage() {
 
           <InteractiveTiltCard className="group">
             <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 group-hover:scale-110 transition-transform duration-300">
-              <Activity size={20} className="animate-[spin_6s_linear_infinite]" />
+              <Activity size={20} />
             </div>
             <h3 className="text-lg font-bold text-slate-950 dark:text-white">Real-Time Streams</h3>
             <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
@@ -485,7 +485,7 @@ export default function LandingPage() {
 
           <InteractiveTiltCard className="group">
             <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform duration-300">
-              <RefreshCw size={20} className="animate-[spin_4s_linear_infinite]" />
+              <RefreshCw size={20} />
             </div>
             <h3 className="text-lg font-bold text-slate-950 dark:text-white">Interactive Rive Component</h3>
             <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
