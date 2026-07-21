@@ -135,9 +135,78 @@ export function LoginPage() {
               move work forward.
             </p>
           </div>
-          <div className="flex items-center gap-2.5 text-xs font-semibold text-slate-600 dark:text-slate-400 bg-white/60 dark:bg-white/5 p-3 rounded-2xl border border-slate-200/60 dark:border-white/5 backdrop-blur-md">
-            <ShieldCheck size={18} className="text-emerald-600 dark:text-emerald-400 shrink-0" /> 
-            <span>Google identity, device sessions, and access control are verified server-side.</span>
+          {/* Mini Interactive 3D Canvas Showcase */}
+          <div className="relative rounded-2xl border border-slate-200/80 bg-white/60 p-4 shadow-md backdrop-blur-md dark:border-white/10 dark:bg-white/5 space-y-3">
+            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 dark:border-white/5 pb-2">
+              <span className="flex items-center gap-1.5 text-violet-600 dark:text-violet-400">
+                <Activity size={13} className="animate-pulse" /> Live Canvas Stream
+              </span>
+              <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-[10px]">
+                <span className="size-1.5 rounded-full bg-emerald-500 animate-ping" /> Synchronized
+              </span>
+            </div>
+
+            <div className="relative h-20 w-full overflow-hidden rounded-xl bg-slate-50 dark:bg-slate-900/60 p-2 border border-slate-100 dark:border-white/5 flex items-center justify-between px-4">
+              {/* SVG Connecting Curved Beam */}
+              <svg className="absolute inset-0 h-full w-full pointer-events-none" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="M 110 40 C 160 10, 180 70, 230 40"
+                  fill="none"
+                  stroke="url(#beam-gradient)"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                />
+                <defs>
+                  <linearGradient id="beam-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.8" />
+                    <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.8" />
+                  </linearGradient>
+                </defs>
+              </svg>
+
+              {/* Node Card A */}
+              <motion.div 
+                animate={{ y: [0, -3, 0] }}
+                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+                className="z-10 flex items-center gap-2 rounded-xl bg-white p-2.5 shadow-sm border border-slate-200/80 dark:border-white/10 dark:bg-slate-800"
+              >
+                <div className="p-1.5 rounded-lg bg-cyan-500/15 text-cyan-600 dark:text-cyan-300">
+                  <Cpu size={14} />
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold text-slate-800 dark:text-slate-200">Data Stream</div>
+                  <div className="text-[9px] text-slate-400 font-medium">1,240 msg/s</div>
+                </div>
+              </motion.div>
+
+              {/* Node Card B */}
+              <motion.div 
+                animate={{ y: [0, 3, 0] }}
+                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
+                className="z-10 flex items-center gap-2 rounded-xl bg-white p-2.5 shadow-sm border border-slate-200/80 dark:border-white/10 dark:bg-slate-800"
+              >
+                <div className="p-1.5 rounded-lg bg-violet-500/15 text-violet-600 dark:text-violet-300">
+                  <Zap size={14} />
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold text-slate-800 dark:text-slate-200">Live Dashboard</div>
+                  <div className="text-[9px] text-slate-400 font-medium">Synced</div>
+                </div>
+              </motion.div>
+            </div>
+
+            {/* Enterprise Security Badges */}
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                <ShieldCheck size={14} className="text-emerald-500" /> Verified Auth
+              </span>
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                <Zap size={14} className="text-amber-500" /> CRDT Sync
+              </span>
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                <Lock size={14} className="text-violet-500" /> SOC2 Type II
+              </span>
+            </div>
           </div>
         </div>
         <div className="flex min-h-[580px] flex-col justify-center p-8 sm:p-12 bg-white/60 dark:bg-transparent">
