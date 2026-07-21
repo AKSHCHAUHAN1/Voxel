@@ -1,5 +1,6 @@
-import { ArrowRight, ShieldCheck, Sparkles, Moon, Sun } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Sparkles, Moon, Sun, Activity, Cpu, Zap, Layers, PanelsTopLeft, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { authService } from './auth-service';
 import { useThemeStore } from '@/store/theme-store';
 import appIcon from '@/assets/app-icon.png';
@@ -25,46 +26,121 @@ export function LoginPage() {
   };
 
   return (
-    <main className="relative grid min-h-screen place-items-center bg-slate-50 text-slate-900 dark:bg-[#060913] dark:text-slate-100 p-6 transition-colors overflow-hidden">
-      {/* Background Ambient Glows */}
-      <div className="absolute top-10 left-1/4 -z-10 h-[500px] w-[500px] rounded-full bg-violet-500/10 blur-[130px] dark:bg-violet-600/15" />
-      <div className="absolute bottom-10 right-1/4 -z-10 h-[500px] w-[500px] rounded-full bg-cyan-500/10 blur-[130px] dark:bg-cyan-600/15" />
+    <main className="relative grid min-h-screen place-items-center bg-slate-100/90 text-slate-900 dark:bg-[#04060d] dark:text-slate-100 p-6 transition-colors overflow-hidden perspective-1000">
+      {/* 3D Background Perspective Grid Mesh */}
+      <div 
+        className="absolute inset-0 pointer-events-none opacity-40 dark:opacity-20"
+        style={{
+          backgroundImage: theme === 'dark' 
+            ? 'radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1px)' 
+            : 'radial-gradient(circle, rgba(99, 102, 241, 0.25) 1px, transparent 1px)',
+          backgroundSize: '32px 32px',
+        }}
+      />
+
+      {/* Vibrant Ambient Gradient Mesh Halos */}
+      <div className="absolute top-[-10%] left-[-5%] -z-10 h-[650px] w-[650px] rounded-full bg-gradient-to-br from-violet-500/25 to-indigo-600/20 blur-[140px] dark:from-violet-600/30 dark:to-indigo-900/20 animate-pulse-glow" />
+      <div className="absolute bottom-[-10%] right-[-5%] -z-10 h-[650px] w-[650px] rounded-full bg-gradient-to-tr from-cyan-400/25 to-blue-600/20 blur-[140px] dark:from-cyan-600/25 dark:to-slate-900/30 animate-pulse-glow" />
+      <div className="absolute top-[35%] right-[15%] -z-10 h-[450px] w-[450px] rounded-full bg-fuchsia-500/15 blur-[150px] dark:bg-fuchsia-600/10" />
+
+      {/* 3D Floating Node Widgets in Background */}
+      <motion.div
+        animate={{ y: [0, -18, 0], rotate: [0, 4, 0] }}
+        transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
+        className="absolute top-[12%] left-[8%] hidden xl:flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white/70 p-4 shadow-xl backdrop-blur-md dark:border-white/10 dark:bg-white/5 text-xs font-semibold text-slate-700 dark:text-slate-200 pointer-events-none"
+      >
+        <div className="p-2 rounded-xl bg-violet-500/15 text-violet-600 dark:text-violet-300">
+          <Activity size={18} />
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-400 uppercase tracking-wider">Live Metrics</div>
+          <div className="font-extrabold">99.98% System Uptime</div>
+        </div>
+      </motion.div>
+
+      <motion.div
+        animate={{ y: [0, 20, 0], rotate: [0, -5, 0] }}
+        transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
+        className="absolute bottom-[15%] left-[10%] hidden xl:flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white/70 p-4 shadow-xl backdrop-blur-md dark:border-white/10 dark:bg-white/5 text-xs font-semibold text-slate-700 dark:text-slate-200 pointer-events-none"
+      >
+        <div className="p-2 rounded-xl bg-cyan-500/15 text-cyan-600 dark:text-cyan-300">
+          <Cpu size={18} />
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-400 uppercase tracking-wider">Logic Engine</div>
+          <div className="font-extrabold">Autonomous Pipeline</div>
+        </div>
+      </motion.div>
+
+      <motion.div
+        animate={{ y: [0, -16, 0], rotate: [0, -3, 0] }}
+        transition={{ duration: 6.5, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
+        className="absolute top-[18%] right-[8%] hidden xl:flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white/70 p-4 shadow-xl backdrop-blur-md dark:border-white/10 dark:bg-white/5 text-xs font-semibold text-slate-700 dark:text-slate-200 pointer-events-none"
+      >
+        <div className="p-2 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-300">
+          <Zap size={18} />
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-400 uppercase tracking-wider">Realtime Sync</div>
+          <div className="font-extrabold">Yjs CRDT Enabled</div>
+        </div>
+      </motion.div>
+
+      <motion.div
+        animate={{ y: [0, 15, 0], rotate: [0, 3, 0] }}
+        transition={{ duration: 7.5, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
+        className="absolute bottom-[18%] right-[10%] hidden xl:flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white/70 p-4 shadow-xl backdrop-blur-md dark:border-white/10 dark:bg-white/5 text-xs font-semibold text-slate-700 dark:text-slate-200 pointer-events-none"
+      >
+        <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-300">
+          <Lock size={18} />
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-400 uppercase tracking-wider">Enterprise Auth</div>
+          <div className="font-extrabold">Zero-Trust Verified</div>
+        </div>
+      </motion.div>
 
       {/* Top Bar Theme Toggle */}
       <div className="absolute top-6 right-8 z-50">
         <button
           onClick={toggleTheme}
           aria-label="Toggle Theme"
-          className="flex items-center justify-center size-10 rounded-xl border border-slate-200/80 bg-white/80 text-slate-600 shadow-sm backdrop-blur-md hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 transition cursor-pointer"
+          className="flex items-center justify-center size-11 rounded-2xl border border-slate-200/90 bg-white/90 text-slate-700 shadow-md backdrop-blur-xl hover:bg-slate-100 dark:border-white/15 dark:bg-slate-900/80 dark:text-slate-200 dark:hover:bg-slate-800 transition-all cursor-pointer hover:scale-105 active:scale-95"
         >
-          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          {theme === 'dark' ? <Sun size={20} className="text-amber-400" /> : <Moon size={20} className="text-violet-600" />}
         </button>
       </div>
 
-      <section className="grid w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-200/80 bg-white/90 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#0c111e]/90 lg:grid-cols-[1.1fr_.9fr]">
-        <div className="hidden min-h-[580px] flex-col justify-between bg-gradient-to-br from-violet-500/5 via-indigo-500/5 to-cyan-500/5 dark:from-violet-950/20 dark:via-indigo-950/20 dark:to-slate-950/30 p-12 lg:flex border-r border-slate-100 dark:border-white/5">
+      {/* Main 3D Container Section */}
+      <motion.section 
+        initial={{ opacity: 0, y: 20, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+        className="grid w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-200/90 bg-white/85 shadow-[0_25px_70px_-15px_rgba(99,102,241,0.25)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#0c111e]/90 dark:shadow-[0_25px_70px_-15px_rgba(0,0,0,0.8)] lg:grid-cols-[1.1fr_.9fr] relative z-10"
+      >
+        <div className="hidden min-h-[580px] flex-col justify-between bg-gradient-to-br from-violet-500/10 via-indigo-500/5 to-cyan-500/10 dark:from-violet-950/30 dark:via-indigo-950/20 dark:to-slate-950/40 p-12 lg:flex border-r border-slate-100 dark:border-white/5 relative">
           <div className="flex items-center">
             <img src={horizontalLogo} alt="Voxel" className="h-14 object-contain block dark:hidden" />
             <img src={horizontalLogoDark} alt="Voxel" className="h-14 object-contain hidden dark:block" />
           </div>
-          <div>
-            <p className="mb-3 text-xs font-extrabold uppercase tracking-[.2em] text-violet-600 dark:text-violet-400">
-              Visual workspace
-            </p>
+          <div className="space-y-4">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-500/10 px-3 py-1 text-xs font-extrabold uppercase tracking-[.18em] text-violet-600 dark:bg-violet-500/15 dark:text-violet-300 border border-violet-200/60 dark:border-violet-500/20">
+              <PanelsTopLeft size={13} /> Visual workspace
+            </span>
             <h1 className="max-w-md text-5xl font-extrabold tracking-tight text-slate-950 dark:text-white leading-[1.15]">
               Make the work visible.
             </h1>
-            <p className="mt-5 max-w-sm text-sm leading-6 text-slate-600 dark:text-slate-300 font-medium">
+            <p className="max-w-sm text-sm leading-6 text-slate-600 dark:text-slate-300 font-medium">
               A secure canvas for teams to organize the information, systems, and decisions that
               move work forward.
             </p>
           </div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
-            <ShieldCheck size={17} className="text-emerald-600 dark:text-emerald-400" /> Google identity, device sessions,
-            and access control are verified server-side.
+          <div className="flex items-center gap-2.5 text-xs font-semibold text-slate-600 dark:text-slate-400 bg-white/60 dark:bg-white/5 p-3 rounded-2xl border border-slate-200/60 dark:border-white/5 backdrop-blur-md">
+            <ShieldCheck size={18} className="text-emerald-600 dark:text-emerald-400 shrink-0" /> 
+            <span>Google identity, device sessions, and access control are verified server-side.</span>
           </div>
         </div>
-        <div className="flex min-h-[580px] flex-col justify-center p-8 sm:p-12 bg-white/50 dark:bg-transparent">
+        <div className="flex min-h-[580px] flex-col justify-center p-8 sm:p-12 bg-white/60 dark:bg-transparent">
           <div className="mb-10 lg:hidden">
             <img src={appIcon} alt="Voxel" className="w-10 h-10 object-contain block dark:hidden" />
             <img src={appIconDark} alt="Voxel" className="w-10 h-10 object-contain hidden dark:block" />
@@ -96,7 +172,7 @@ export function LoginPage() {
             By continuing, you agree to your organization’s Voxel workspace policies.
           </p>
         </div>
-      </section>
+      </motion.section>
     </main>
   );
 }
