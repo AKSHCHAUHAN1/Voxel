@@ -247,10 +247,10 @@ export default function LandingPage() {
       </header>
 
       {/* --- HERO SECTION --- */}
-      <section className="relative mx-auto max-w-7xl px-6 pt-16 pb-24 md:pt-24 lg:pt-32">
-        <div className="grid gap-16 lg:grid-cols-12 lg:items-center">
+      <section className="relative mx-auto max-w-7xl px-6 pt-12 pb-16 md:pt-16 lg:pt-20">
+        <div className="grid gap-12 lg:grid-cols-12 lg:items-center">
           {/* Hero Content */}
-          <div className="space-y-8 lg:col-span-5">
+          <div className="space-y-6 lg:col-span-5">
             <motion.div
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -302,8 +302,8 @@ export default function LandingPage() {
           {/* Hero Visual: Interactive Sandbox */}
           <div id="sandbox" className="lg:col-span-7">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.2 }}
               className="apple-liquid-glass relative rounded-3xl p-1 shadow-2xl backdrop-blur-2xl"
             >
@@ -350,6 +350,7 @@ export default function LandingPage() {
                           strokeWidth={sandboxPulse ? 3 : 2}
                           className="transition-all duration-200"
                         />
+
                         <path
                           d={`M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`}
                           fill="none"
@@ -380,6 +381,7 @@ export default function LandingPage() {
                           strokeWidth={sandboxPulse ? 3 : 2}
                           className="transition-all duration-200"
                         />
+
                         <path
                           d={`M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`}
                           fill="none"
@@ -446,15 +448,14 @@ export default function LandingPage() {
       </section>
 
       {/* --- FEATURES GRID --- */}
-      <motion.section
-        id="features"
-        initial={{ opacity: 0, y: 50 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: '-60px' }}
-        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-        className="mx-auto max-w-7xl px-6 py-24 md:py-32"
-      >
-        <div className="mx-auto max-w-3xl text-center space-y-4">
+      <section id="features" className="mx-auto max-w-7xl px-6 py-14 md:py-20">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-50px' }}
+          transition={{ duration: 0.6 }}
+          className="mx-auto max-w-3xl text-center space-y-3"
+        >
           <h2 className="text-xs font-extrabold uppercase tracking-[.25em] text-violet-600 dark:text-violet-400">
             Engineered for speed
           </h2>
@@ -465,57 +466,77 @@ export default function LandingPage() {
             Replace static reports with interactive node-based systems that run instantly in the
             browser.
           </p>
+        </motion.div>
+
+        <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-50px' }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+          >
+            <InteractiveTiltCard className="group h-full">
+              <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400 group-hover:scale-110 transition-transform duration-300">
+                <GitBranch size={20} />
+              </div>
+              <h3 className="text-lg font-bold text-slate-950 dark:text-white">Logic Node Trees</h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
+                Wire input data into calculated math models. Formula dependencies update automatically
+                whenever inputs change.
+              </p>
+            </InteractiveTiltCard>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-50px' }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+          >
+            <InteractiveTiltCard className="group h-full">
+              <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 group-hover:scale-110 transition-transform duration-300">
+                <Activity size={20} />
+              </div>
+              <h3 className="text-lg font-bold text-slate-950 dark:text-white">Real-Time Streams</h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
+                Stream live server data directly into metric blocks. Render responsive gauges,
+                trendlines, and threshold warning states.
+              </p>
+            </InteractiveTiltCard>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-50px' }}
+            transition={{ duration: 0.6, delay: 0.3 }}
+          >
+            <InteractiveTiltCard className="group h-full">
+              <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform duration-300">
+                <RefreshCw size={20} />
+              </div>
+              <h3 className="text-lg font-bold text-slate-950 dark:text-white">Interactive Rive Component</h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
+                Rive-powered interactive visual state controllers that respond to system updates
+                dynamically.
+              </p>
+            </InteractiveTiltCard>
+          </motion.div>
         </div>
-
-        <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-          <InteractiveTiltCard className="group">
-            <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400 group-hover:scale-110 transition-transform duration-300">
-              <GitBranch size={20} />
-            </div>
-            <h3 className="text-lg font-bold text-slate-950 dark:text-white">Logic Node Trees</h3>
-            <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
-              Wire input data into calculated math models. Formula dependencies update automatically
-              whenever inputs change.
-            </p>
-          </InteractiveTiltCard>
-
-          <InteractiveTiltCard className="group">
-            <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 group-hover:scale-110 transition-transform duration-300">
-              <Activity size={20} />
-            </div>
-            <h3 className="text-lg font-bold text-slate-950 dark:text-white">Real-Time Streams</h3>
-            <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
-              Stream live server data directly into metric blocks. Render responsive gauges,
-              trendlines, and threshold warning states.
-            </p>
-          </InteractiveTiltCard>
-
-          <InteractiveTiltCard className="group">
-            <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform duration-300">
-              <RefreshCw size={20} />
-            </div>
-            <h3 className="text-lg font-bold text-slate-950 dark:text-white">Interactive Rive Component</h3>
-            <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
-              Rive-powered interactive visual state controllers that respond to system updates
-              dynamically.
-            </p>
-          </InteractiveTiltCard>
-        </div>
-      </motion.section>
+      </section>
 
       {/* --- DESIGN PARALLAX/INTERCONNECTION SECTION --- */}
-      <motion.section
-        id="integration"
-        initial={{ opacity: 0, y: 50 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: '-60px' }}
-        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-        className="bg-slate-100/50 dark:bg-slate-950/40 py-24 md:py-32 transition-colors duration-200"
-      >
+      <section id="integration" className="py-14 md:py-20 transition-colors duration-200">
         <div className="mx-auto max-w-7xl px-6">
-          <div className="grid gap-16 lg:grid-cols-12 lg:items-center">
+          <div className="grid gap-12 lg:grid-cols-12 lg:items-center">
             {/* Visuals */}
-            <div className="order-2 lg:order-1 lg:col-span-7 grid grid-cols-2 gap-4">
+            <motion.div
+              initial={{ opacity: 0, x: -30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, margin: '-50px' }}
+              transition={{ duration: 0.7 }}
+              className="order-2 lg:order-1 lg:col-span-7 grid grid-cols-2 gap-4"
+            >
               <div className="space-y-4">
                 <div className="apple-liquid-card rounded-2xl p-6 shadow-lg">
                   <div className="flex items-center gap-2 text-xs font-bold text-cyan-600 dark:text-cyan-400">
@@ -549,10 +570,16 @@ export default function LandingPage() {
                   </p>
                 </div>
               </div>
-            </div>
+            </motion.div>
 
             {/* Content */}
-            <div className="order-1 lg:order-2 lg:col-span-5 space-y-6">
+            <motion.div
+              initial={{ opacity: 0, x: 30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, margin: '-50px' }}
+              transition={{ duration: 0.7 }}
+              className="order-1 lg:order-2 lg:col-span-5 space-y-5"
+            >
               <h2 className="text-xs font-extrabold uppercase tracking-[.25em] text-cyan-600 dark:text-cyan-400">
                 Unified Pipelines
               </h2>
@@ -565,34 +592,41 @@ export default function LandingPage() {
                 visually in real-time.
               </p>
 
-              <div className="pt-4 flex flex-col gap-3.5">
+              <div className="pt-2 flex flex-col gap-3">
                 {[
                   'Automated type-checking across connected nodes',
                   'Support for custom Javascript math calculations',
                   'Sub-millisecond visual updates using Zustand reactive bindings',
                 ].map((item, idx) => (
-                  <div key={idx} className="flex items-center gap-3 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  <motion.div
+                    key={idx}
+                    initial={{ opacity: 0, y: 15 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.4, delay: 0.2 + idx * 0.1 }}
+                    className="flex items-center gap-3 text-sm font-semibold text-slate-700 dark:text-slate-300"
+                  >
                     <span className="flex size-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-extrabold text-xs">
                       ✓
                     </span>
                     {item}
-                  </div>
+                  </motion.div>
                 ))}
               </div>
-            </div>
+            </motion.div>
           </div>
         </div>
-      </motion.section>
+      </section>
 
       {/* --- HERO FOOTER CTA --- */}
-      <motion.section
-        initial={{ opacity: 0, y: 50 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: '-60px' }}
-        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-        className="mx-auto max-w-7xl px-6 py-24 md:py-32"
-      >
-        <div className="apple-liquid-glass relative overflow-hidden rounded-3xl px-8 py-16 text-center shadow-2xl border border-slate-200/80 dark:border-white/10">
+      <section className="mx-auto max-w-7xl px-6 py-14 md:py-20">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96, y: 30 }}
+          whileInView={{ opacity: 1, scale: 1, y: 0 }}
+          viewport={{ once: true, margin: '-50px' }}
+          transition={{ duration: 0.7 }}
+          className="apple-liquid-glass relative overflow-hidden rounded-3xl px-8 py-14 text-center shadow-2xl border border-slate-200/80 dark:border-white/10"
+        >
           <div className="absolute top-0 left-1/2 -z-10 h-64 w-64 -translate-x-1/2 rounded-full bg-violet-500/10 blur-[80px]" />
 
           <div className="max-w-2xl mx-auto space-y-6">
@@ -613,7 +647,7 @@ export default function LandingPage() {
               Create your account, design dashboards using visual nodes, and connect your team's
               live systems in minutes.
             </p>
-            <div className="pt-4">
+            <div className="pt-2">
               <Link
                 to="/login"
                 className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-6 py-3.5 text-sm font-bold text-white shadow-xl hover:bg-violet-500 transition cursor-pointer"
@@ -622,17 +656,11 @@ export default function LandingPage() {
               </Link>
             </div>
           </div>
-        </div>
-      </motion.section>
+        </motion.div>
+      </section>
 
       {/* --- FOOTER --- */}
-      <motion.footer
-        initial={{ opacity: 0, y: 20 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.6 }}
-        className="py-12 text-slate-600 dark:text-slate-400 text-sm font-medium transition-colors duration-200"
-      >
+      <footer className="py-10 text-slate-600 dark:text-slate-400 text-sm font-medium transition-colors duration-200">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-6 sm:flex-row">
           <div className="flex items-center gap-2 text-sm font-bold text-slate-950 dark:text-white">
             <img src={appIcon} alt="Voxel Logo" className="w-5 h-5 object-contain block dark:hidden" />
@@ -640,7 +668,7 @@ export default function LandingPage() {
           </div>
           <p>© {new Date().getFullYear()} Voxel Inc. All rights reserved.</p>
         </div>
-      </motion.footer>
+      </footer>
     </div>
   );
 }
