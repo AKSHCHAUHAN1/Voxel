@@ -3,6 +3,7 @@ import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import appIcon from '@/assets/app-icon.png';
 import horizontalLogo from '@/assets/horizontal-logo.png';
+import horizontalLogoDark from '@/assets/horizontal-logo-dark.png';
 import {
   Bell,
   Boxes,
@@ -241,7 +242,10 @@ export function AppShell() {
             {collapsed ? (
               <img src={appIcon} alt="Voxel" className="w-10 h-10 object-contain" />
             ) : (
-              <img src={horizontalLogo} alt="Voxel" className="h-16 object-contain dark:invert" />
+              <>
+                <img src={horizontalLogo} alt="Voxel" className="h-14 object-contain block dark:hidden" />
+                <img src={horizontalLogoDark} alt="Voxel" className="h-14 object-contain hidden dark:block" />
+              </>
             )}
           </Link>
         </div>

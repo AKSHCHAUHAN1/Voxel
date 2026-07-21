@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { authService } from './auth-service';
 import appIcon from '@/assets/app-icon.png';
 import horizontalLogo from '@/assets/horizontal-logo.png';
+import horizontalLogoDark from '@/assets/horizontal-logo-dark.png';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -17,11 +18,12 @@ export function LoginPage() {
   };
 
   return (
-    <main className="grid min-h-screen place-items-center bg-[#080a12] p-6 text-slate-100">
-      <section className="grid w-full max-w-5xl overflow-hidden rounded-3xl border border-white/10 bg-[#101522] shadow-2xl shadow-black/30 lg:grid-cols-[1.1fr_.9fr]">
-        <div className="hidden min-h-[580px] flex-col justify-between bg-[radial-gradient(circle_at_20%_20%,rgba(139,92,246,.38),transparent_32%),radial-gradient(circle_at_80%_70%,rgba(56,189,248,.2),transparent_28%)] p-12 lg:flex">
+    <main className="grid min-h-screen place-items-center bg-slate-50 text-slate-900 dark:bg-[#080a12] dark:text-slate-100 p-6 transition-colors">
+      <section className="grid w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#101522] lg:grid-cols-[1.1fr_.9fr]">
+        <div className="hidden min-h-[580px] flex-col justify-between bg-[radial-gradient(circle_at_20%_20%,rgba(139,92,246,.25),transparent_32%),radial-gradient(circle_at_80%_70%,rgba(56,189,248,.15),transparent_28%)] p-12 lg:flex">
           <div className="flex items-center">
-            <img src={horizontalLogo} alt="Voxel" className="h-16 object-contain dark:invert" />
+            <img src={horizontalLogo} alt="Voxel" className="h-16 object-contain block dark:hidden" />
+            <img src={horizontalLogoDark} alt="Voxel" className="h-16 object-contain hidden dark:block" />
           </div>
           <div>
             <p className="mb-4 text-sm font-semibold uppercase tracking-[.2em] text-violet-200">
