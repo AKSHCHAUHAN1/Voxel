@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useThemeStore } from '@/store/theme-store';
 import appIcon from '@/assets/app-icon.png';
 import appIconDark from '@/assets/app-icon-dark.png';
 import horizontalLogo from '@/assets/horizontal-logo.png';
@@ -10,6 +11,8 @@ import {
   ArrowRight,
   Sparkles,
   Plus,
+  Moon,
+  Sun,
   Activity,
   GitBranch,
   Zap,
@@ -66,25 +69,25 @@ function InteractiveTiltCard({ children, className = '' }) {
   );
 }
 
-export default function LandingPage() {
+export function LandingPage() {
   const containerRef = useRef(null);
+  const { theme, setTheme } = useThemeStore();
 
   // Check auth state
   const { data: user, isSuccess } = useQuery({
-    queryKey: ['auth', 'me'],
+    queryKey: ['me'],
     queryFn: authService.me,
     retry: false,
-    staleTime: 1000 * 60 * 5,
   });
 
   // --- Interactive Sandbox State ---
   const [nodes, setNodes] = useState([
     {
       id: 'traffic',
-      title: 'Traffic Source',
-      type: 'source',
+      title: 'Daily Visitors',
+      type: 'metric',
       x: 60,
-      y: 60,
+      y: 40,
       value: 1200,
       icon: <Activity className="text-cyan-400" size={18} />,
     },
@@ -152,7 +155,7 @@ export default function LandingPage() {
     );
     const nextY = Math.max(
       10,
-      Math.min(containerRect.height - 110, e.clientY - containerRect.top - dragOffset.y),
+      Math.min(containerRect.height - 120, e.clientY - containerRect.top - dragOffset.y),
     );
 
     setNodes((prev) =>
@@ -180,36 +183,44 @@ export default function LandingPage() {
 
   return (
     <div
-      className="min-h-screen overflow-x-hidden bg-[#04060d] text-slate-100 selection:bg-violet-500/30 selection:text-violet-200"
+      className="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900 dark:bg-[#04060d] dark:text-slate-100 transition-colors duration-300 selection:bg-violet-500/30 selection:text-violet-600 dark:selection:text-violet-200"
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
     >
       {/* Dynamic Background Glows */}
-      <div className="absolute top-0 left-1/4 -z-10 h-[500px] w-[500px] rounded-full bg-violet-600/10 blur-[120px]" />
-      <div className="absolute top-[20%] right-10 -z-10 h-[600px] w-[600px] rounded-full bg-cyan-600/10 blur-[150px]" />
-      <div className="absolute bottom-[10%] left-10 -z-10 h-[650px] w-[650px] rounded-full bg-fuchsia-600/5 blur-[180px]" />
+      <div className="absolute top-0 left-1/4 -z-10 h-[500px] w-[500px] rounded-full bg-violet-500/10 blur-[120px] dark:bg-violet-600/10" />
+      <div className="absolute top-[20%] right-10 -z-10 h-[600px] w-[600px] rounded-full bg-cyan-500/10 blur-[150px] dark:bg-cyan-600/10" />
+      <div className="absolute bottom-[10%] left-10 -z-10 h-[650px] w-[650px] rounded-full bg-fuchsia-500/5 blur-[180px] dark:bg-fuchsia-600/5" />
 
       {/* --- HEADER --- */}
-      <header className="sticky top-0 z-50 border-b border-white/5 bg-[#04060d]/60 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/80 backdrop-blur-xl dark:border-white/5 dark:bg-[#04060d]/60 shadow-xs">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center">
-            <img src={horizontalLogo} alt="Voxel" className="h-16 object-contain block dark:hidden" />
-            <img src={horizontalLogoDark} alt="Voxel" className="h-16 object-contain hidden dark:block" />
+            <img src={horizontalLogo} alt="Voxel" className="h-14 object-contain block dark:hidden" />
+            <img src={horizontalLogoDark} alt="Voxel" className="h-14 object-contain hidden dark:block" />
           </div>
 
-          <nav className="hidden items-center gap-8 text-sm font-medium text-slate-400 md:flex">
-            <a href="#features" className="transition hover:text-slate-100">
+          <nav className="hidden items-center gap-8 text-sm font-semibold text-slate-600 dark:text-slate-400 md:flex">
+            <a href="#features" className="transition hover:text-slate-950 dark:hover:text-slate-100">
               Features
             </a>
-            <a href="#sandbox" className="transition hover:text-slate-100">
+            <a href="#sandbox" className="transition hover:text-slate-950 dark:hover:text-slate-100">
               Interactive Demo
             </a>
-            <a href="#integration" className="transition hover:text-slate-100">
+            <a href="#integration" className="transition hover:text-slate-950 dark:hover:text-slate-100">
               Integrations
             </a>
           </nav>
 
           <div className="flex items-center gap-4">
+            <button
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              aria-label="Toggle Theme"
+              className="flex items-center justify-center size-9 rounded-xl border border-slate-200/80 bg-white text-slate-600 shadow-xs hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 transition cursor-pointer"
+            >
+              {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+            </button>
+
             {isSuccess && user ? (
               <Link
                 to="/workspaces"
@@ -221,13 +232,13 @@ export default function LandingPage() {
               <>
                 <Link
                   to="/login"
-                  className="text-sm font-semibold text-slate-300 transition hover:text-white"
+                  className="text-sm font-semibold text-slate-600 transition hover:text-slate-950 dark:text-slate-300 dark:hover:text-white"
                 >
                   Sign In
                 </Link>
                 <Link
                   to="/login"
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-violet-100"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4.5 py-2.5 text-sm font-bold text-white shadow-lg shadow-violet-600/20 transition hover:bg-violet-500"
                 >
                   Get Started <ArrowUpRight size={15} />
                 </Link>
