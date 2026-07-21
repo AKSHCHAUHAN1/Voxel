@@ -211,7 +211,7 @@ export function CommandPalette({ open, onClose }) {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Type a command or search…"
-            className="flex-1 bg-transparent py-3.5 text-sm outline-none placeholder:text-slate-400 dark:text-white"
+            className="flex-1 bg-transparent py-3.5 text-sm outline-none placeholder:text-slate-400 text-slate-900 dark:text-white"
           />
           <kbd className="hidden rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 sm:block dark:border-white/10 dark:bg-white/5">
             ESC
