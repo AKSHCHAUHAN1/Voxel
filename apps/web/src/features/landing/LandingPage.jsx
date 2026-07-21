@@ -462,43 +462,36 @@ export default function LandingPage() {
 
         <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
           <InteractiveTiltCard>
-            <div className="mb-5 flex size-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400">
+            <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400">
               <GitBranch size={20} />
             </div>
             <h3 className="text-lg font-bold text-slate-950 dark:text-white">Logic Node Trees</h3>
-            <p className="mt-2.5 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
+            <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
               Wire input data into calculated math models. Formula dependencies update automatically
               whenever inputs change.
             </p>
           </InteractiveTiltCard>
 
           <InteractiveTiltCard>
-            <div className="mb-5 flex size-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
+            <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
               <Activity size={20} />
             </div>
             <h3 className="text-lg font-bold text-slate-950 dark:text-white">Real-Time Streams</h3>
-            <p className="mt-2.5 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
+            <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
               Stream live server data directly into metric blocks. Render responsive gauges,
               trendlines, and threshold warning states.
             </p>
           </InteractiveTiltCard>
 
-          {/* Premium Rive Canvas Integration */}
-          <InteractiveTiltCard className="flex flex-col justify-between">
-            <div>
-              <div className="mb-5 flex size-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                <RefreshCw className="animate-[spin_4s_linear_infinite]" size={20} />
-              </div>
-              <h3 className="text-lg font-bold text-slate-950 dark:text-white">Interactive Rive Component</h3>
-              <p className="mt-2.5 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
-                Rive-powered interactive visual state controllers that respond to system updates
-                dynamically.
-              </p>
+          <InteractiveTiltCard>
+            <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+              <RefreshCw className="animate-[spin_4s_linear_infinite]" size={20} />
             </div>
-
-            <div className="mt-6 h-[80px] w-full overflow-hidden rounded-lg bg-slate-200/60 dark:bg-black/40 border border-slate-300/80 dark:border-white/5">
-              <div className="w-full h-full bg-slate-100/50 dark:bg-slate-900/50 flex items-center justify-center text-xs text-slate-500 font-semibold" />
-            </div>
+            <h3 className="text-lg font-bold text-slate-950 dark:text-white">Interactive Rive Component</h3>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
+              Rive-powered interactive visual state controllers that respond to system updates
+              dynamically.
+            </p>
           </InteractiveTiltCard>
         </div>
       </section>
