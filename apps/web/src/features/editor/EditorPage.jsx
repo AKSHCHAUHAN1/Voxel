@@ -2007,12 +2007,20 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
         top: `${node.y ?? 40}px`,
         width: `${widthOf(node.size)}px`,
         zIndex: isSelected ? 30 : 10,
+        willChange: 'left, top',
       }}
       onClick={(e) => {
         e.stopPropagation();
         onSelect();
       }}
-      className={`rounded-2xl p-5 backdrop-blur-xl shadow-lg transition-all duration-300 select-none ${cardStyle} ${
+      onMouseDown={(e) => {
+        // Allow dragging from anywhere on the card unless clicking interactive controls
+        const isInteractive = e.target.closest('button, input, select, textarea, a, label');
+        if (!isInteractive) {
+          onDragStart(e, node.id);
+        }
+      }}
+      className={`rounded-2xl p-5 backdrop-blur-xl shadow-lg transition-shadow duration-200 select-none cursor-grab active:cursor-grabbing ${cardStyle} ${
         isSelected
           ? 'ring-2 ring-indigo-500/90 shadow-[0_0_30px_rgba(99,102,241,0.35)] scale-[1.02] z-[30]'
           : 'hover:shadow-xl hover:scale-[1.01] z-[10]'
@@ -2033,10 +2041,9 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
         </div>
       )}
 
-      {/* --- DRAGGABLE CARD HEADER --- */}
+      {/* --- CARD HEADER --- */}
       <div
-        onMouseDown={(e) => onDragStart(e, node.id)}
-        className="flex items-center justify-between border-b border-black/5 dark:border-white/5 pb-2.5 mb-4 cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+        className="flex items-center justify-between border-b border-black/5 dark:border-white/5 pb-2.5 mb-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
       >
         <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
           {nodeIcon} {node.type}
