@@ -2048,7 +2048,6 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
         <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
           {nodeIcon} {node.type}
         </span>
-        <GripVertical size={14} className="opacity-60" />
       </div>
 
       {/* --- RENDERING CARD CONTENT DYNAMICALLY --- */}
