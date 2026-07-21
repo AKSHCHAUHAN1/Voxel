@@ -212,11 +212,7 @@ export function AppShell() {
 
   return (
     <div
-      className={
-        theme === 'dark'
-          ? 'dark min-h-screen bg-slate-950 text-slate-100'
-          : 'min-h-screen bg-slate-50 text-slate-900'
-      }
+      className="min-h-screen bg-slate-50 text-slate-900 dark:bg-[#060913] dark:text-slate-100 transition-colors duration-300"
     >
       {/* Expanding Transition Bubble */}
       {bubble && (
