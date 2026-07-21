@@ -446,7 +446,14 @@ export default function LandingPage() {
       </section>
 
       {/* --- FEATURES GRID --- */}
-      <section id="features" className="mx-auto max-w-7xl px-6 py-24 md:py-32">
+      <motion.section
+        id="features"
+        initial={{ opacity: 0, y: 50 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-60px' }}
+        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+        className="mx-auto max-w-7xl px-6 py-24 md:py-32"
+      >
         <div className="mx-auto max-w-3xl text-center space-y-4">
           <h2 className="text-xs font-extrabold uppercase tracking-[.25em] text-violet-600 dark:text-violet-400">
             Engineered for speed
@@ -494,10 +501,17 @@ export default function LandingPage() {
             </p>
           </InteractiveTiltCard>
         </div>
-      </section>
+      </motion.section>
 
       {/* --- DESIGN PARALLAX/INTERCONNECTION SECTION --- */}
-      <section id="integration" className="border-t border-slate-200/80 dark:border-white/5 bg-slate-100/50 dark:bg-slate-950/40 py-24 md:py-32 transition-colors duration-200">
+      <motion.section
+        id="integration"
+        initial={{ opacity: 0, y: 50 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-60px' }}
+        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+        className="bg-slate-100/50 dark:bg-slate-950/40 py-24 md:py-32 transition-colors duration-200"
+      >
         <div className="mx-auto max-w-7xl px-6">
           <div className="grid gap-16 lg:grid-cols-12 lg:items-center">
             {/* Visuals */}
@@ -568,10 +582,16 @@ export default function LandingPage() {
             </div>
           </div>
         </div>
-      </section>
+      </motion.section>
 
       {/* --- HERO FOOTER CTA --- */}
-      <section className="mx-auto max-w-7xl px-6 py-24 md:py-32">
+      <motion.section
+        initial={{ opacity: 0, y: 50 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-60px' }}
+        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+        className="mx-auto max-w-7xl px-6 py-24 md:py-32"
+      >
         <div className="apple-liquid-glass relative overflow-hidden rounded-3xl px-8 py-16 text-center shadow-2xl border border-slate-200/80 dark:border-white/10">
           <div className="absolute top-0 left-1/2 -z-10 h-64 w-64 -translate-x-1/2 rounded-full bg-violet-500/10 blur-[80px]" />
 
@@ -603,10 +623,16 @@ export default function LandingPage() {
             </div>
           </div>
         </div>
-      </section>
+      </motion.section>
 
       {/* --- FOOTER --- */}
-      <footer className="border-t border-slate-200/80 dark:border-white/5 py-12 text-slate-600 dark:text-slate-400 text-sm font-medium transition-colors duration-200">
+      <motion.footer
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.6 }}
+        className="py-12 text-slate-600 dark:text-slate-400 text-sm font-medium transition-colors duration-200"
+      >
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-6 sm:flex-row">
           <div className="flex items-center gap-2 text-sm font-bold text-slate-950 dark:text-white">
             <img src={appIcon} alt="Voxel Logo" className="w-5 h-5 object-contain block dark:hidden" />
@@ -614,7 +640,7 @@ export default function LandingPage() {
           </div>
           <p>© {new Date().getFullYear()} Voxel Inc. All rights reserved.</p>
         </div>
-      </footer>
+      </motion.footer>
     </div>
   );
 }
