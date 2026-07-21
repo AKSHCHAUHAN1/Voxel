@@ -461,9 +461,10 @@ export default function LandingPage() {
         </div>
 
         <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-          <InteractiveTiltCard>
-            <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400">
-              <GitBranch size={20} />
+          <InteractiveTiltCard className="group">
+            <div className="relative mb-4 flex size-11 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400 group-hover:bg-violet-500/20 group-hover:scale-110 transition-all duration-300">
+              <span className="absolute inset-0 rounded-xl bg-violet-500/20 animate-ping opacity-40" />
+              <GitBranch size={20} className="relative z-10 animate-[pulse_2s_ease-in-out_infinite]" />
             </div>
             <h3 className="text-lg font-bold text-slate-950 dark:text-white">Logic Node Trees</h3>
             <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
@@ -472,9 +473,10 @@ export default function LandingPage() {
             </p>
           </InteractiveTiltCard>
 
-          <InteractiveTiltCard>
-            <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
-              <Activity size={20} />
+          <InteractiveTiltCard className="group">
+            <div className="relative mb-4 flex size-11 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 group-hover:bg-cyan-500/20 group-hover:scale-110 transition-all duration-300">
+              <span className="absolute inset-0 rounded-xl bg-cyan-500/20 animate-ping opacity-40" />
+              <Activity size={20} className="relative z-10 animate-[bounce_2s_ease-in-out_infinite]" />
             </div>
             <h3 className="text-lg font-bold text-slate-950 dark:text-white">Real-Time Streams</h3>
             <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
@@ -483,9 +485,10 @@ export default function LandingPage() {
             </p>
           </InteractiveTiltCard>
 
-          <InteractiveTiltCard>
-            <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-              <RefreshCw className="animate-[spin_4s_linear_infinite]" size={20} />
+          <InteractiveTiltCard className="group">
+            <div className="relative mb-4 flex size-11 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:bg-amber-500/20 group-hover:scale-110 transition-all duration-300">
+              <span className="absolute inset-0 rounded-xl bg-amber-500/20 animate-ping opacity-40" />
+              <RefreshCw size={20} className="relative z-10 animate-[spin_4s_linear_infinite]" />
             </div>
             <h3 className="text-lg font-bold text-slate-950 dark:text-white">Interactive Rive Component</h3>
             <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
