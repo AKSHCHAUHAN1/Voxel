@@ -1,5 +1,6 @@
-import { lazy, Suspense } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { Route, Routes } from 'react-router-dom';
+import { useThemeStore } from '@/store/theme-store';
 import { AppShell } from '@/components/layout/AppShell';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { ProtectedRoute } from '@/features/auth/ProtectedRoute';
@@ -14,6 +15,16 @@ const LandingPage = lazy(() => import('@/features/landing/LandingPage'));
 const SettingsPage = lazy(() => import('@/features/settings/SettingsPage'));
 
 export default function App() {
+  const theme = useThemeStore((s) => s.theme);
+
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
+
   return (
     <ErrorBoundary>
       <Suspense fallback={<PageLoader />}>
