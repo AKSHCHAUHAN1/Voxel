@@ -60,6 +60,11 @@ export default function WorkspacesPage() {
       await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
       setDeleteWorkspace(null);
     },
+    onError: (error) => {
+      console.error('Failed to delete workspace:', error);
+      alert(error.message || 'Failed to delete workspace');
+      setDeleteWorkspace(null);
+    }
   });
 
   // Global click listener to close context menu

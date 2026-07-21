@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
 
@@ -33,6 +33,7 @@ import { workspaceService } from '@/features/workspaces/workspace-service';
 import { useShortcut } from '@/lib/keyboard';
 import { useHistoryStore } from '@/store/history-store';
 import { VersionHistory } from './VersionHistory';
+import { useYjs } from './use-yjs';
 
 const emptyScene = {
   schemaVersion: 2,
@@ -197,7 +198,6 @@ export default function EditorPage() {
   const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
-  const [draft, setDraft] = useState(null);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [coordinates, setCoordinates] = useState({});
   const gridRef = useRef(null);
@@ -211,10 +211,17 @@ export default function EditorPage() {
     enabled: Boolean(dashboardId),
   });
 
+  const { scene: yScene, updateScene, awareness, awarenessStates } = useYjs(dashboardId, dashboard.data?.scene);
+
   const scene = useMemo(
-    () => sceneOf(draft ?? dashboard.data?.scene),
-    [dashboard.data?.scene, draft],
+    () => sceneOf(yScene || dashboard.data?.scene),
+    [dashboard.data?.scene, yScene],
   );
+
+  const draft = useMemo(() => {
+    if (!dashboard.data?.scene) return false;
+    return JSON.stringify(scene) !== JSON.stringify(dashboard.data?.scene);
+  }, [scene, dashboard.data?.scene]);
 
   const save = useMutation({
     mutationFn: (next) =>
@@ -223,7 +230,6 @@ export default function EditorPage() {
         version: dashboard.data.version,
       }),
     onSuccess: async () => {
-      setDraft(null);
       await queryClient.invalidateQueries({ queryKey: ['dashboard', dashboardId] });
     },
   });
@@ -584,24 +590,45 @@ export default function EditorPage() {
       }
       window.removeEventListener('resize', recalculateCoordinates);
     };
-  }, [scene.nodes, draft]);
+  }, [scene.nodes, yScene]);
 
 
   const update = (next, skipHistory = false) => {
     if (!skipHistory) {
       useHistoryStore.getState().push(scene);
     }
-    setDraft(next);
+    updateScene(next);
   };
 
   // Autosave Engine
   useEffect(() => {
-    if (!draft) return;
+    if (!yScene) return;
     const timer = setTimeout(() => {
-      save.mutate(draft);
+      save.mutate(yScene);
     }, 2000);
     return () => clearTimeout(timer);
-  }, [draft, save.mutate]);
+  }, [yScene, save.mutate]);
+
+  // Sync selectedNodeId to awareness
+  useEffect(() => {
+    if (!awareness) return;
+    awareness.setLocalStateField('selectedNodeId', selectedNodeId);
+  }, [awareness, selectedNodeId]);
+
+  const handlePointerMove = useCallback((e) => {
+    if (!awareness) return;
+    const scrollContainer = gridRef.current;
+    if (!scrollContainer) return;
+    const rect = scrollContainer.getBoundingClientRect();
+    const x = e.clientX - rect.left + scrollContainer.scrollLeft;
+    const y = e.clientY - rect.top + scrollContainer.scrollTop;
+    awareness.setLocalStateField('cursor', { x, y });
+  }, [awareness]);
+
+  const handlePointerLeave = useCallback(() => {
+    if (!awareness) return;
+    awareness.setLocalStateField('cursor', null);
+  }, [awareness]);
 
   const handleUndo = () => {
     const prev = useHistoryStore.getState().undo(scene);
@@ -659,7 +686,7 @@ export default function EditorPage() {
   };
 
   const handleSave = () => {
-    if (draft) {
+    if (yScene) {
       save.mutate(scene);
     }
   };
@@ -677,7 +704,7 @@ export default function EditorPage() {
   useShortcut('meta+v', handlePaste, { label: 'Paste copied node', category: 'Editor' }, [scene]);
   useShortcut('backspace', handleDeleteSelected, { label: 'Delete selected node', category: 'Editor' }, [selectedNodeId, scene]);
   useShortcut('delete', handleDeleteSelected, { label: 'Delete selected node', category: 'Editor' }, [selectedNodeId, scene]);
-  useShortcut('meta+s', handleSave, { label: 'Save dashboard changes', category: 'Editor' }, [draft, scene]);
+  useShortcut('meta+s', handleSave, { label: 'Save dashboard changes', category: 'Editor' }, [yScene, scene]);
 
   const add = (type) => {
     update({ ...scene, nodes: [...scene.nodes, newNode(type)] });
@@ -700,14 +727,12 @@ export default function EditorPage() {
       const dx = moveEvent.clientX - startX;
       const dy = moveEvent.clientY - startY;
 
-      setDraft((prevDraft) => {
-        const current = prevDraft ?? scene;
-        return {
-          ...current,
-          nodes: current.nodes.map((n) =>
-            n.id === nodeId ? { ...n, x: Math.max(0, initX + dx), y: Math.max(0, initY + dy) } : n,
-          ),
-        };
+      const current = yScene ?? scene;
+      updateScene({
+        ...current,
+        nodes: current.nodes.map((n) =>
+          n.id === nodeId ? { ...n, x: Math.max(0, initX + dx), y: Math.max(0, initY + dy) } : n,
+        ),
       });
     };
 
@@ -754,7 +779,7 @@ export default function EditorPage() {
     );
 
   return (
-    <section className="-m-5 flex min-h-[calc(100vh-64px)] flex-col sm:-m-8 relative overflow-hidden bg-slate-50 dark:bg-[#030509]">
+    <section className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-slate-50 dark:bg-[#030509]">
       <style>{`
         .no-scrollbars::-webkit-scrollbar {
           display: none;
@@ -1007,15 +1032,16 @@ export default function EditorPage() {
           {/* Scrollable Container */}
           <div
             ref={gridRef}
-            className="w-full h-full overflow-auto relative p-6 no-scrollbars"
-            style={{ maxHeight: 'calc(100vh - 64px)' }}
+            className="w-full h-full overflow-auto relative p-6 no-scrollbars flex-1"
+            onPointerMove={handlePointerMove}
+            onPointerLeave={handlePointerLeave}
           >
             {/* The infinite board sheet */}
             <div
-              className="relative select-none transition-all duration-300"
+              className="relative select-none transition-all duration-300 min-h-full min-w-full flex flex-col justify-center"
               style={{
-                width: '3200px',
-                height: '2200px',
+                width: '100%',
+                height: '100%',
                 ...gridStyleInline,
               }}
             >
@@ -1031,48 +1057,42 @@ export default function EditorPage() {
                     markerHeight="5"
                     orient="auto-start-reverse"
                   >
-                    <path d="M 0 1 L 10 5 L 0 9 z" fill="#8b5cf6" />
+                    <path d="M 0 0 L 10 5 L 0 10 z" className="fill-slate-400" />
                   </marker>
-
-                  <linearGradient id="connGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#818cf8" />
-                    <stop offset="100%" stopColor="#a78bfa" />
-                  </linearGradient>
                 </defs>
+                {scene.connections.map((conn, i) => {
+                  const fromNode = scene.nodes.find((n) => n.id === conn.fromId);
+                  const toNode = scene.nodes.find((n) => n.id === conn.toId);
+                  if (!fromNode || !toNode) return null;
 
-                {scene.connections.map((conn, idx) => {
-                  const from = coordinates[conn.fromId];
-                  const to = coordinates[conn.toId];
-                  if (!from || !to) return null;
+                  const startX = (fromNode.x ?? 40) + 140; // Approx center (width ~280)
+                  const startY = (fromNode.y ?? 40) + 100; // Approx center (height ~200)
+                  const endX = (toNode.x ?? 40) + 140;
+                  const endY = (toNode.y ?? 40) + 100;
 
-                  const dx = to.x - from.x;
-                  const pathD = `M ${from.x} ${from.y} C ${from.x + dx / 2} ${from.y}, ${from.x + dx / 2} ${to.y}, ${to.x} ${to.y}`;
+                  const dx = endX - startX;
+                  const dy = endY - startY;
+                  const offset = 100;
+                  const path = `M ${startX} ${startY} C ${startX + offset} ${startY}, ${endX - offset} ${endY}, ${endX} ${endY}`;
 
-                  const isPulsing = conn.style === 'pulsing';
-                  const isGlowing = conn.style === 'glowing';
+                  const styles = {
+                    solid: 'stroke-slate-300 dark:stroke-slate-600',
+                    dashed: 'stroke-slate-400 dark:stroke-slate-500 stroke-dasharray-[8_8]',
+                    pulsing:
+                      'stroke-violet-500 animate-pulse drop-shadow-[0_0_8px_rgba(139,92,246,0.6)]',
+                    glowing: 'stroke-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.8)]',
+                  };
+                  const strokeClass = styles[conn.style || 'solid'];
 
                   return (
-                    <g key={idx}>
-                      {/* Glowing blur path */}
-                      {(isGlowing || isPulsing) && (
-                        <path
-                          d={pathD}
-                          fill="none"
-                          stroke="#a78bfa"
-                          strokeWidth="5"
-                          className="opacity-20 blur-sm"
-                        />
-                      )}
-                      <path
-                        d={pathD}
-                        fill="none"
-                        stroke="url(#connGrad)"
-                        strokeWidth={isGlowing ? 3 : 2}
-                        markerEnd="url(#arrow)"
-                        strokeDasharray={isPulsing ? '8 6' : undefined}
-                        className={isPulsing ? 'animate-[dash_1.5s_linear_infinite]' : ''}
-                      />
-                    </g>
+                    <path
+                      key={`${conn.fromId}-${conn.toId}-${i}`}
+                      d={path}
+                      fill="transparent"
+                      strokeWidth="2.5"
+                      markerEnd={conn.style === 'solid' ? 'url(#arrow)' : ''}
+                      className={strokeClass}
+                    />
                   );
                 })}
               </svg>
@@ -1087,6 +1107,8 @@ export default function EditorPage() {
                     resolveNodeValue={resolveNodeValue}
                     onDragStart={handleDragStart}
                     updateNode={updateNode}
+                    awarenessStates={awarenessStates}
+                    localClientId={awareness?.clientID}
                   />
                 ) : (
                   <CanvasEmpty onAdd={() => setPickerOpen(true)} />
@@ -1803,12 +1825,50 @@ export default function EditorPage() {
       </div>
 
       {pickerOpen && <NodePicker onClose={() => setPickerOpen(false)} onAdd={add} />}
+
+      {/* Render Remote Cursors */}
+      {awarenessStates
+        .filter(([clientId, state]) => clientId !== awareness?.clientID && state.user && state.cursor)
+        .map(([clientId, state]) => (
+          <div
+            key={clientId}
+            className="absolute z-[100] pointer-events-none flex flex-col items-start"
+            style={{
+              left: state.cursor.x,
+              top: state.cursor.y,
+              transform: 'translate(-2px, -2px)',
+            }}
+          >
+            {/* Custom SVG Mouse Pointer */}
+            <svg width="24" height="24" viewBox="0 0 24 24" fill={state.user.color} xmlns="http://www.w3.org/2000/svg" style={{ filter: 'drop-shadow(0px 2px 4px rgba(0,0,0,0.15))' }}>
+              <path d="M4.321 2.302L20.407 10.963C21.411 11.503 21.282 12.983 20.198 13.355L13.916 15.513L11.758 21.795C11.386 22.879 9.906 23.008 9.366 22.004L0.705 5.918C0.218 5.021 1.025 4.053 1.961 4.472L4.321 2.302Z" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <div
+              className="mt-1 ml-4 px-2 py-1 text-[10px] font-bold text-white rounded shadow-sm whitespace-nowrap"
+              style={{ backgroundColor: state.user.color }}
+            >
+              {state.user.name}
+            </div>
+          </div>
+        ))}
     </section>
   );
 }
 
 // --- FREEFORM GRID SETUP ---
-function NodeGrid({ nodes, selectedNodeId, onSelectNode, resolveNodeValue, onDragStart, updateNode }) {
+function NodeGrid({ nodes, selectedNodeId, onSelectNode, resolveNodeValue, onDragStart, updateNode, awarenessStates, localClientId }) {
+  const remoteSelections = useMemo(() => {
+    if (!awarenessStates) return {};
+    const selections = {};
+    awarenessStates.forEach(([clientId, state]) => {
+      if (clientId !== localClientId && state.selectedNodeId && state.user) {
+        if (!selections[state.selectedNodeId]) selections[state.selectedNodeId] = [];
+        selections[state.selectedNodeId].push(state.user);
+      }
+    });
+    return selections;
+  }, [awarenessStates, localClientId]);
+
   return (
     <div className="relative w-full min-h-[650px] z-10">
       {nodes.map((node) => (
@@ -1816,6 +1876,7 @@ function NodeGrid({ nodes, selectedNodeId, onSelectNode, resolveNodeValue, onDra
           key={node.id}
           node={node}
           isSelected={node.id === selectedNodeId}
+          remoteSelectedBy={remoteSelections[node.id] || []}
           onSelect={() => onSelectNode(node.id)}
           resolveNodeValue={resolveNodeValue}
           onDragStart={onDragStart}
@@ -1827,7 +1888,7 @@ function NodeGrid({ nodes, selectedNodeId, onSelectNode, resolveNodeValue, onDra
 }
 
 // --- CANVAS CARD COMPONENT ---
-function CanvasNodeCard({ node, isSelected, onSelect, resolveNodeValue, onDragStart, updateNode }) {
+function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveNodeValue, onDragStart, updateNode }) {
   const displayValue = resolveNodeValue(node);
   // Icon picker based on type
   const nodeIcon = useMemo(() => {
@@ -1898,12 +1959,27 @@ function CanvasNodeCard({ node, isSelected, onSelect, resolveNodeValue, onDragSt
         e.stopPropagation();
         onSelect();
       }}
-      className={`rounded-2xl p-5 shadow-sm transition-all duration-200 select-none ${cardStyle} ${
+      className={`rounded-2xl p-5 backdrop-blur-xl shadow-lg transition-all duration-300 select-none ${cardStyle} ${
         isSelected
-          ? 'ring-2 ring-violet-500 border-violet-500 dark:ring-violet-400 dark:border-violet-400'
-          : 'hover:scale-[1.01] hover:shadow-md'
+          ? 'ring-2 ring-indigo-500/90 shadow-[0_0_30px_rgba(99,102,241,0.35)] scale-[1.02] z-[30]'
+          : 'hover:shadow-xl hover:scale-[1.01] z-[10]'
       }`}
     >
+      {/* Remote Selection Ring Overlay */}
+      {remoteSelectedBy && remoteSelectedBy.length > 0 && (
+        <div 
+          className="absolute inset-[-4px] rounded-[18px] border-2 pointer-events-none z-[40]"
+          style={{ borderColor: remoteSelectedBy[0].color }}
+        >
+          <div 
+            className="absolute -top-[24px] left-[-2px] px-2 py-0.5 text-[9px] font-bold text-white rounded-t whitespace-nowrap"
+            style={{ backgroundColor: remoteSelectedBy[0].color }}
+          >
+            {remoteSelectedBy.map((u) => u.name).join(', ')}
+          </div>
+        </div>
+      )}
+
       {/* --- DRAGGABLE CARD HEADER --- */}
       <div
         onMouseDown={(e) => onDragStart(e, node.id)}

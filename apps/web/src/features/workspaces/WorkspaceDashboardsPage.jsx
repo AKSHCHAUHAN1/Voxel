@@ -74,6 +74,11 @@ export default function WorkspaceDashboardsPage() {
       await queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'dashboards'] });
       setDeleteDashboard(null);
     },
+    onError: (error) => {
+      console.error('Failed to delete dashboard:', error);
+      alert(error.message || 'Failed to delete dashboard');
+      setDeleteDashboard(null);
+    }
   });
 
   useEffect(() => {

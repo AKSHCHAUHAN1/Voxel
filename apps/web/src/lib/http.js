@@ -8,10 +8,15 @@ export class ApiClientError extends Error {
 }
 
 export const request = async (path, init = {}) => {
+  const headers = { ...init.headers };
+  if (init.body && !headers['content-type']) {
+    headers['content-type'] = 'application/json';
+  }
+
   const response = await fetch(`${runtime.apiBaseUrl}${path}`, {
     credentials: 'include',
-    headers: { 'content-type': 'application/json', ...init.headers },
     ...init,
+    headers,
   });
 
   if (response.status === 204) return undefined;

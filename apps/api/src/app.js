@@ -2,6 +2,8 @@ import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import Fastify from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { ZodError } from 'zod';
@@ -48,6 +50,39 @@ export const buildApp = async (environment) => {
   await app.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
+  });
+
+  await app.register(swagger, {
+    openapi: {
+      info: {
+        title: 'Voxel API',
+        description: 'Voxel platform API documentation',
+        version: '0.1.0',
+      },
+      servers: [
+        {
+          url: environment.VOXEL_API_PUBLIC_URL,
+        },
+      ],
+      components: {
+        securitySchemes: {
+          cookieAuth: {
+            type: 'apiKey',
+            in: 'cookie',
+            name: 'sessionId',
+          },
+        },
+      },
+    },
+  });
+
+  await app.register(swaggerUi, {
+    routePrefix: '/api/docs',
+    uiConfig: {
+      docExpansion: 'list',
+      deepLinking: false,
+    },
+    staticCSP: true,
   });
 
   app.addHook('onRequest', async (request, reply) => {
