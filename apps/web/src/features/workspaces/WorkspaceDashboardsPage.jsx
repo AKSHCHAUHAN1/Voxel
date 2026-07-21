@@ -28,7 +28,10 @@ const schema = z.object({
   description: z.string().trim().max(280).optional(),
 });
 
+import { useNotificationStore } from '@/store/notification-store';
+
 export default function WorkspaceDashboardsPage() {
+  const addNotification = useNotificationStore((s) => s.add);
   const { workspaceId } = useParams();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
@@ -76,7 +79,7 @@ export default function WorkspaceDashboardsPage() {
     },
     onError: (error) => {
       console.error('Failed to delete dashboard:', error);
-      alert(error.message || 'Failed to delete dashboard');
+      addNotification(error.message || 'Failed to delete dashboard', 'warning');
       setDeleteDashboard(null);
     }
   });
@@ -310,7 +313,7 @@ Sync Nodes: Active
         setImporting(false);
       } catch (err) {
         setImporting(false);
-        alert(err instanceof Error ? err.message : 'Failed to parse dashboard JSON.');
+        addNotification(err instanceof Error ? err.message : 'Failed to parse dashboard JSON.', 'warning');
       }
     };
 

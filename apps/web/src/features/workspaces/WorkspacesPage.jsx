@@ -16,12 +16,15 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { workspaceService } from './workspace-service';
 
+import { useNotificationStore } from '@/store/notification-store';
+
 const schema = z.object({
   name: z.string().trim().min(2, 'Use at least 2 characters.').max(80),
   description: z.string().trim().max(280).optional(),
 });
 
 export default function WorkspacesPage() {
+  const addNotification = useNotificationStore((s) => s.add);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const [editWorkspace, setEditWorkspace] = useState(null);
@@ -62,7 +65,7 @@ export default function WorkspacesPage() {
     },
     onError: (error) => {
       console.error('Failed to delete workspace:', error);
-      alert(error.message || 'Failed to delete workspace');
+      addNotification(error.message || 'Failed to delete workspace', 'warning');
       setDeleteWorkspace(null);
     }
   });

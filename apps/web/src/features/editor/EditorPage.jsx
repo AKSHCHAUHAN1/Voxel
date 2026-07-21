@@ -34,6 +34,7 @@ import { useShortcut } from '@/lib/keyboard';
 import { useHistoryStore } from '@/store/history-store';
 import { VersionHistory } from './VersionHistory';
 import { useYjs } from './use-yjs';
+import { CustomConfirmModal } from '@/components/feedback/CustomConfirmModal';
 
 const emptyScene = {
   schemaVersion: 2,
@@ -174,17 +175,19 @@ const newNode = (type) => {
 
 const cardColors = {
   slate:
-    'border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100',
+    'border-slate-200/90 bg-white/95 text-slate-900 shadow-md dark:border-slate-800/80 dark:bg-slate-900/90 dark:text-slate-100',
   violet:
-    'border-violet-200 bg-violet-50/20 text-slate-950 dark:border-violet-800/40 dark:bg-violet-950/10 dark:text-violet-100 ring-1 ring-violet-500/5',
+    'border-indigo-300/90 bg-gradient-to-br from-indigo-50/95 via-purple-50/90 to-indigo-100/70 text-slate-900 shadow-md shadow-indigo-500/10 dark:border-indigo-500/40 dark:bg-gradient-to-br dark:from-slate-900/95 dark:via-slate-900/90 dark:to-indigo-950/70 dark:text-indigo-100 ring-1 ring-indigo-500/25',
   emerald:
-    'border-emerald-200 bg-emerald-50/20 text-slate-950 dark:border-emerald-800/40 dark:bg-emerald-950/10 dark:text-emerald-100 ring-1 ring-emerald-500/5',
-  rose: 'border-rose-200 bg-rose-50/20 text-slate-950 dark:border-rose-800/40 dark:bg-rose-950/10 dark:text-rose-100 ring-1 ring-rose-500/5',
+    'border-emerald-300/90 bg-gradient-to-br from-emerald-50/95 via-teal-50/90 to-emerald-100/70 text-slate-900 shadow-md shadow-emerald-500/10 dark:border-emerald-500/40 dark:bg-gradient-to-br dark:from-slate-900/95 dark:via-slate-900/90 dark:to-emerald-950/70 dark:text-emerald-100 ring-1 ring-emerald-500/25',
+  rose:
+    'border-rose-300/90 bg-gradient-to-br from-rose-50/95 via-pink-50/90 to-rose-100/70 text-slate-900 shadow-md shadow-rose-500/10 dark:border-rose-500/40 dark:bg-gradient-to-br dark:from-slate-900/95 dark:via-slate-900/90 dark:to-rose-950/70 dark:text-rose-100 ring-1 ring-rose-500/25',
   amber:
-    'border-amber-200 bg-amber-50/20 text-slate-950 dark:border-amber-800/40 dark:bg-amber-950/10 dark:text-amber-100 ring-1 ring-amber-500/5',
+    'border-amber-300/90 bg-gradient-to-br from-amber-50/95 via-orange-50/90 to-amber-100/70 text-slate-900 shadow-md shadow-amber-500/10 dark:border-amber-500/40 dark:bg-gradient-to-br dark:from-slate-900/95 dark:via-slate-900/90 dark:to-amber-950/70 dark:text-amber-100 ring-1 ring-amber-500/25',
   indigo:
-    'border-indigo-200 bg-indigo-50/20 text-slate-950 dark:border-indigo-800/40 dark:bg-indigo-950/10 dark:text-indigo-100 ring-1 ring-indigo-500/5',
-  cyan: 'border-cyan-200 bg-cyan-50/20 text-slate-950 dark:border-cyan-800/40 dark:bg-cyan-950/10 dark:text-cyan-100 ring-1 ring-cyan-500/5',
+    'border-indigo-300/90 bg-gradient-to-br from-indigo-50/95 via-blue-50/90 to-indigo-100/70 text-slate-900 shadow-md shadow-indigo-500/10 dark:border-indigo-500/40 dark:bg-gradient-to-br dark:from-slate-900/95 dark:via-slate-900/90 dark:to-indigo-950/70 dark:text-indigo-100 ring-1 ring-indigo-500/25',
+  cyan:
+    'border-cyan-300/90 bg-gradient-to-br from-cyan-50/95 via-sky-50/90 to-cyan-100/70 text-slate-900 shadow-md shadow-cyan-500/10 dark:border-cyan-500/40 dark:bg-gradient-to-br dark:from-slate-900/95 dark:via-slate-900/90 dark:to-cyan-950/70 dark:text-cyan-100 ring-1 ring-cyan-500/25',
 };
 
 const textFonts = {
@@ -200,6 +203,14 @@ export default function EditorPage() {
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [coordinates, setCoordinates] = useState({});
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmText: '',
+    type: 'warning',
+    onConfirm: null,
+  });
   const gridRef = useRef(null);
 
   const canUndo = useHistoryStore((s) => s.past.length > 0);
@@ -234,15 +245,28 @@ export default function EditorPage() {
     },
   });
 
-  // Templates implementation
-  const loadPreset = (preset) => {
+  const loadPreset = (presetKey) => {
+    if (!presetKey) return;
     if (scene.nodes.length > 0) {
-      const confirmation = window.confirm(
-        'Are you sure you want to load this preset? It will overwrite your current layout.',
-      );
-      if (!confirmation) return;
+      setConfirmModal({
+        isOpen: true,
+        title: 'Overwrite Current Layout?',
+        message: 'Are you sure you want to load this preset template? It will replace all nodes in your current canvas.',
+        confirmText: 'Load Preset',
+        type: 'warning',
+        onConfirm: () => {
+          setConfirmModal({ isOpen: false });
+          executeLoadPreset(presetKey);
+        },
+        onCancel: () => setConfirmModal({ isOpen: false }),
+      });
+    } else {
+      executeLoadPreset(presetKey);
     }
+  };
 
+  // Templates implementation
+  const executeLoadPreset = (preset) => {
     const apiStatusId = crypto.randomUUID();
     const latencyId = crypto.randomUUID();
     const chartId = crypto.randomUUID();
@@ -692,9 +716,18 @@ export default function EditorPage() {
   };
 
   const handleRestoreVersion = (ver) => {
-    if (window.confirm(`Are you sure you want to restore Version #${ver.version}?`)) {
-      update(ver.scene);
-    }
+    setConfirmModal({
+      isOpen: true,
+      title: `Restore Version #${ver.version}?`,
+      message: `Are you sure you want to revert your current layout to Version #${ver.version}? All unsaved changes will be replaced.`,
+      confirmText: 'Restore Version',
+      type: 'warning',
+      onConfirm: () => {
+        setConfirmModal({ isOpen: false });
+        update(ver.scene);
+      },
+      onCancel: () => setConfirmModal({ isOpen: false }),
+    });
   };
 
   // Keyboard shortcut registrations
@@ -1825,6 +1858,16 @@ export default function EditorPage() {
       </div>
 
       {pickerOpen && <NodePicker onClose={() => setPickerOpen(false)} onAdd={add} />}
+
+      <CustomConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText}
+        type={confirmModal.type}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={confirmModal.onCancel}
+      />
 
       {/* Render Remote Cursors */}
       {awarenessStates
