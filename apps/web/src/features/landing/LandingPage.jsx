@@ -30,20 +30,18 @@ function InteractiveTiltCard({ children, className = '' }) {
   const x = useMotionValue(0);
   const y = useMotionValue(0);
 
-  // Map mouse coordinates to degrees of rotation
-  const rotateX = useTransform(y, [-100, 100], [15, -15]);
-  const rotateY = useTransform(x, [-100, 100], [-15, 15]);
+  const mouseXSpring = useSpring(x);
+  const mouseYSpring = useSpring(y);
 
-  const springConfig = { damping: 20, stiffness: 200, mass: 0.5 };
-  const rx = useSpring(rotateX, springConfig);
-  const ry = useSpring(rotateY, springConfig);
+  const rx = useTransform(mouseYSpring, [-0.5, 0.5], ['7.5deg', '-7.5deg']);
+  const ry = useTransform(mouseXSpring, [-0.5, 0.5], ['-7.5deg', '7.5deg']);
 
   function handleMouseMove(event) {
     const rect = event.currentTarget.getBoundingClientRect();
     const width = rect.width;
     const height = rect.height;
-    const mouseX = event.clientX - rect.left - width / 2;
-    const mouseY = event.clientY - rect.top - height / 2;
+    const mouseX = (event.clientX - rect.left) / width - 0.5;
+    const mouseY = (event.clientY - rect.top) / height - 0.5;
     x.set(mouseX);
     y.set(mouseY);
   }
@@ -62,7 +60,7 @@ function InteractiveTiltCard({ children, className = '' }) {
         rotateY: ry,
         transformStyle: 'preserve-3d',
       }}
-      className={`relative rounded-2xl border border-white/10 bg-[#0f1424]/80 p-6 shadow-xl backdrop-blur-md transition-shadow hover:shadow-2xl hover:shadow-violet-500/10 ${className}`}
+      className={`apple-liquid-card relative rounded-2xl p-6 transition-all duration-200 ${className}`}
     >
       {children}
     </motion.div>
@@ -89,7 +87,7 @@ export default function LandingPage() {
       x: 60,
       y: 40,
       value: 1200,
-      icon: <Activity className="text-cyan-400" size={18} />,
+      icon: <Activity className="text-cyan-500 dark:text-cyan-400" size={18} />,
     },
     {
       id: 'conversion',
@@ -98,7 +96,7 @@ export default function LandingPage() {
       x: 60,
       y: 220,
       value: 2.5,
-      icon: <Cpu className="text-violet-400" size={18} />,
+      icon: <Cpu className="text-violet-600 dark:text-violet-400" size={18} />,
     },
     {
       id: 'revenue',
@@ -107,7 +105,7 @@ export default function LandingPage() {
       x: 360,
       y: 130,
       value: 30, // calculated traffic * conversion / 100
-      icon: <Zap className="text-amber-400" size={18} />,
+      icon: <Zap className="text-amber-500 dark:text-amber-400" size={18} />,
     },
   ]);
 
@@ -183,7 +181,7 @@ export default function LandingPage() {
 
   return (
     <div
-      className="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900 dark:bg-[#04060d] dark:text-slate-100 transition-colors duration-300 selection:bg-violet-500/30 selection:text-violet-600 dark:selection:text-violet-200"
+      className="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900 dark:bg-[#04060d] dark:text-slate-100 transition-colors duration-200 ease-out selection:bg-violet-500/30 selection:text-violet-600 dark:selection:text-violet-200"
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
     >
@@ -193,7 +191,7 @@ export default function LandingPage() {
       <div className="absolute bottom-[10%] left-10 -z-10 h-[650px] w-[650px] rounded-full bg-fuchsia-500/5 blur-[180px] dark:bg-fuchsia-600/5" />
 
       {/* --- HEADER --- */}
-      <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/80 backdrop-blur-xl dark:border-white/5 dark:bg-[#04060d]/60 shadow-xs">
+      <header className="sticky top-0 z-50 apple-liquid-glass">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center">
             <img src={horizontalLogo} alt="Voxel" className="h-14 object-contain block dark:hidden" />
@@ -257,7 +255,7 @@ export default function LandingPage() {
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
-              className="inline-flex items-center gap-2 rounded-full border border-violet-500/20 bg-violet-500/10 px-3.5 py-1 text-xs font-semibold tracking-wide text-violet-300 backdrop-blur-md"
+              className="inline-flex items-center gap-2 rounded-full border border-violet-500/20 bg-violet-500/10 px-3.5 py-1 text-xs font-extrabold tracking-wide text-violet-600 dark:text-violet-300 backdrop-blur-md"
             >
               <Sparkles size={12} className="animate-pulse" /> Visual Grid Engine v2.0
             </motion.div>
@@ -266,10 +264,10 @@ export default function LandingPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.1 }}
-              className="text-5xl font-extrabold leading-[1.1] tracking-tight md:text-6xl"
+              className="text-5xl font-extrabold leading-[1.1] tracking-tight md:text-6xl text-slate-950 dark:text-white"
             >
               Make your work <br className="hidden sm:inline" />
-              <span className="bg-gradient-to-r from-violet-400 via-indigo-200 to-cyan-300 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-600 dark:from-violet-400 dark:via-indigo-200 dark:to-cyan-300 bg-clip-text text-transparent">
                 visually alive.
               </span>
             </motion.h1>
@@ -278,7 +276,7 @@ export default function LandingPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
-              className="text-lg leading-relaxed text-slate-400"
+              className="text-lg leading-relaxed text-slate-600 dark:text-slate-300 font-medium"
             >
               Voxel combines reactive math nodes, streaming databases, and interactive metric
               components into a single visual canvas. Track logic, map workflows, and present data
@@ -293,7 +291,7 @@ export default function LandingPage() {
             >
               <Link
                 to="/login"
-                className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-6 py-3.5 text-sm font-semibold text-white shadow-xl shadow-violet-500/20 transition hover:from-violet-500 hover:to-indigo-500 hover:shadow-violet-500/30"
+                className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-6 py-3.5 text-sm font-bold text-white shadow-xl shadow-violet-500/20 transition hover:from-violet-500 hover:to-indigo-500 hover:shadow-violet-500/30"
               >
                 Launch Visual Canvas
                 <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
@@ -307,15 +305,15 @@ export default function LandingPage() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.8, delay: 0.2 }}
-              className="relative rounded-3xl border border-white/10 bg-[#070b18]/60 p-1 shadow-2xl shadow-violet-500/5 backdrop-blur-sm"
+              className="apple-liquid-glass relative rounded-3xl p-1 shadow-2xl backdrop-blur-2xl"
             >
               {/* Header Bar */}
-              <div className="flex items-center justify-between border-b border-white/10 px-6 py-3.5 text-xs text-slate-400">
+              <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-white/10 px-6 py-3.5 text-xs font-semibold text-slate-600 dark:text-slate-400">
                 <div className="flex items-center gap-2 font-medium">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-ping" />
                   Live Preview Sandbox (Interactive)
                 </div>
-                <div className="flex items-center gap-1.5 font-mono text-[10px] text-slate-500">
+                <div className="flex items-center gap-1.5 font-mono text-[10px] text-slate-500 dark:text-slate-400">
                   <MousePointerClick size={12} /> Drag nodes & adjust values
                 </div>
               </div>
@@ -323,16 +321,15 @@ export default function LandingPage() {
               {/* Sandbox Grid Area */}
               <div
                 ref={containerRef}
-                className="relative h-[320px] w-full overflow-hidden bg-[#05070e] bg-[radial-gradient(ellipse_at_center,transparent_20%,#05070e_80%),linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:24px_24px] p-6"
+                className="relative h-[320px] w-full overflow-hidden rounded-b-[22px] bg-slate-50/80 dark:bg-[#05070e] bg-[radial-gradient(ellipse_at_center,transparent_20%,rgba(248,250,252,0.8)_80%),linear-gradient(rgba(99,102,241,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.08)_1px,transparent_1px)] dark:bg-[radial-gradient(ellipse_at_center,transparent_20%,#05070e_80%),linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:24px_24px] p-6"
               >
                 {/* Dynamically Drawn Connecting Svg Lines */}
                 <svg className="pointer-events-none absolute inset-0 h-full w-full">
-                  {/* Definition for animated dash pulse */}
                   <defs>
                     <linearGradient id="lineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#22d3ee" />
-                      <stop offset="50%" stopColor="#818cf8" />
-                      <stop offset="100%" stopColor="#fbbf24" />
+                      <stop offset="0%" stopColor="#06b6d4" />
+                      <stop offset="50%" stopColor="#6366f1" />
+                      <stop offset="100%" stopColor="#f59e0b" />
                     </linearGradient>
                   </defs>
 
@@ -349,11 +346,10 @@ export default function LandingPage() {
                         <path
                           d={`M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`}
                           fill="none"
-                          stroke={sandboxPulse ? 'url(#lineGrad)' : 'rgba(129, 140, 248, 0.4)'}
+                          stroke={sandboxPulse ? 'url(#lineGrad)' : 'rgba(99, 102, 241, 0.4)'}
                           strokeWidth={sandboxPulse ? 3 : 2}
-                          className="transition-all duration-300"
+                          className="transition-all duration-200"
                         />
-
                         <path
                           d={`M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`}
                           fill="none"
@@ -380,11 +376,10 @@ export default function LandingPage() {
                         <path
                           d={`M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`}
                           fill="none"
-                          stroke={sandboxPulse ? 'url(#lineGrad)' : 'rgba(129, 140, 248, 0.4)'}
+                          stroke={sandboxPulse ? 'url(#lineGrad)' : 'rgba(99, 102, 241, 0.4)'}
                           strokeWidth={sandboxPulse ? 3 : 2}
-                          className="transition-all duration-300"
+                          className="transition-all duration-200"
                         />
-
                         <path
                           d={`M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`}
                           fill="none"
@@ -404,20 +399,20 @@ export default function LandingPage() {
                   <div
                     key={node.id}
                     style={{ left: node.x, top: node.y }}
-                    className="absolute z-10 w-[220px] select-none rounded-xl border border-white/10 bg-[#0d1222]/90 p-4 shadow-xl backdrop-blur-md transition-shadow hover:border-violet-500/30 hover:shadow-violet-500/5 cursor-grab active:cursor-grabbing"
+                    className="apple-liquid-card absolute z-10 w-[220px] select-none rounded-xl p-4 cursor-grab active:cursor-grabbing"
                     onMouseDown={(e) => handleMouseDown(e, node.id)}
                   >
-                    <div className="flex items-center justify-between border-b border-white/5 pb-2">
-                      <span className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+                    <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-white/5 pb-2">
+                      <span className="flex items-center gap-2 text-xs font-extrabold text-slate-800 dark:text-slate-200">
                         {node.icon} {node.title}
                       </span>
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                         {node.type}
                       </span>
                     </div>
 
                     <div className="mt-3 flex items-center justify-between">
-                      <span className="text-xl font-bold font-mono tracking-tight text-white">
+                      <span className="text-xl font-bold font-mono tracking-tight text-slate-950 dark:text-white">
                         {node.type === 'logic' ? `${node.value}%` : node.value.toLocaleString()}
                       </span>
 
@@ -427,7 +422,7 @@ export default function LandingPage() {
                             onClick={() =>
                               incrementNode(node.id, node.id === 'conversion' ? -0.1 : -100)
                             }
-                            className="flex size-6 items-center justify-center rounded-md border border-white/10 bg-white/5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+                            className="flex size-6 items-center justify-center rounded-md border border-slate-200 bg-white/80 dark:border-white/10 dark:bg-white/5 text-slate-600 dark:text-slate-300 transition hover:bg-slate-100 dark:hover:bg-white/10 font-bold"
                           >
                             -
                           </button>
@@ -435,7 +430,7 @@ export default function LandingPage() {
                             onClick={() =>
                               incrementNode(node.id, node.id === 'conversion' ? 0.1 : 100)
                             }
-                            className="flex size-6 items-center justify-center rounded-md border border-white/10 bg-white/5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+                            className="flex size-6 items-center justify-center rounded-md border border-slate-200 bg-white/80 dark:border-white/10 dark:bg-white/5 text-slate-600 dark:text-slate-300 transition hover:bg-slate-100 dark:hover:bg-white/10 font-bold"
                           >
                             <Plus size={12} />
                           </button>
@@ -453,13 +448,13 @@ export default function LandingPage() {
       {/* --- FEATURES GRID --- */}
       <section id="features" className="mx-auto max-w-7xl px-6 py-24 md:py-32">
         <div className="mx-auto max-w-3xl text-center space-y-4">
-          <h2 className="text-sm font-semibold uppercase tracking-[.25em] text-violet-400">
+          <h2 className="text-xs font-extrabold uppercase tracking-[.25em] text-violet-600 dark:text-violet-400">
             Engineered for speed
           </h2>
-          <p className="text-3xl font-extrabold tracking-tight sm:text-4xl">
+          <p className="text-3xl font-extrabold tracking-tight sm:text-4xl text-slate-950 dark:text-white">
             A visual data workflow engine like no other.
           </p>
-          <p className="text-slate-400 text-base">
+          <p className="text-slate-600 dark:text-slate-400 text-base font-medium">
             Replace static reports with interactive node-based systems that run instantly in the
             browser.
           </p>
@@ -467,22 +462,22 @@ export default function LandingPage() {
 
         <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
           <InteractiveTiltCard>
-            <div className="mb-5 flex size-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-400">
+            <div className="mb-5 flex size-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400">
               <GitBranch size={20} />
             </div>
-            <h3 className="text-lg font-bold text-white">Logic Node Trees</h3>
-            <p className="mt-2.5 text-sm leading-relaxed text-slate-400">
+            <h3 className="text-lg font-bold text-slate-950 dark:text-white">Logic Node Trees</h3>
+            <p className="mt-2.5 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
               Wire input data into calculated math models. Formula dependencies update automatically
               whenever inputs change.
             </p>
           </InteractiveTiltCard>
 
           <InteractiveTiltCard>
-            <div className="mb-5 flex size-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400">
+            <div className="mb-5 flex size-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
               <Activity size={20} />
             </div>
-            <h3 className="text-lg font-bold text-white">Real-Time Streams</h3>
-            <p className="mt-2.5 text-sm leading-relaxed text-slate-400">
+            <h3 className="text-lg font-bold text-slate-950 dark:text-white">Real-Time Streams</h3>
+            <p className="mt-2.5 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
               Stream live server data directly into metric blocks. Render responsive gauges,
               trendlines, and threshold warning states.
             </p>
@@ -491,57 +486,57 @@ export default function LandingPage() {
           {/* Premium Rive Canvas Integration */}
           <InteractiveTiltCard className="flex flex-col justify-between">
             <div>
-              <div className="mb-5 flex size-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-400">
+              <div className="mb-5 flex size-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
                 <RefreshCw className="animate-[spin_4s_linear_infinite]" size={20} />
               </div>
-              <h3 className="text-lg font-bold text-white">Interactive Rive Component</h3>
-              <p className="mt-2.5 text-sm leading-relaxed text-slate-400">
+              <h3 className="text-lg font-bold text-slate-950 dark:text-white">Interactive Rive Component</h3>
+              <p className="mt-2.5 text-sm leading-relaxed text-slate-600 dark:text-slate-400 font-medium">
                 Rive-powered interactive visual state controllers that respond to system updates
                 dynamically.
               </p>
             </div>
 
-            <div className="mt-6 h-[80px] w-full overflow-hidden rounded-lg bg-black/40 border border-white/5">
-              <div className="w-full h-full bg-slate-900/50 flex items-center justify-center text-xs text-slate-500" />
+            <div className="mt-6 h-[80px] w-full overflow-hidden rounded-lg bg-slate-200/60 dark:bg-black/40 border border-slate-300/80 dark:border-white/5">
+              <div className="w-full h-full bg-slate-100/50 dark:bg-slate-900/50 flex items-center justify-center text-xs text-slate-500 font-semibold" />
             </div>
           </InteractiveTiltCard>
         </div>
       </section>
 
       {/* --- DESIGN PARALLAX/INTERCONNECTION SECTION --- */}
-      <section id="integration" className="border-t border-white/5 bg-slate-950/40 py-24 md:py-32">
+      <section id="integration" className="border-t border-slate-200/80 dark:border-white/5 bg-slate-100/50 dark:bg-slate-950/40 py-24 md:py-32 transition-colors duration-200">
         <div className="mx-auto max-w-7xl px-6">
           <div className="grid gap-16 lg:grid-cols-12 lg:items-center">
             {/* Visuals */}
             <div className="order-2 lg:order-1 lg:col-span-7 grid grid-cols-2 gap-4">
               <div className="space-y-4">
-                <div className="rounded-2xl border border-white/5 bg-[#090d1a] p-6 shadow-lg">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-cyan-400">
+                <div className="apple-liquid-card rounded-2xl p-6 shadow-lg">
+                  <div className="flex items-center gap-2 text-xs font-bold text-cyan-600 dark:text-cyan-400">
                     <Database size={14} /> postgresql-prod
                   </div>
-                  <div className="mt-3 text-2xl font-bold font-mono text-white">12,042</div>
-                  <div className="mt-1 text-[10px] text-slate-500">Live DB Connections</div>
+                  <div className="mt-3 text-2xl font-bold font-mono text-slate-950 dark:text-white">12,042</div>
+                  <div className="mt-1 text-[10px] font-semibold text-slate-500">Live DB Connections</div>
                 </div>
-                <div className="rounded-2xl border border-white/5 bg-[#090d1a] p-6 shadow-lg">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-violet-400">
+                <div className="apple-liquid-card rounded-2xl p-6 shadow-lg">
+                  <div className="flex items-center gap-2 text-xs font-bold text-violet-600 dark:text-violet-400">
                     <Layers size={14} /> metric-aggregator
                   </div>
-                  <div className="mt-3 text-2xl font-bold font-mono text-white">99.98%</div>
-                  <div className="mt-1 text-[10px] text-slate-500">Success Rate</div>
+                  <div className="mt-3 text-2xl font-bold font-mono text-slate-950 dark:text-white">99.98%</div>
+                  <div className="mt-1 text-[10px] font-semibold text-slate-500">Success Rate</div>
                 </div>
               </div>
 
               <div className="space-y-4 pt-8">
-                <div className="rounded-2xl border border-white/5 bg-[#090d1a] p-6 shadow-lg">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-amber-400">
+                <div className="apple-liquid-card rounded-2xl p-6 shadow-lg">
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-600 dark:text-amber-400">
                     <Zap size={14} /> event-triggers
                   </div>
-                  <div className="mt-3 text-2xl font-bold font-mono text-white">0.4ms</div>
-                  <div className="mt-1 text-[10px] text-slate-500">Pipeline Latency</div>
+                  <div className="mt-3 text-2xl font-bold font-mono text-slate-950 dark:text-white">0.4ms</div>
+                  <div className="mt-1 text-[10px] font-semibold text-slate-500">Pipeline Latency</div>
                 </div>
-                <div className="rounded-2xl border border-white/5 bg-gradient-to-br from-violet-600/20 to-indigo-600/20 p-6 shadow-lg border-violet-500/20">
-                  <h4 className="text-sm font-semibold text-white">Connect anything</h4>
-                  <p className="mt-2 text-xs text-slate-400">
+                <div className="apple-liquid-card rounded-2xl bg-gradient-to-br from-violet-500/10 to-indigo-500/10 dark:from-violet-600/20 dark:to-indigo-600/20 p-6 shadow-lg border-violet-500/30">
+                  <h4 className="text-sm font-extrabold text-slate-950 dark:text-white">Connect anything</h4>
+                  <p className="mt-2 text-xs text-slate-600 dark:text-slate-400 font-medium">
                     Input files, Webhook relays, Postgres, or Redis caches are modeled as simple
                     nodes.
                   </p>
@@ -551,13 +546,13 @@ export default function LandingPage() {
 
             {/* Content */}
             <div className="order-1 lg:order-2 lg:col-span-5 space-y-6">
-              <h2 className="text-sm font-semibold uppercase tracking-[.25em] text-cyan-400">
+              <h2 className="text-xs font-extrabold uppercase tracking-[.25em] text-cyan-600 dark:text-cyan-400">
                 Unified Pipelines
               </h2>
-              <h3 className="text-3xl font-extrabold tracking-tight sm:text-4xl text-white">
+              <h3 className="text-3xl font-extrabold tracking-tight sm:text-4xl text-slate-950 dark:text-white">
                 Consolidate your stack into one visual logic map
               </h3>
-              <p className="text-slate-400 leading-relaxed">
+              <p className="text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
                 Why jump between Grafana, spreadsheets, and script runners? Voxel lets you map
                 database connections directly into logic units that transform and display metrics
                 visually in real-time.
@@ -569,8 +564,8 @@ export default function LandingPage() {
                   'Support for custom Javascript math calculations',
                   'Sub-millisecond visual updates using Zustand reactive bindings',
                 ].map((item, idx) => (
-                  <div key={idx} className="flex items-center gap-3 text-sm text-slate-300">
-                    <span className="flex size-5 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400 font-bold text-xs">
+                  <div key={idx} className="flex items-center gap-3 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    <span className="flex size-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-extrabold text-xs">
                       ✓
                     </span>
                     {item}
@@ -584,8 +579,8 @@ export default function LandingPage() {
 
       {/* --- HERO FOOTER CTA --- */}
       <section className="mx-auto max-w-7xl px-6 py-24 md:py-32">
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0c1228] to-[#060814] px-8 py-16 text-center border border-white/10 shadow-2xl">
-          <div className="absolute top-0 left-1/2 -z-10 h-64 w-64 -translate-x-1/2 rounded-full bg-violet-600/10 blur-[80px]" />
+        <div className="apple-liquid-glass relative overflow-hidden rounded-3xl px-8 py-16 text-center shadow-2xl border border-slate-200/80 dark:border-white/10">
+          <div className="absolute top-0 left-1/2 -z-10 h-64 w-64 -translate-x-1/2 rounded-full bg-violet-500/10 blur-[80px]" />
 
           <div className="max-w-2xl mx-auto space-y-6">
             <img
@@ -598,17 +593,17 @@ export default function LandingPage() {
               alt="Voxel"
               className="mx-auto w-12 h-12 object-contain hidden dark:block animate-[pulse_2s_infinite]"
             />
-            <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl text-white">
+            <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl text-slate-950 dark:text-white">
               Ready to construct your workspace?
             </h2>
-            <p className="text-slate-400 text-base max-w-lg mx-auto">
+            <p className="text-slate-600 dark:text-slate-400 text-base max-w-lg mx-auto font-medium">
               Create your account, design dashboards using visual nodes, and connect your team's
               live systems in minutes.
             </p>
             <div className="pt-4">
               <Link
                 to="/login"
-                className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3.5 text-sm font-semibold text-slate-900 shadow-xl transition hover:bg-slate-100"
+                className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-6 py-3.5 text-sm font-bold text-white shadow-xl hover:bg-violet-500 transition cursor-pointer"
               >
                 Start Building Free <ArrowRight size={16} />
               </Link>
@@ -618,9 +613,9 @@ export default function LandingPage() {
       </section>
 
       {/* --- FOOTER --- */}
-      <footer className="border-t border-white/5 py-12 text-slate-400">
+      <footer className="border-t border-slate-200/80 dark:border-white/5 py-12 text-slate-600 dark:text-slate-400 text-sm font-medium transition-colors duration-200">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-6 sm:flex-row">
-          <div className="flex items-center gap-2 text-sm font-semibold text-white">
+          <div className="flex items-center gap-2 text-sm font-bold text-slate-950 dark:text-white">
             <img src={appIcon} alt="Voxel Logo" className="w-5 h-5 object-contain block dark:hidden" />
             <img src={appIconDark} alt="Voxel Logo" className="w-5 h-5 object-contain hidden dark:block" /> Voxel Workspace Platform
           </div>

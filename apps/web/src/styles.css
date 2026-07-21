@@ -25,12 +25,65 @@ body {
   overflow-x: hidden;
   background-color: #f8fafc;
   color: #0f172a;
-  transition: background-color 0.25s ease, color 0.25s ease;
+  transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: background-color, color;
 }
 
 html.dark body {
-  background-color: #060913;
+  background-color: #04060d;
   color: #f8fafc;
+}
+
+/* --- APPLE LIQUID GLASSMORPHISM SYSTEM --- */
+.apple-liquid-glass {
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(30px) saturate(190%);
+  -webkit-backdrop-filter: blur(30px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 
+    0 20px 50px -10px rgba(99, 102, 241, 0.18),
+    inset 0 1.5px 1.5px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 1px 0 rgba(0, 0, 0, 0.03);
+}
+
+html.dark .apple-liquid-glass {
+  background: rgba(12, 17, 30, 0.75);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 
+    0 25px 60px -15px rgba(0, 0, 0, 0.8),
+    inset 0 1.5px 1.5px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 1px 0 rgba(0, 0, 0, 0.4);
+}
+
+.apple-liquid-card {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 
+    0 10px 30px -5px rgba(99, 102, 241, 0.08),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.9);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, background-color 0.2s ease;
+}
+
+html.dark .apple-liquid-card {
+  background: rgba(15, 21, 37, 0.75);
+  backdrop-filter: blur(20px) saturate(170%);
+  -webkit-backdrop-filter: blur(20px) saturate(170%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 
+    0 12px 40px 0 rgba(0, 0, 0, 0.4),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.apple-liquid-card:hover {
+  transform: translateY(-3px) scale(1.005);
+  border-color: rgba(129, 140, 248, 0.5);
+  box-shadow: 
+    0 20px 45px -5px rgba(99, 102, 241, 0.2),
+    inset 0 1px 1.5px 0 rgba(255, 255, 255, 1);
 }
 
 /* Custom Scrollbar */
@@ -68,25 +121,6 @@ html.dark ::selection {
 html.dark .glass-panel {
   background: rgba(12, 18, 34, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.glass-card {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.9) 100%);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-html.dark .glass-card {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.36);
-}
-
-.glass-card:hover {
-  border-color: rgba(99, 102, 241, 0.4);
-  box-shadow: 0 12px 40px 0 rgba(99, 102, 241, 0.12);
-  transform: translateY(-2px);
 }
 
 /* 3D Perspective Card Utilities */
