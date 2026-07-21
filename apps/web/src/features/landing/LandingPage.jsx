@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import appIcon from '@/assets/app-icon.png';
+import appIconDark from '@/assets/app-icon-dark.png';
 import horizontalLogo from '@/assets/horizontal-logo.png';
 import horizontalLogoDark from '@/assets/horizontal-logo-dark.png';
 import { motion, useMotionValue, useTransform, useSpring } from 'framer-motion';
@@ -579,7 +580,12 @@ export default function LandingPage() {
             <img
               src={appIcon}
               alt="Voxel"
-              className="mx-auto w-12 h-12 object-contain animate-[pulse_2s_infinite]"
+              className="mx-auto w-12 h-12 object-contain block dark:hidden animate-[pulse_2s_infinite]"
+            />
+            <img
+              src={appIconDark}
+              alt="Voxel"
+              className="mx-auto w-12 h-12 object-contain hidden dark:block animate-[pulse_2s_infinite]"
             />
             <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl text-white">
               Ready to construct your workspace?
@@ -601,11 +607,11 @@ export default function LandingPage() {
       </section>
 
       {/* --- FOOTER --- */}
-      <footer className="border-t border-white/5 py-12 text-center text-xs text-slate-500 bg-[#020307]">
-        <div className="mx-auto max-w-7xl px-6 flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-3 font-semibold text-slate-400">
-            <img src={appIcon} alt="Voxel Logo" className="w-5 h-5 object-contain" /> Voxel
-            Workspace Platform
+      <footer className="border-t border-white/5 py-12 text-slate-400">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-6 sm:flex-row">
+          <div className="flex items-center gap-2 text-sm font-semibold text-white">
+            <img src={appIcon} alt="Voxel Logo" className="w-5 h-5 object-contain block dark:hidden" />
+            <img src={appIconDark} alt="Voxel Logo" className="w-5 h-5 object-contain hidden dark:block" /> Voxel Workspace Platform
           </div>
           <p>© {new Date().getFullYear()} Voxel Inc. All rights reserved.</p>
         </div>

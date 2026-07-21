@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import appIcon from '@/assets/app-icon.png';
+import appIconDark from '@/assets/app-icon-dark.png';
 import horizontalLogo from '@/assets/horizontal-logo.png';
 import horizontalLogoDark from '@/assets/horizontal-logo-dark.png';
 import {
@@ -240,7 +241,10 @@ export function AppShell() {
             className={`flex items-center transition-all duration-300 ${collapsed ? 'justify-center' : 'gap-3 px-2'}`}
           >
             {collapsed ? (
-              <img src={appIcon} alt="Voxel" className="w-10 h-10 object-contain" />
+              <>
+                <img src={appIcon} alt="Voxel" className="w-10 h-10 object-contain block dark:hidden" />
+                <img src={appIconDark} alt="Voxel" className="w-10 h-10 object-contain hidden dark:block" />
+              </>
             ) : (
               <>
                 <img src={horizontalLogo} alt="Voxel" className="h-14 object-contain block dark:hidden" />
@@ -352,7 +356,8 @@ export function AppShell() {
             to="/workspaces"
             className="flex items-center justify-center size-9 rounded-xl bg-violet-600 text-white lg:hidden overflow-hidden"
           >
-            <img src={appIcon} alt="Voxel" className="w-6 h-6 object-contain" />
+            <img src={appIcon} alt="Voxel" className="w-6 h-6 object-contain block dark:hidden" />
+            <img src={appIconDark} alt="Voxel" className="w-6 h-6 object-contain hidden dark:block" />
           </Link>
 
           {/* Inline Dropdown Search Bar */}
