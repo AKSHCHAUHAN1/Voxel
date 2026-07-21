@@ -75,14 +75,19 @@ export function useYjs(dashboardId, initialScene) {
 
   const updateScene = useCallback(
     (nextScene) => {
-      if (!provider) return;
-      const yScene = provider.document.getMap('scene');
-      provider.document.transact(() => {
-        for (const [key, value] of Object.entries(nextScene)) {
-          yScene.set(key, value);
+      if (provider && provider.document) {
+        try {
+          const yScene = provider.document.getMap('scene');
+          provider.document.transact(() => {
+            for (const [key, value] of Object.entries(nextScene)) {
+              yScene.set(key, value);
+            }
+          });
+        } catch (err) {
+          // ignore
         }
-      });
-      // Also update local immediately for responsiveness
+      }
+      // Always update local state immediately so UI and grid controls function
       setScene(nextScene);
     },
     [provider]

@@ -756,22 +756,32 @@ export default function EditorPage() {
     const initX = node.x ?? 100;
     const initY = node.y ?? 100;
 
-    const handleMouseMove = (moveEvent) => {
-      const dx = moveEvent.clientX - startX;
-      const dy = moveEvent.clientY - startY;
+    let rafId = null;
 
-      const current = yScene ?? scene;
-      updateScene({
-        ...current,
-        nodes: current.nodes.map((n) =>
-          n.id === nodeId ? { ...n, x: Math.max(0, initX + dx), y: Math.max(0, initY + dy) } : n,
-        ),
+    const handleMouseMove = (moveEvent) => {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const dx = moveEvent.clientX - startX;
+        const dy = moveEvent.clientY - startY;
+
+        const current = scene;
+        update(
+          {
+            ...current,
+            nodes: current.nodes.map((n) =>
+              n.id === nodeId ? { ...n, x: Math.max(0, initX + dx), y: Math.max(0, initY + dy) } : n,
+            ),
+          },
+          true
+        );
       });
     };
 
     const handleMouseUp = () => {
+      if (rafId) cancelAnimationFrame(rafId);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      useHistoryStore.getState().push(scene);
     };
 
     window.addEventListener('mousemove', handleMouseMove);
