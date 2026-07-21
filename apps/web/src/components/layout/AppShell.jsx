@@ -104,6 +104,15 @@ export function AppShell() {
     navigate('/');
   };
 
+  // Sync theme with document.documentElement classList
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
+
   // Initialize global shortcuts listener
   useEffect(() => {
     attachGlobalShortcuts();
