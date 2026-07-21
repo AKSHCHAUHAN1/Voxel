@@ -69,7 +69,7 @@ function InteractiveTiltCard({ children, className = '' }) {
   );
 }
 
-export function LandingPage() {
+export default function LandingPage() {
   const containerRef = useRef(null);
   const { theme, setTheme } = useThemeStore();
 
