@@ -1,4 +1,5 @@
-import { ArrowRight, ShieldCheck, Sparkles, Moon, Sun, Activity, Cpu, Zap, Layers, PanelsTopLeft, Lock } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowRight, ShieldCheck, Sparkles, Moon, Sun, PanelsTopLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { authService } from './auth-service';
@@ -11,6 +12,17 @@ import horizontalLogoDark from '@/assets/horizontal-logo-dark.png';
 export function LoginPage() {
   const navigate = useNavigate();
   const { theme, setTheme } = useThemeStore();
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+  const handleMouseMove = (e) => {
+    const { clientX, clientY } = e;
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+    setMousePos({
+      x: (clientX - centerX) / centerX,
+      y: (clientY - centerY) / centerY,
+    });
+  };
 
   const handleGuestLogin = async () => {
     try {
@@ -26,79 +38,91 @@ export function LoginPage() {
   };
 
   return (
-    <main className="relative grid min-h-screen place-items-center bg-slate-100/90 text-slate-900 dark:bg-[#04060d] dark:text-slate-100 p-6 transition-colors overflow-hidden perspective-1000">
-      {/* 3D Background Perspective Grid Mesh */}
+    <main 
+      onMouseMove={handleMouseMove}
+      className="relative grid min-h-screen place-items-center bg-slate-100/90 text-slate-900 dark:bg-[#04060d] dark:text-slate-100 p-6 transition-colors overflow-hidden perspective-1000"
+    >
+      {/* 3D Background Grid Mesh */}
       <div 
-        className="absolute inset-0 pointer-events-none opacity-40 dark:opacity-20"
+        className="absolute inset-0 pointer-events-none opacity-30 dark:opacity-15"
         style={{
           backgroundImage: theme === 'dark' 
-            ? 'radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1px)' 
-            : 'radial-gradient(circle, rgba(99, 102, 241, 0.25) 1px, transparent 1px)',
-          backgroundSize: '32px 32px',
+            ? 'radial-gradient(circle, rgba(255, 255, 255, 0.12) 1px, transparent 1px)' 
+            : 'radial-gradient(circle, rgba(99, 102, 241, 0.3) 1px, transparent 1px)',
+          backgroundSize: '36px 36px',
         }}
       />
 
-      {/* Vibrant Ambient Gradient Mesh Halos */}
-      <div className="absolute top-[-10%] left-[-5%] -z-10 h-[650px] w-[650px] rounded-full bg-gradient-to-br from-violet-500/25 to-indigo-600/20 blur-[140px] dark:from-violet-600/30 dark:to-indigo-900/20 animate-pulse-glow" />
-      <div className="absolute bottom-[-10%] right-[-5%] -z-10 h-[650px] w-[650px] rounded-full bg-gradient-to-tr from-cyan-400/25 to-blue-600/20 blur-[140px] dark:from-cyan-600/25 dark:to-slate-900/30 animate-pulse-glow" />
-      <div className="absolute top-[35%] right-[15%] -z-10 h-[450px] w-[450px] rounded-full bg-fuchsia-500/15 blur-[150px] dark:bg-fuchsia-600/10" />
-
-      {/* 3D Floating Node Widgets in Background */}
+      {/* --- SLOW-MOTION INTERACTIVE 3D BLURRED BUBBLES --- */}
+      {/* Bubble 1 - Top-Left Indigo/Violet Iris */}
       <motion.div
-        animate={{ y: [0, -18, 0], rotate: [0, 4, 0] }}
-        transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
-        className="absolute top-[12%] left-[8%] hidden xl:flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white/70 p-4 shadow-xl backdrop-blur-md dark:border-white/10 dark:bg-white/5 text-xs font-semibold text-slate-700 dark:text-slate-200 pointer-events-none"
-      >
-        <div className="p-2 rounded-xl bg-violet-500/15 text-violet-600 dark:text-violet-300">
-          <Activity size={18} />
-        </div>
-        <div>
-          <div className="text-[10px] text-slate-400 uppercase tracking-wider">Live Metrics</div>
-          <div className="font-extrabold">99.98% System Uptime</div>
-        </div>
-      </motion.div>
+        animate={{ 
+          y: [0, -40, 0], 
+          x: [0, 30, 0], 
+          scale: [1, 1.08, 1] 
+        }}
+        transition={{ duration: 14, repeat: Infinity, ease: 'easeInOut' }}
+        style={{
+          transform: `translate3d(${mousePos.x * -60}px, ${mousePos.y * -60}px, 0px)`,
+        }}
+        className="absolute top-[-10%] left-[-5%] w-[520px] h-[520px] rounded-full backdrop-blur-3xl bg-gradient-to-br from-indigo-400/40 via-purple-300/30 to-violet-500/25 shadow-2xl shadow-indigo-300/30 border border-white/60 dark:from-violet-600/35 dark:via-indigo-900/30 dark:to-purple-950/20 dark:border-white/10 dark:shadow-none pointer-events-none transition-transform duration-700 ease-out"
+      />
 
+      {/* Bubble 2 - Bottom-Right Cyan/Blue Aqua */}
       <motion.div
-        animate={{ y: [0, 20, 0], rotate: [0, -5, 0] }}
-        transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
-        className="absolute bottom-[15%] left-[10%] hidden xl:flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white/70 p-4 shadow-xl backdrop-blur-md dark:border-white/10 dark:bg-white/5 text-xs font-semibold text-slate-700 dark:text-slate-200 pointer-events-none"
-      >
-        <div className="p-2 rounded-xl bg-cyan-500/15 text-cyan-600 dark:text-cyan-300">
-          <Cpu size={18} />
-        </div>
-        <div>
-          <div className="text-[10px] text-slate-400 uppercase tracking-wider">Logic Engine</div>
-          <div className="font-extrabold">Autonomous Pipeline</div>
-        </div>
-      </motion.div>
+        animate={{ 
+          y: [0, 45, 0], 
+          x: [0, -35, 0], 
+          scale: [1, 1.1, 1] 
+        }}
+        transition={{ duration: 16, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
+        style={{
+          transform: `translate3d(${mousePos.x * 70}px, ${mousePos.y * 70}px, 0px)`,
+        }}
+        className="absolute bottom-[-12%] right-[-5%] w-[560px] h-[560px] rounded-full backdrop-blur-3xl bg-gradient-to-br from-cyan-300/45 via-teal-200/35 to-blue-400/25 shadow-2xl shadow-cyan-200/30 border border-white/60 dark:from-cyan-500/30 dark:via-blue-900/30 dark:to-teal-950/20 dark:border-white/10 dark:shadow-none pointer-events-none transition-transform duration-700 ease-out"
+      />
 
+      {/* Bubble 3 - Top-Right Fuchsia/Rose Orb */}
       <motion.div
-        animate={{ y: [0, -16, 0], rotate: [0, -3, 0] }}
-        transition={{ duration: 6.5, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
-        className="absolute top-[18%] right-[8%] hidden xl:flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white/70 p-4 shadow-xl backdrop-blur-md dark:border-white/10 dark:bg-white/5 text-xs font-semibold text-slate-700 dark:text-slate-200 pointer-events-none"
-      >
-        <div className="p-2 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-300">
-          <Zap size={18} />
-        </div>
-        <div>
-          <div className="text-[10px] text-slate-400 uppercase tracking-wider">Realtime Sync</div>
-          <div className="font-extrabold">Yjs CRDT Enabled</div>
-        </div>
-      </motion.div>
+        animate={{ 
+          y: [0, -30, 0], 
+          x: [0, -25, 0], 
+          scale: [1, 1.05, 1] 
+        }}
+        transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
+        style={{
+          transform: `translate3d(${mousePos.x * -45}px, ${mousePos.y * 45}px, 0px)`,
+        }}
+        className="absolute top-[8%] right-[8%] w-[380px] h-[380px] rounded-full backdrop-blur-3xl bg-gradient-to-br from-fuchsia-300/35 via-pink-200/30 to-rose-400/20 shadow-2xl shadow-fuchsia-200/30 border border-white/60 dark:from-fuchsia-600/30 dark:via-purple-900/25 dark:to-slate-950/20 dark:border-white/10 dark:shadow-none pointer-events-none transition-transform duration-700 ease-out"
+      />
 
+      {/* Bubble 4 - Bottom-Left Amber/Gold Orb */}
       <motion.div
-        animate={{ y: [0, 15, 0], rotate: [0, 3, 0] }}
-        transition={{ duration: 7.5, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
-        className="absolute bottom-[18%] right-[10%] hidden xl:flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white/70 p-4 shadow-xl backdrop-blur-md dark:border-white/10 dark:bg-white/5 text-xs font-semibold text-slate-700 dark:text-slate-200 pointer-events-none"
-      >
-        <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-300">
-          <Lock size={18} />
-        </div>
-        <div>
-          <div className="text-[10px] text-slate-400 uppercase tracking-wider">Enterprise Auth</div>
-          <div className="font-extrabold">Zero-Trust Verified</div>
-        </div>
-      </motion.div>
+        animate={{ 
+          y: [0, 35, 0], 
+          x: [0, 30, 0], 
+          scale: [1, 1.07, 1] 
+        }}
+        transition={{ duration: 15, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
+        style={{
+          transform: `translate3d(${mousePos.x * 55}px, ${mousePos.y * -55}px, 0px)`,
+        }}
+        className="absolute bottom-[10%] left-[6%] w-[360px] h-[360px] rounded-full backdrop-blur-3xl bg-gradient-to-br from-amber-300/35 via-orange-200/30 to-yellow-400/20 shadow-2xl shadow-amber-200/30 border border-white/60 dark:from-amber-500/25 dark:via-orange-950/20 dark:to-slate-950/20 dark:border-white/10 dark:shadow-none pointer-events-none transition-transform duration-700 ease-out"
+      />
+
+      {/* Bubble 5 - Center Emerald Ambient Glow */}
+      <motion.div
+        animate={{ 
+          y: [0, -25, 0], 
+          x: [0, -20, 0], 
+          scale: [1, 1.06, 1] 
+        }}
+        transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut', delay: 3 }}
+        style={{
+          transform: `translate3d(${mousePos.x * -35}px, ${mousePos.y * -35}px, 0px)`,
+        }}
+        className="absolute top-[40%] left-[45%] w-[300px] h-[300px] rounded-full backdrop-blur-3xl bg-gradient-to-br from-emerald-300/35 via-teal-200/30 to-green-400/20 shadow-2xl shadow-emerald-200/30 border border-white/60 dark:from-emerald-500/25 dark:via-teal-900/20 dark:to-slate-950/20 dark:border-white/10 dark:shadow-none pointer-events-none transition-transform duration-700 ease-out"
+      />
 
       {/* Top Bar Theme Toggle */}
       <div className="absolute top-6 right-8 z-50">
@@ -116,7 +140,10 @@ export function LoginPage() {
         initial={{ opacity: 0, y: 20, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-        className="grid w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-200/90 bg-white/85 shadow-[0_25px_70px_-15px_rgba(99,102,241,0.25)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#0c111e]/90 dark:shadow-[0_25px_70px_-15px_rgba(0,0,0,0.8)] lg:grid-cols-[1.1fr_.9fr] relative z-10"
+        style={{
+          transform: `translate3d(${mousePos.x * 12}px, ${mousePos.y * 12}px, 0px)`,
+        }}
+        className="grid w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-200/90 bg-white/85 shadow-[0_25px_70px_-15px_rgba(99,102,241,0.25)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#0c111e]/90 dark:shadow-[0_25px_70px_-15px_rgba(0,0,0,0.8)] lg:grid-cols-[1.1fr_.9fr] relative z-10 transition-transform duration-500 ease-out"
       >
         <div className="hidden min-h-[580px] flex-col justify-between bg-gradient-to-br from-violet-500/10 via-indigo-500/5 to-cyan-500/10 dark:from-violet-950/30 dark:via-indigo-950/20 dark:to-slate-950/40 p-12 lg:flex border-r border-slate-100 dark:border-white/5 relative">
           <div className="flex items-center">
@@ -135,78 +162,9 @@ export function LoginPage() {
               move work forward.
             </p>
           </div>
-          {/* Mini Interactive 3D Canvas Showcase */}
-          <div className="relative rounded-2xl border border-slate-200/80 bg-white/60 p-4 shadow-md backdrop-blur-md dark:border-white/10 dark:bg-white/5 space-y-3">
-            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 dark:border-white/5 pb-2">
-              <span className="flex items-center gap-1.5 text-violet-600 dark:text-violet-400">
-                <Activity size={13} className="animate-pulse" /> Live Canvas Stream
-              </span>
-              <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-[10px]">
-                <span className="size-1.5 rounded-full bg-emerald-500 animate-ping" /> Synchronized
-              </span>
-            </div>
-
-            <div className="relative h-20 w-full overflow-hidden rounded-xl bg-slate-50 dark:bg-slate-900/60 p-2 border border-slate-100 dark:border-white/5 flex items-center justify-between px-4">
-              {/* SVG Connecting Curved Beam */}
-              <svg className="absolute inset-0 h-full w-full pointer-events-none" xmlns="http://www.w3.org/2000/svg">
-                <path
-                  d="M 110 40 C 160 10, 180 70, 230 40"
-                  fill="none"
-                  stroke="url(#beam-gradient)"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                />
-                <defs>
-                  <linearGradient id="beam-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.8" />
-                    <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.8" />
-                  </linearGradient>
-                </defs>
-              </svg>
-
-              {/* Node Card A */}
-              <motion.div 
-                animate={{ y: [0, -3, 0] }}
-                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-                className="z-10 flex items-center gap-2 rounded-xl bg-white p-2.5 shadow-sm border border-slate-200/80 dark:border-white/10 dark:bg-slate-800"
-              >
-                <div className="p-1.5 rounded-lg bg-cyan-500/15 text-cyan-600 dark:text-cyan-300">
-                  <Cpu size={14} />
-                </div>
-                <div>
-                  <div className="text-[10px] font-bold text-slate-800 dark:text-slate-200">Data Stream</div>
-                  <div className="text-[9px] text-slate-400 font-medium">1,240 msg/s</div>
-                </div>
-              </motion.div>
-
-              {/* Node Card B */}
-              <motion.div 
-                animate={{ y: [0, 3, 0] }}
-                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
-                className="z-10 flex items-center gap-2 rounded-xl bg-white p-2.5 shadow-sm border border-slate-200/80 dark:border-white/10 dark:bg-slate-800"
-              >
-                <div className="p-1.5 rounded-lg bg-violet-500/15 text-violet-600 dark:text-violet-300">
-                  <Zap size={14} />
-                </div>
-                <div>
-                  <div className="text-[10px] font-bold text-slate-800 dark:text-slate-200">Live Dashboard</div>
-                  <div className="text-[9px] text-slate-400 font-medium">Synced</div>
-                </div>
-              </motion.div>
-            </div>
-
-            {/* Enterprise Security Badges */}
-            <div className="flex items-center justify-between gap-2 pt-1">
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                <ShieldCheck size={14} className="text-emerald-500" /> Verified Auth
-              </span>
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                <Zap size={14} className="text-amber-500" /> CRDT Sync
-              </span>
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                <Lock size={14} className="text-violet-500" /> SOC2 Type II
-              </span>
-            </div>
+          <div className="flex items-center gap-2.5 text-xs font-semibold text-slate-600 dark:text-slate-400 bg-white/60 dark:bg-white/5 p-3 rounded-2xl border border-slate-200/60 dark:border-white/5 backdrop-blur-md">
+            <ShieldCheck size={18} className="text-emerald-600 dark:text-emerald-400 shrink-0" /> 
+            <span>Google identity, device sessions, and access control are verified server-side.</span>
           </div>
         </div>
         <div className="flex min-h-[580px] flex-col justify-center p-8 sm:p-12 bg-white/60 dark:bg-transparent">
