@@ -1,17 +1,16 @@
 /**
- * Nothing OS Power Ripple Theme Transition
- * Creates a circular clip-path ripple expanding from the power/theme button,
- * covering the entire screen in a single fluid motion.
+ * Nothing OS Power Button Screen Reveal Effect
+ * Creates an instant, 60 FPS circular power-on/off light wave originating
+ * from the power/theme button that expands across the entire viewport.
  */
 export function toggleThemeWithRipple(event, currentTheme, setTheme) {
   const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
 
-  // Get click origin coordinates (or center of screen if event is null/keyboard)
+  // Get click origin coordinates (center of power button)
   let x = window.innerWidth / 2;
   let y = window.innerHeight / 2;
 
   if (event) {
-    // If event comes from button element, target center of button
     const target = event.currentTarget || event.target;
     if (target && typeof target.getBoundingClientRect === 'function') {
       const rect = target.getBoundingClientRect();
@@ -29,41 +28,19 @@ export function toggleThemeWithRipple(event, currentTheme, setTheme) {
     Math.max(y, window.innerHeight - y)
   );
 
-  // 1. View Transitions API (Modern Chromium, Safari 18+, Edge)
-  if (typeof document.startViewTransition === 'function') {
-    const transition = document.startViewTransition(() => {
-      setTheme(nextTheme);
-    });
+  // Clean up any previous active ripple
+  const existing = document.getElementById('nothing-os-power-ripple');
+  if (existing) existing.remove();
 
-    transition.ready.then(() => {
-      const clipPath = [
-        `circle(0px at ${x}px ${y}px)`,
-        `circle(${endRadius}px at ${x}px ${y}px)`
-      ];
-
-      document.documentElement.animate(
-        {
-          clipPath: nextTheme === 'dark' ? clipPath : [...clipPath].reverse(),
-        },
-        {
-          duration: 600,
-          easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
-          pseudoElement: nextTheme === 'dark' ? '::view-transition-new(root)' : '::view-transition-old(root)',
-        }
-      );
-    });
-    return;
-  }
-
-  // 2. Fallback Ripple Overlay for legacy browsers
-  createFallbackRippleOverlay(x, y, endRadius, nextTheme, () => {
-    setTheme(nextTheme);
-  });
-}
-
-function createFallbackRippleOverlay(x, y, endRadius, nextTheme, applyThemeCallback) {
+  // Create Nothing OS Screen Power Ripple Layer
   const overlay = document.createElement('div');
-  overlay.className = 'nothing-os-ripple-overlay';
+  overlay.id = 'nothing-os-power-ripple';
+
+  const bgColor = nextTheme === 'dark' ? '#04060d' : '#f8fafc';
+  const ringGlow = nextTheme === 'dark'
+    ? 'rgba(168, 85, 247, 0.7)'
+    : 'rgba(99, 102, 241, 0.6)';
+
   overlay.style.cssText = `
     position: fixed;
     top: 0;
@@ -71,31 +48,30 @@ function createFallbackRippleOverlay(x, y, endRadius, nextTheme, applyThemeCallb
     width: 100vw;
     height: 100vh;
     pointer-events: none;
-    z-index: 99999;
-    background: ${nextTheme === 'dark' ? '#04060d' : '#f8fafc'};
+    z-index: 999999;
+    background: ${bgColor};
     clip-path: circle(0px at ${x}px ${y}px);
-    transition: clip-path 600ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    will-change: clip-path;
+    box-shadow: inset 0 0 80px ${ringGlow};
+    transition: clip-path 380ms cubic-bezier(0.1, 0.9, 0.2, 1);
   `;
 
   document.body.appendChild(overlay);
 
-  // Force reflow
-  overlay.getBoundingClientRect();
-
-  // Trigger clip-path expand
+  // Switch underlying theme state immediately (0ms lag)
   requestAnimationFrame(() => {
-    overlay.style.clipPath = `circle(${endRadius}px at ${x}px ${y}px)`;
+    setTheme(nextTheme);
+
+    // Expand power circle from 0px -> endRadius across screen
+    requestAnimationFrame(() => {
+      overlay.style.clipPath = `circle(${endRadius + 60}px at ${x}px ${y}px)`;
+    });
   });
 
-  // Apply theme halfway through transition for instant seamlessness
-  setTimeout(() => {
-    applyThemeCallback();
-  }, 250);
-
-  // Remove overlay when transition ends
+  // Remove overlay seamlessly as circle completes expanding
   setTimeout(() => {
     if (overlay.parentNode) {
       overlay.parentNode.removeChild(overlay);
     }
-  }, 650);
+  }, 400);
 }
