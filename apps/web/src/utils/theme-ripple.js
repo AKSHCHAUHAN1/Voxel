@@ -1,7 +1,8 @@
 /**
- * Nothing OS Power Button Screen Reveal Effect
- * Originates from the exact center of the theme icon button and gracefully
- * expands across the screen in slow-motion with a glowing aura ring.
+ * Nothing OS Background Theme Ripple Effect
+ * Originates from the exact center of the theme icon button and expands
+ * behind all page content (z-index: 0, pointer-events: none) so the background
+ * color ripples gracefully without covering any UI elements, text, or cards.
  */
 export function toggleThemeWithRipple(event, currentTheme, setTheme) {
   const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
@@ -28,50 +29,51 @@ export function toggleThemeWithRipple(event, currentTheme, setTheme) {
     Math.max(y, window.innerHeight - y)
   );
 
-  // Clean up any previous active ripple overlay
+  // Clean up any previous active background ripple
   const existing = document.getElementById('nothing-os-power-ripple');
   if (existing) existing.remove();
 
-  // Create Nothing OS Screen Power Ripple Layer
-  const overlay = document.createElement('div');
-  overlay.id = 'nothing-os-power-ripple';
+  // Create Background Ripple Layer (z-index: 0 - BEHIND UI CONTENT)
+  const bgRipple = document.createElement('div');
+  bgRipple.id = 'nothing-os-power-ripple';
 
-  const bgColor = nextTheme === 'dark' ? '#04060d' : '#f8fafc';
+  const targetBg = nextTheme === 'dark' ? '#04060d' : '#f8fafc';
   const ringGlow = nextTheme === 'dark'
-    ? 'rgba(168, 85, 247, 0.85)'
-    : 'rgba(99, 102, 241, 0.75)';
+    ? 'rgba(168, 85, 247, 0.5)'
+    : 'rgba(99, 102, 241, 0.4)';
 
-  overlay.style.cssText = `
+  bgRipple.style.cssText = `
     position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
     pointer-events: none;
-    z-index: 999999;
-    background: ${bgColor};
+    z-index: 0;
+    background: ${targetBg};
     clip-path: circle(0px at ${x}px ${y}px);
     will-change: clip-path;
-    box-shadow: inset 0 0 100px ${ringGlow}, 0 0 50px ${ringGlow};
+    box-shadow: inset 0 0 100px ${ringGlow};
     transition: clip-path 850ms cubic-bezier(0.25, 1, 0.4, 1);
   `;
 
-  document.body.appendChild(overlay);
+  // Insert as first child of body so it sits behind UI elements
+  document.body.insertBefore(bgRipple, document.body.firstChild);
 
-  // Switch underlying theme state immediately (0ms lag)
+  // Switch underlying theme state immediately so text/cards/borders update smoothly
   requestAnimationFrame(() => {
     setTheme(nextTheme);
 
-    // Gracefully expand power circle slowly from theme icon center -> full screen
+    // Expand background ripple from theme icon center -> full screen
     requestAnimationFrame(() => {
-      overlay.style.clipPath = `circle(${endRadius + 80}px at ${x}px ${y}px)`;
+      bgRipple.style.clipPath = `circle(${endRadius + 80}px at ${x}px ${y}px)`;
     });
   });
 
   // Remove overlay seamlessly after 850ms slow-motion completion
   setTimeout(() => {
-    if (overlay.parentNode) {
-      overlay.parentNode.removeChild(overlay);
+    if (bgRipple.parentNode) {
+      bgRipple.parentNode.removeChild(bgRipple);
     }
   }, 870);
 }
