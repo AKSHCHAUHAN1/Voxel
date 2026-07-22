@@ -40,6 +40,16 @@ function InteractiveTiltCard({ children, className = '' }) {
 export default function LandingPage() {
   const containerRef = useRef(null);
   const { theme, setTheme } = useThemeStore();
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 20);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // Check auth state
   const { data: user, isSuccess } = useQuery({
@@ -169,37 +179,36 @@ export default function LandingPage() {
       <div className="absolute bottom-[10%] left-10 -z-10 h-[650px] w-[650px] rounded-full bg-fuchsia-500/5 blur-[180px] dark:bg-fuchsia-600/5" />
 
       {/* --- FLOATING PILL NAVBAR --- */}
-      <header className="fixed top-5 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-6xl rounded-full apple-liquid-glass px-5 py-2.5 shadow-2xl shadow-violet-500/10 transition-all duration-300">
+      <header
+        className={`fixed top-5 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-6xl rounded-full px-5 transition-all duration-500 ${
+          scrolled
+            ? 'py-2 bg-white/70 dark:bg-[#060a17]/70 backdrop-blur-2xl saturate-200 border border-white/80 dark:border-violet-500/20 shadow-2xl shadow-violet-500/15 scale-[0.99]'
+            : 'py-3 bg-white/40 dark:bg-slate-900/30 backdrop-blur-md border border-white/60 dark:border-white/10 shadow-lg shadow-black/5'
+        }`}
+      >
         <div className="flex items-center justify-between px-2">
           {/* Logo */}
-          <Link to="/" className="flex items-center shrink-0">
+          <Link to="/" className="flex items-center shrink-0 hover:scale-105 transition-transform duration-300">
             <img src={horizontalLogo} alt="Voxel" className="h-14 md:h-16 -my-2.5 md:-my-3 object-contain block dark:hidden" />
             <img src={horizontalLogoDark} alt="Voxel" className="h-14 md:h-16 -my-2.5 md:-my-3 object-contain hidden dark:block" />
           </Link>
 
           {/* Navigation Links */}
-          <nav className="hidden items-center gap-2 md:flex">
-            <a
-              href="#features"
-              className="relative px-3.5 py-1.5 text-sm font-bold text-slate-700 hover:text-violet-600 dark:text-slate-300 dark:hover:text-white transition-all group"
-            >
-              Features
-              <span className="absolute bottom-0 left-1/2 h-0.5 w-0 -translate-x-1/2 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 group-hover:w-3/4 transition-all duration-300" />
-            </a>
-            <a
-              href="#sandbox"
-              className="relative px-3.5 py-1.5 text-sm font-bold text-slate-700 hover:text-violet-600 dark:text-slate-300 dark:hover:text-white transition-all group"
-            >
-              Interactive Demo
-              <span className="absolute bottom-0 left-1/2 h-0.5 w-0 -translate-x-1/2 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 group-hover:w-3/4 transition-all duration-300" />
-            </a>
-            <a
-              href="#integration"
-              className="relative px-3.5 py-1.5 text-sm font-bold text-slate-700 hover:text-violet-600 dark:text-slate-300 dark:hover:text-white transition-all group"
-            >
-              Integrations
-              <span className="absolute bottom-0 left-1/2 h-0.5 w-0 -translate-x-1/2 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 group-hover:w-3/4 transition-all duration-300" />
-            </a>
+          <nav className="hidden items-center gap-1.5 md:flex">
+            {[
+              { label: 'Features', href: '#features' },
+              { label: 'Interactive Demo', href: '#sandbox' },
+              { label: 'Integrations', href: '#integration' },
+            ].map((item) => (
+              <a
+                key={item.label}
+                href={item.href}
+                className="relative rounded-full px-4 py-1.5 text-sm font-bold text-slate-700 dark:text-slate-200 hover:text-violet-600 dark:hover:text-white hover:bg-violet-500/10 dark:hover:bg-violet-400/10 hover:scale-105 active:scale-95 transition-all duration-200 group"
+              >
+                {item.label}
+                <span className="absolute bottom-0.5 left-1/2 h-0.5 w-0 -translate-x-1/2 rounded-full bg-gradient-to-r from-violet-600 via-indigo-500 to-cyan-500 group-hover:w-3/5 transition-all duration-300 shadow-[0_0_8px_rgba(124,58,237,0.5)]" />
+              </a>
+            ))}
           </nav>
 
           {/* Actions */}
@@ -207,15 +216,15 @@ export default function LandingPage() {
             <button
               onClick={(e) => toggleThemeWithRipple(e, theme, setTheme)}
               aria-label="Toggle Theme"
-              className="flex items-center justify-center size-9 rounded-full border border-slate-200/80 bg-white/80 text-slate-600 shadow-xs hover:bg-slate-100 hover:scale-105 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 transition-all cursor-pointer"
+              className="flex items-center justify-center size-9.5 rounded-full border border-slate-200/80 bg-white/80 text-slate-600 shadow-xs hover:bg-violet-500/10 hover:text-violet-600 hover:border-violet-500/40 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-violet-400/15 dark:hover:text-violet-300 hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer"
             >
-              {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+              {theme === 'dark' ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} className="text-violet-600" />}
             </button>
 
             {isSuccess && user ? (
               <Link
                 to="/workspaces"
-                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 px-4.5 py-2 text-sm font-bold text-white shadow-md shadow-violet-500/20 hover:scale-105 transition-all"
+                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-600 px-5 py-2 text-sm font-bold text-white shadow-md shadow-violet-500/25 hover:shadow-lg hover:shadow-violet-500/40 hover:scale-105 active:scale-95 transition-all duration-200"
               >
                 Workspace <ArrowRight size={15} />
               </Link>
@@ -223,13 +232,13 @@ export default function LandingPage() {
               <div className="flex items-center gap-2">
                 <Link
                   to="/login"
-                  className="inline-flex items-center justify-center rounded-full border border-violet-500/40 bg-violet-500/10 px-4.5 py-2 text-sm font-bold text-violet-600 hover:bg-violet-500/20 hover:border-violet-600 dark:border-violet-400/40 dark:bg-violet-500/15 dark:text-violet-300 dark:hover:border-violet-400 hover:scale-105 transition-all cursor-pointer"
+                  className="inline-flex items-center justify-center rounded-full border border-violet-500/40 bg-violet-500/10 px-5 py-2 text-sm font-bold text-violet-600 hover:bg-violet-600 hover:text-white hover:border-violet-600 dark:border-violet-400/40 dark:bg-violet-500/15 dark:text-violet-300 dark:hover:bg-violet-500 dark:hover:text-white hover:shadow-lg hover:shadow-violet-500/25 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
                 >
                   Sign In
                 </Link>
                 <Link
                   to="/login"
-                  className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 px-4.5 py-2 text-sm font-bold text-white shadow-md shadow-violet-500/20 hover:scale-105 transition-all"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-600 px-5 py-2 text-sm font-bold text-white shadow-md shadow-violet-500/25 hover:shadow-lg hover:shadow-violet-500/40 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
                 >
                   Sign Up <ArrowUpRight size={15} />
                 </Link>
