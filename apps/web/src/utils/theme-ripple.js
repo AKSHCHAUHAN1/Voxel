@@ -1,7 +1,8 @@
 /**
- * Ultra-Smooth Slower Nothing OS Background Theme Ripple (900ms)
- * Originates from the theme icon center and expands gracefully in slow-motion
- * across the viewport behind all UI content without any frame drops or lag.
+ * Synchronized Nothing OS Power Button Theme Reveal Wave (1100ms Slow Motion)
+ * Originates from the exact center of the theme icon button.
+ * Sweeps a 1:1 synchronized wave across the viewport where background, text,
+ * cards, and icons transform together in real-time as the wave passes over them.
  */
 export function toggleThemeWithRipple(event, currentTheme, setTheme) {
   const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
@@ -28,48 +29,30 @@ export function toggleThemeWithRipple(event, currentTheme, setTheme) {
     Math.max(y, window.innerHeight - y)
   );
 
-  // Clean up any previous active background ripple
-  const existing = document.getElementById('nothing-os-power-ripple');
-  if (existing) existing.remove();
+  // Modern Hardware-Accelerated View Transitions API
+  if (typeof document.startViewTransition === 'function') {
+    const transition = document.startViewTransition(() => {
+      setTheme(nextTheme);
+    });
 
-  // Create GPU-accelerated Background Ripple Layer (z-index: 0 behind content)
-  const bgRipple = document.createElement('div');
-  bgRipple.id = 'nothing-os-power-ripple';
+    transition.ready.then(() => {
+      document.documentElement.animate(
+        {
+          clipPath: [
+            `circle(0px at ${x}px ${y}px)`,
+            `circle(${endRadius + 80}px at ${x}px ${y}px)`
+          ],
+        },
+        {
+          duration: 1100,
+          easing: 'cubic-bezier(0.25, 1, 0.35, 1)',
+          pseudoElement: '::view-transition-new(root)',
+        }
+      );
+    });
+    return;
+  }
 
-  const targetBg = nextTheme === 'dark' ? '#04060d' : '#f8fafc';
-
-  bgRipple.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    pointer-events: none;
-    z-index: 0;
-    background-color: ${targetBg};
-    clip-path: circle(0px at ${x}px ${y}px);
-    transform: translateZ(0);
-    will-change: clip-path;
-    transition: clip-path 900ms cubic-bezier(0.22, 1, 0.36, 1);
-  `;
-
-  // Insert as first child of body so it sits behind UI components
-  document.body.insertBefore(bgRipple, document.body.firstChild);
-
-  // Trigger GPU clip-path expansion slowly from theme icon center -> full screen
-  requestAnimationFrame(() => {
-    bgRipple.style.clipPath = `circle(${endRadius + 100}px at ${x}px ${y}px)`;
-  });
-
-  // Switch underlying theme state smoothly
-  setTimeout(() => {
-    setTheme(nextTheme);
-  }, 40);
-
-  // Remove overlay after 900ms slow-motion completion
-  setTimeout(() => {
-    if (bgRipple.parentNode) {
-      bgRipple.parentNode.removeChild(bgRipple);
-    }
-  }, 920);
+  // Fallback for browsers without View Transitions
+  setTheme(nextTheme);
 }

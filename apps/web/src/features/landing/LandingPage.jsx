@@ -7,7 +7,7 @@ import appIcon from '@/assets/app-icon.png';
 import appIconDark from '@/assets/app-icon-dark.png';
 import horizontalLogo from '@/assets/horizontal-logo.png';
 import horizontalLogoDark from '@/assets/horizontal-logo-dark.png';
-import { motion, useMotionValue, useTransform, useSpring } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   ArrowRight,
   Sparkles,
@@ -28,43 +28,12 @@ import { authService } from '../auth/auth-service';
 
 // --- Card 3D Tilt Wrapper Component ---
 function InteractiveTiltCard({ children, className = '' }) {
-  const x = useMotionValue(0);
-  const y = useMotionValue(0);
-
-  const mouseXSpring = useSpring(x);
-  const mouseYSpring = useSpring(y);
-
-  const rx = useTransform(mouseYSpring, [-0.5, 0.5], ['7.5deg', '-7.5deg']);
-  const ry = useTransform(mouseXSpring, [-0.5, 0.5], ['-7.5deg', '7.5deg']);
-
-  function handleMouseMove(event) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const width = rect.width;
-    const height = rect.height;
-    const mouseX = (event.clientX - rect.left) / width - 0.5;
-    const mouseY = (event.clientY - rect.top) / height - 0.5;
-    x.set(mouseX);
-    y.set(mouseY);
-  }
-
-  function handleMouseLeave() {
-    x.set(0);
-    y.set(0);
-  }
-
   return (
-    <motion.div
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-      style={{
-        rotateX: rx,
-        rotateY: ry,
-        transformStyle: 'preserve-3d',
-      }}
-      className={`apple-liquid-card relative rounded-2xl p-6 transition-all duration-200 ${className}`}
+    <div
+      className={`apple-liquid-card relative rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-2xl hover:border-violet-500/40 ${className}`}
     >
       {children}
-    </motion.div>
+    </div>
   );
 }
 

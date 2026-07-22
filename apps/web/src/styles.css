@@ -187,6 +187,7 @@ html.dark .shimmer-text {
 
 /* --- NOTHING OS POWER RIPPLE VIEW TRANSITIONS --- */
 ::view-transition-old(root),
+::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;
   mix-blend-mode: normal;
@@ -197,14 +198,6 @@ html.dark .shimmer-text {
 }
 
 ::view-transition-new(root) {
-  z-index: 99999;
-}
-
-.dark::view-transition-old(root) {
-  z-index: 99999;
-}
-
-.dark::view-transition-new(root) {
-  z-index: 1;
+  z-index: 999999;
 }
 
