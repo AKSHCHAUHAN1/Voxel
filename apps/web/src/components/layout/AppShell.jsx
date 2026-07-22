@@ -27,6 +27,7 @@ import { useThemeStore } from '@/store/theme-store';
 import { toggleThemeWithRipple } from '@/utils/theme-ripple';
 import { workspaceService } from '@/features/workspaces/workspace-service';
 import { CommandPalette } from '@/components/command/CommandPalette';
+import { CustomConfirmModal } from '@/components/feedback/CustomConfirmModal';
 import { attachGlobalShortcuts, detachGlobalShortcuts, useShortcut } from '@/lib/keyboard';
 import { useNotificationStore } from '@/store/notification-store';
 
@@ -36,6 +37,7 @@ export function AppShell() {
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [showGuestLogoutModal, setShowGuestLogoutModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   // Theme state and bubble animation state
   const theme = useThemeStore((state) => state.theme);
@@ -101,10 +103,21 @@ export function AppShell() {
     queryFn: workspaceService.list,
   });
 
+  const isGuestUser = user && (user.email === 'guest@voxel.com' || user.googleSubject === 'guest-google-sub');
+
   const logout = async () => {
     await authService.logout();
     queryClient.clear();
     navigate('/');
+  };
+
+  const handleLogoutClick = () => {
+    setMenuOpen(false);
+    if (isGuestUser) {
+      setShowGuestLogoutModal(true);
+    } else {
+      void logout();
+    }
   };
 
   // Sync theme with document.documentElement classList
@@ -569,8 +582,8 @@ export function AppShell() {
                     <User size={15} /> My Settings
                   </Link>
                   <button
-                    onClick={() => void logout()}
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                    onClick={handleLogoutClick}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 cursor-pointer"
                   >
                     <LogOut size={15} /> Sign out
                   </button>
@@ -635,7 +648,22 @@ export function AppShell() {
         </div>
       )}
       {/* Command Palette */}
-      <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
+      <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} onLogout={handleLogoutClick} />
+
+      {/* Guest Logout Warning Modal */}
+      <CustomConfirmModal
+        isOpen={showGuestLogoutModal}
+        type="danger"
+        title="Delete Guest Workspaces & Sign Out?"
+        message="Warning: Logging out of your guest session will permanently delete all guest workspaces, dashboards, and custom canvas nodes created during this session. This action cannot be undone."
+        confirmText="Delete All Data & Logout"
+        cancelText="Cancel"
+        onConfirm={async () => {
+          setShowGuestLogoutModal(false);
+          await logout();
+        }}
+        onCancel={() => setShowGuestLogoutModal(false)}
+      />
 
       {/* Toast Notifications Queue */}
       <div className="fixed bottom-5 right-5 z-[150] space-y-2 pointer-events-none">

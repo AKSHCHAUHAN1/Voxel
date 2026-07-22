@@ -30,7 +30,7 @@ import { getAllShortcuts, formatCombo } from '@/lib/keyboard';
  * - Actions (create workspace, toggle theme, logout)
  * - Keyboard shortcuts reference
  */
-export function CommandPalette({ open, onClose }) {
+export function CommandPalette({ open, onClose, onLogout }) {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
@@ -107,7 +107,15 @@ export function CommandPalette({ open, onClose }) {
       label: 'Sign out',
       category: 'Actions',
       icon: LogOut,
-      action: async () => { await authService.logout(); navigate('/login'); onClose(); },
+      action: async () => {
+        onClose();
+        if (onLogout) {
+          onLogout();
+        } else {
+          await authService.logout();
+          navigate('/login');
+        }
+      },
     });
 
     // Keyboard shortcuts reference

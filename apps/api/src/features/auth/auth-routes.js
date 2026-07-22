@@ -134,7 +134,40 @@ export const registerAuthRoutes = async (
   });
 
   app.post('/api/v1/auth/logout', async (request, reply) => {
-    await authService.revokeSession(request.cookies[REFRESH_COOKIE]);
+    const refreshToken = request.cookies[REFRESH_COOKIE];
+    const accessToken = request.cookies[ACCESS_COOKIE];
+
+    if (accessToken) {
+      const user = await authService.getAuthenticatedUser(accessToken).catch(() => null);
+      if (user && (user.email === 'guest@voxel.com' || user.googleSubject === 'guest-google-sub')) {
+        // Find all guest workspaces
+        const guestWorkspaces = await prisma.workspace.findMany({
+          where: { ownerId: user.id },
+          select: { id: true },
+        });
+        const workspaceIds = guestWorkspaces.map((w) => w.id);
+
+        if (workspaceIds.length > 0) {
+          // Delete all dashboards, version histories, and workspace members in guest workspaces
+          await prisma.dashboard.deleteMany({
+            where: { workspaceId: { in: workspaceIds } },
+          });
+          await prisma.workspaceMember.deleteMany({
+            where: { workspaceId: { in: workspaceIds } },
+          });
+          await prisma.workspace.deleteMany({
+            where: { id: { in: workspaceIds } },
+          });
+        }
+
+        // Delete any orphan dashboards owned by guest
+        await prisma.dashboard.deleteMany({
+          where: { ownerId: user.id },
+        });
+      }
+    }
+
+    await authService.revokeSession(refreshToken);
     reply.clearCookie(ACCESS_COOKIE, { path: '/' });
     reply.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
     return reply.status(204).send();
