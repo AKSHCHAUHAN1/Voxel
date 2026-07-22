@@ -1,7 +1,7 @@
 /**
- * Ultra-Optimized 60 FPS Nothing OS Background Theme Ripple
- * Uses hardware-accelerated GPU layers without heavy shadow filters,
- * eliminating all frame drops & layout lag for instant text/content loading.
+ * Ultra-Smooth Slower Nothing OS Background Theme Ripple (900ms)
+ * Originates from the theme icon center and expands gracefully in slow-motion
+ * across the viewport behind all UI content without any frame drops or lag.
  */
 export function toggleThemeWithRipple(event, currentTheme, setTheme) {
   const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
@@ -28,11 +28,11 @@ export function toggleThemeWithRipple(event, currentTheme, setTheme) {
     Math.max(y, window.innerHeight - y)
   );
 
-  // Clean up any previous active ripple
+  // Clean up any previous active background ripple
   const existing = document.getElementById('nothing-os-power-ripple');
   if (existing) existing.remove();
 
-  // Create GPU-accelerated Background Layer (z-index: 0 behind content)
+  // Create GPU-accelerated Background Ripple Layer (z-index: 0 behind content)
   const bgRipple = document.createElement('div');
   bgRipple.id = 'nothing-os-power-ripple';
 
@@ -50,25 +50,26 @@ export function toggleThemeWithRipple(event, currentTheme, setTheme) {
     clip-path: circle(0px at ${x}px ${y}px);
     transform: translateZ(0);
     will-change: clip-path;
-    transition: clip-path 450ms cubic-bezier(0.16, 1, 0.3, 1);
+    transition: clip-path 900ms cubic-bezier(0.22, 1, 0.36, 1);
   `;
 
+  // Insert as first child of body so it sits behind UI components
   document.body.insertBefore(bgRipple, document.body.firstChild);
 
-  // Trigger GPU clip-path expansion instantly
+  // Trigger GPU clip-path expansion slowly from theme icon center -> full screen
   requestAnimationFrame(() => {
-    bgRipple.style.clipPath = `circle(${endRadius + 60}px at ${x}px ${y}px)`;
+    bgRipple.style.clipPath = `circle(${endRadius + 100}px at ${x}px ${y}px)`;
   });
 
-  // Switch theme state after GPU layer starts expanding so React re-renders don't block frame 1
+  // Switch underlying theme state smoothly
   setTimeout(() => {
     setTheme(nextTheme);
-  }, 30);
+  }, 40);
 
-  // Clean up overlay when animation completes
+  // Remove overlay after 900ms slow-motion completion
   setTimeout(() => {
     if (bgRipple.parentNode) {
       bgRipple.parentNode.removeChild(bgRipple);
     }
-  }, 470);
+  }, 920);
 }

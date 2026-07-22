@@ -56,9 +56,7 @@ html.dark .apple-liquid-glass {
 }
 
 .apple-liquid-card {
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(226, 232, 240, 0.9);
   box-shadow: 
     0 10px 30px -5px rgba(99, 102, 241, 0.08),
@@ -67,9 +65,7 @@ html.dark .apple-liquid-glass {
 }
 
 html.dark .apple-liquid-card {
-  background: rgba(15, 21, 37, 0.75);
-  backdrop-filter: blur(20px) saturate(170%);
-  -webkit-backdrop-filter: blur(20px) saturate(170%);
+  background: rgba(15, 22, 41, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 
     0 12px 40px 0 rgba(0, 0, 0, 0.4),
