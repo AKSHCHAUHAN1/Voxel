@@ -190,64 +190,76 @@ export default function LandingPage() {
       <div className="absolute top-[20%] right-10 -z-10 h-[600px] w-[600px] rounded-full bg-cyan-500/10 blur-[150px] dark:bg-cyan-600/10" />
       <div className="absolute bottom-[10%] left-10 -z-10 h-[650px] w-[650px] rounded-full bg-fuchsia-500/5 blur-[180px] dark:bg-fuchsia-600/5" />
 
-      {/* --- HEADER --- */}
-      <header className="sticky top-0 z-50 apple-liquid-glass">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <div className="flex items-center">
-            <img src={horizontalLogo} alt="Voxel" className="h-14 object-contain block dark:hidden" />
-            <img src={horizontalLogoDark} alt="Voxel" className="h-14 object-contain hidden dark:block" />
-          </div>
+      {/* --- FLOATING PILL NAVBAR --- */}
+      <header className="fixed top-5 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-5xl rounded-full apple-liquid-glass px-4 py-2 shadow-2xl shadow-violet-500/10 transition-all duration-300">
+        <div className="flex items-center justify-between px-2">
+          {/* Logo */}
+          <Link to="/" className="flex items-center shrink-0">
+            <img src={horizontalLogo} alt="Voxel" className="h-10 object-contain block dark:hidden" />
+            <img src={horizontalLogoDark} alt="Voxel" className="h-10 object-contain hidden dark:block" />
+          </Link>
 
-          <nav className="hidden items-center gap-8 text-sm font-semibold text-slate-600 dark:text-slate-400 md:flex">
-            <a href="#features" className="transition hover:text-slate-950 dark:hover:text-slate-100">
+          {/* Navigation Links */}
+          <nav className="hidden items-center gap-1 rounded-full bg-slate-200/50 p-1 dark:bg-white/5 md:flex">
+            <a
+              href="#features"
+              className="rounded-full px-4 py-1.5 text-xs font-extrabold text-slate-700 hover:bg-white hover:text-violet-600 hover:shadow-xs dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white transition-all"
+            >
               Features
             </a>
-            <a href="#sandbox" className="transition hover:text-slate-950 dark:hover:text-slate-100">
+            <a
+              href="#sandbox"
+              className="rounded-full px-4 py-1.5 text-xs font-extrabold text-slate-700 hover:bg-white hover:text-violet-600 hover:shadow-xs dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white transition-all"
+            >
               Interactive Demo
             </a>
-            <a href="#integration" className="transition hover:text-slate-950 dark:hover:text-slate-100">
+            <a
+              href="#integration"
+              className="rounded-full px-4 py-1.5 text-xs font-extrabold text-slate-700 hover:bg-white hover:text-violet-600 hover:shadow-xs dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white transition-all"
+            >
               Integrations
             </a>
           </nav>
 
-          <div className="flex items-center gap-4">
+          {/* Actions */}
+          <div className="flex items-center gap-3">
             <button
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               aria-label="Toggle Theme"
-              className="flex items-center justify-center size-9 rounded-xl border border-slate-200/80 bg-white text-slate-600 shadow-xs hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 transition cursor-pointer"
+              className="flex items-center justify-center size-9 rounded-full border border-slate-200/80 bg-white/80 text-slate-600 shadow-xs hover:bg-slate-100 hover:scale-105 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 transition-all cursor-pointer"
             >
-              {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
 
             {isSuccess && user ? (
               <Link
                 to="/workspaces"
-                className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:bg-violet-500 hover:shadow-violet-600/30"
+                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 px-4.5 py-2 text-xs font-extrabold text-white shadow-md shadow-violet-500/20 hover:scale-105 transition-all"
               >
-                Go to Workspace <ArrowRight size={15} />
+                Workspace <ArrowRight size={14} />
               </Link>
             ) : (
-              <>
+              <div className="flex items-center gap-2">
                 <Link
                   to="/login"
-                  className="text-sm font-semibold text-slate-600 transition hover:text-slate-950 dark:text-slate-300 dark:hover:text-white"
+                  className="rounded-full px-3.5 py-1.5 text-xs font-extrabold text-slate-700 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white transition-colors"
                 >
                   Sign In
                 </Link>
                 <Link
                   to="/login"
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4.5 py-2.5 text-sm font-bold text-white shadow-lg shadow-violet-600/20 transition hover:bg-violet-500"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 px-4.5 py-2 text-xs font-extrabold text-white shadow-md shadow-violet-500/20 hover:scale-105 transition-all"
                 >
-                  Get Started <ArrowUpRight size={15} />
+                  Get Started <ArrowUpRight size={14} />
                 </Link>
-              </>
+              </div>
             )}
           </div>
         </div>
       </header>
 
       {/* --- HERO SECTION --- */}
-      <section className="relative mx-auto max-w-7xl px-6 pt-12 pb-16 md:pt-16 lg:pt-20">
+      <section className="relative mx-auto max-w-7xl px-6 pt-28 pb-16 md:pt-32 lg:pt-36">
         <div className="grid gap-12 lg:grid-cols-12 lg:items-center">
           {/* Hero Content */}
           <div className="space-y-6 lg:col-span-5">
