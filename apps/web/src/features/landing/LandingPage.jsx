@@ -196,8 +196,8 @@ export default function LandingPage() {
           {/* Navigation Links */}
           <nav className="hidden items-center gap-1.5 md:flex">
             {[
-              { label: 'Features', href: '#features' },
               { label: 'Interactive Demo', href: '#sandbox' },
+              { label: 'Features', href: '#features' },
               { label: 'Integrations', href: '#integration' },
             ].map((item) => (
               <a
