@@ -8,6 +8,7 @@ import appIcon from '@/assets/app-icon.png';
 import appIconDark from '@/assets/app-icon-dark.png';
 import horizontalLogo from '@/assets/horizontal-logo.png';
 import horizontalLogoDark from '@/assets/horizontal-logo-dark.png';
+import { toggleThemeWithRipple } from '@/utils/theme-ripple';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -33,8 +34,8 @@ export function LoginPage() {
     }
   };
 
-  const toggleTheme = () => {
-    setTheme(theme === 'dark' ? 'light' : 'dark');
+  const toggleTheme = (e) => {
+    toggleThemeWithRipple(e, theme, setTheme);
   };
 
   return (
@@ -127,7 +128,7 @@ export function LoginPage() {
       {/* Top Bar Theme Toggle */}
       <div className="absolute top-6 right-8 z-50">
         <button
-          onClick={toggleTheme}
+          onClick={(e) => toggleTheme(e)}
           aria-label="Toggle Theme"
           className="flex items-center justify-center size-11 rounded-2xl border border-white/80 bg-white/70 text-slate-700 shadow-lg shadow-slate-950/5 backdrop-blur-2xl hover:bg-white/90 dark:border-white/15 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:bg-slate-800 transition-all cursor-pointer hover:scale-105 active:scale-95"
         >

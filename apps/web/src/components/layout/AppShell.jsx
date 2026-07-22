@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { authService } from '@/features/auth/auth-service';
 import { useThemeStore } from '@/store/theme-store';
+import { toggleThemeWithRipple } from '@/utils/theme-ripple';
 import { workspaceService } from '@/features/workspaces/workspace-service';
 import { CommandPalette } from '@/components/command/CommandPalette';
 import { attachGlobalShortcuts, detachGlobalShortcuts, useShortcut } from '@/lib/keyboard';
@@ -153,31 +154,9 @@ export function AppShell() {
     }
   }, [notificationsOpen, markAllAsRead]);
 
-  // Theme switch bubble transition effect
+  // Nothing OS Screen Power Ripple Theme Transition
   const handleThemeToggle = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = rect.left + rect.width / 2;
-    const y = rect.top + rect.height / 2;
-    const nextTheme = theme === 'dark' ? 'light' : 'dark';
-    const color = nextTheme === 'dark' ? '#020617' : '#f8fafc'; // background color of target theme
-
-    setBubble({ x, y, active: false, color });
-    // Trigger expansion
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        setBubble((prev) => (prev ? { ...prev, active: true } : null));
-      });
-    });
-
-    // Toggle theme at the peak of transition
-    setTimeout(() => {
-      setTheme(nextTheme);
-    }, 450);
-
-    // Clean up bubble element
-    setTimeout(() => {
-      setBubble(null);
-    }, 750);
+    toggleThemeWithRipple(e, theme, setTheme);
   };
 
   // Fetch dashboards for search index

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useThemeStore } from '@/store/theme-store';
+import { toggleThemeWithRipple } from '@/utils/theme-ripple';
 import appIcon from '@/assets/app-icon.png';
 import appIconDark from '@/assets/app-icon-dark.png';
 import horizontalLogo from '@/assets/horizontal-logo.png';
@@ -227,7 +228,7 @@ export default function LandingPage() {
           {/* Actions */}
           <div className="flex items-center gap-2.5">
             <button
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              onClick={(e) => toggleThemeWithRipple(e, theme, setTheme)}
               aria-label="Toggle Theme"
               className="flex items-center justify-center size-9 rounded-full border border-slate-200/80 bg-white/80 text-slate-600 shadow-xs hover:bg-slate-100 hover:scale-105 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 transition-all cursor-pointer"
             >
