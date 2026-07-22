@@ -145,26 +145,36 @@ export default function LandingPage() {
     setDraggingNodeId(id);
   };
 
-  const handleMouseMove = (e) => {
-    if (!draggingNodeId || !containerRef.current) return;
-    const containerRect = containerRef.current.getBoundingClientRect();
-    const nextX = Math.max(
-      10,
-      Math.min(containerRect.width - 240, e.clientX - containerRect.left - dragOffset.x),
-    );
-    const nextY = Math.max(
-      10,
-      Math.min(containerRect.height - 120, e.clientY - containerRect.top - dragOffset.y),
-    );
+  // Handle mouse drag ONLY when a node is actively being dragged
+  useEffect(() => {
+    if (!draggingNodeId) return;
 
-    setNodes((prev) =>
-      prev.map((n) => (n.id === draggingNodeId ? { ...n, x: nextX, y: nextY } : n)),
-    );
-  };
+    const onMove = (e) => {
+      if (!containerRef.current) return;
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const nextX = Math.max(
+        10,
+        Math.min(containerRect.width - 240, e.clientX - containerRect.left - dragOffset.x),
+      );
+      const nextY = Math.max(
+        10,
+        Math.min(containerRect.height - 120, e.clientY - containerRect.top - dragOffset.y),
+      );
 
-  const handleMouseUp = () => {
-    setDraggingNodeId(null);
-  };
+      setNodes((prev) =>
+        prev.map((n) => (n.id === draggingNodeId ? { ...n, x: nextX, y: nextY } : n)),
+      );
+    };
+
+    const onUp = () => setDraggingNodeId(null);
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [draggingNodeId, dragOffset]);
 
   const incrementNode = (id, amount) => {
     setNodes((prev) =>
@@ -183,8 +193,6 @@ export default function LandingPage() {
   return (
     <div
       className="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900 dark:bg-[#04060d] dark:text-slate-100 transition-colors duration-200 ease-out selection:bg-violet-500/30 selection:text-violet-600 dark:selection:text-violet-200"
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
     >
       {/* Dynamic Background Glows */}
       <div className="absolute top-0 left-1/4 -z-10 h-[500px] w-[500px] rounded-full bg-violet-500/10 blur-[120px] dark:bg-violet-600/10" />
@@ -468,7 +476,7 @@ export default function LandingPage() {
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-50px' }}
+          viewport={{ once: true }}
           transition={{ duration: 0.6 }}
           className="mx-auto max-w-3xl text-center space-y-3"
         >
@@ -488,7 +496,7 @@ export default function LandingPage() {
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-50px' }}
+            viewport={{ once: true }}
             transition={{ duration: 0.6, delay: 0.1 }}
           >
             <InteractiveTiltCard className="group h-full">
@@ -506,7 +514,7 @@ export default function LandingPage() {
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-50px' }}
+            viewport={{ once: true }}
             transition={{ duration: 0.6, delay: 0.2 }}
           >
             <InteractiveTiltCard className="group h-full">
@@ -524,7 +532,7 @@ export default function LandingPage() {
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-50px' }}
+            viewport={{ once: true }}
             transition={{ duration: 0.6, delay: 0.3 }}
           >
             <InteractiveTiltCard className="group h-full">
@@ -549,7 +557,7 @@ export default function LandingPage() {
             <motion.div
               initial={{ opacity: 0, x: -30 }}
               whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, margin: '-50px' }}
+              viewport={{ once: true }}
               transition={{ duration: 0.7 }}
               className="order-2 lg:order-1 lg:col-span-7 grid grid-cols-2 gap-4"
             >
@@ -592,7 +600,7 @@ export default function LandingPage() {
             <motion.div
               initial={{ opacity: 0, x: 30 }}
               whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, margin: '-50px' }}
+              viewport={{ once: true }}
               transition={{ duration: 0.7 }}
               className="order-1 lg:order-2 lg:col-span-5 space-y-5"
             >
@@ -639,7 +647,7 @@ export default function LandingPage() {
         <motion.div
           initial={{ opacity: 0, scale: 0.96, y: 30 }}
           whileInView={{ opacity: 1, scale: 1, y: 0 }}
-          viewport={{ once: true, margin: '-50px' }}
+          viewport={{ once: true }}
           transition={{ duration: 0.7 }}
           className="apple-liquid-glass relative overflow-hidden rounded-3xl px-8 py-14 text-center shadow-2xl border border-slate-200/80 dark:border-white/10"
         >
