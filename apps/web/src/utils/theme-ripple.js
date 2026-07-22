@@ -1,8 +1,7 @@
 /**
- * Nothing OS Background Theme Ripple Effect
- * Originates from the exact center of the theme icon button and expands
- * behind all page content (z-index: 0, pointer-events: none) so the background
- * color ripples gracefully without covering any UI elements, text, or cards.
+ * Ultra-Optimized 60 FPS Nothing OS Background Theme Ripple
+ * Uses hardware-accelerated GPU layers without heavy shadow filters,
+ * eliminating all frame drops & layout lag for instant text/content loading.
  */
 export function toggleThemeWithRipple(event, currentTheme, setTheme) {
   const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
@@ -29,18 +28,15 @@ export function toggleThemeWithRipple(event, currentTheme, setTheme) {
     Math.max(y, window.innerHeight - y)
   );
 
-  // Clean up any previous active background ripple
+  // Clean up any previous active ripple
   const existing = document.getElementById('nothing-os-power-ripple');
   if (existing) existing.remove();
 
-  // Create Background Ripple Layer (z-index: 0 - BEHIND UI CONTENT)
+  // Create GPU-accelerated Background Layer (z-index: 0 behind content)
   const bgRipple = document.createElement('div');
   bgRipple.id = 'nothing-os-power-ripple';
 
   const targetBg = nextTheme === 'dark' ? '#04060d' : '#f8fafc';
-  const ringGlow = nextTheme === 'dark'
-    ? 'rgba(168, 85, 247, 0.5)'
-    : 'rgba(99, 102, 241, 0.4)';
 
   bgRipple.style.cssText = `
     position: fixed;
@@ -50,30 +46,29 @@ export function toggleThemeWithRipple(event, currentTheme, setTheme) {
     height: 100vh;
     pointer-events: none;
     z-index: 0;
-    background: ${targetBg};
+    background-color: ${targetBg};
     clip-path: circle(0px at ${x}px ${y}px);
+    transform: translateZ(0);
     will-change: clip-path;
-    box-shadow: inset 0 0 100px ${ringGlow};
-    transition: clip-path 850ms cubic-bezier(0.25, 1, 0.4, 1);
+    transition: clip-path 450ms cubic-bezier(0.16, 1, 0.3, 1);
   `;
 
-  // Insert as first child of body so it sits behind UI elements
   document.body.insertBefore(bgRipple, document.body.firstChild);
 
-  // Switch underlying theme state immediately so text/cards/borders update smoothly
+  // Trigger GPU clip-path expansion instantly
   requestAnimationFrame(() => {
-    setTheme(nextTheme);
-
-    // Expand background ripple from theme icon center -> full screen
-    requestAnimationFrame(() => {
-      bgRipple.style.clipPath = `circle(${endRadius + 80}px at ${x}px ${y}px)`;
-    });
+    bgRipple.style.clipPath = `circle(${endRadius + 60}px at ${x}px ${y}px)`;
   });
 
-  // Remove overlay seamlessly after 850ms slow-motion completion
+  // Switch theme state after GPU layer starts expanding so React re-renders don't block frame 1
+  setTimeout(() => {
+    setTheme(nextTheme);
+  }, 30);
+
+  // Clean up overlay when animation completes
   setTimeout(() => {
     if (bgRipple.parentNode) {
       bgRipple.parentNode.removeChild(bgRipple);
     }
-  }, 870);
+  }, 470);
 }
