@@ -473,11 +473,7 @@ export default function LandingPage() {
 
       {/* --- FEATURES GRID --- */}
       <section id="features" className="mx-auto max-w-7xl px-6 py-14 md:py-20">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
+        <div
           className="mx-auto max-w-3xl text-center space-y-3"
         >
           <h2 className="text-xs font-extrabold uppercase tracking-[.25em] text-violet-600 dark:text-violet-400">
@@ -490,15 +486,10 @@ export default function LandingPage() {
             Replace static reports with interactive node-based systems that run instantly in the
             browser.
           </p>
-        </motion.div>
+        </div>
 
         <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-          >
+          <div>
             <InteractiveTiltCard className="group h-full">
               <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400 group-hover:scale-110 transition-transform duration-300">
                 <GitBranch size={20} />
@@ -509,14 +500,9 @@ export default function LandingPage() {
                 whenever inputs change.
               </p>
             </InteractiveTiltCard>
-          </motion.div>
+          </div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-          >
+          <div>
             <InteractiveTiltCard className="group h-full">
               <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 group-hover:scale-110 transition-transform duration-300">
                 <Activity size={20} />
@@ -527,14 +513,9 @@ export default function LandingPage() {
                 trendlines, and threshold warning states.
               </p>
             </InteractiveTiltCard>
-          </motion.div>
+          </div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-          >
+          <div>
             <InteractiveTiltCard className="group h-full">
               <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform duration-300">
                 <RefreshCw size={20} />
@@ -545,7 +526,7 @@ export default function LandingPage() {
                 dynamically.
               </p>
             </InteractiveTiltCard>
-          </motion.div>
+          </div>
         </div>
       </section>
 
@@ -554,11 +535,7 @@ export default function LandingPage() {
         <div className="mx-auto max-w-7xl px-6">
           <div className="grid gap-12 lg:grid-cols-12 lg:items-center">
             {/* Visuals */}
-            <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.7 }}
+            <div
               className="order-2 lg:order-1 lg:col-span-7 grid grid-cols-2 gap-4"
             >
               <div className="space-y-4">
@@ -594,14 +571,10 @@ export default function LandingPage() {
                   </p>
                 </div>
               </div>
-            </motion.div>
+            </div>
 
             {/* Content */}
-            <motion.div
-              initial={{ opacity: 0, x: 30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.7 }}
+            <div
               className="order-1 lg:order-2 lg:col-span-5 space-y-5"
             >
               <h2 className="text-xs font-extrabold uppercase tracking-[.25em] text-cyan-600 dark:text-cyan-400">
@@ -622,33 +595,25 @@ export default function LandingPage() {
                   'Support for custom Javascript math calculations',
                   'Sub-millisecond visual updates using Zustand reactive bindings',
                 ].map((item, idx) => (
-                  <motion.div
+                  <div
                     key={idx}
-                    initial={{ opacity: 0, y: 15 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.4, delay: 0.2 + idx * 0.1 }}
                     className="flex items-center gap-3 text-sm font-semibold text-slate-700 dark:text-slate-300"
                   >
                     <span className="flex size-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-extrabold text-xs">
                       ✓
                     </span>
                     {item}
-                  </motion.div>
+                  </div>
                 ))}
               </div>
-            </motion.div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* --- HERO FOOTER CTA --- */}
       <section className="mx-auto max-w-7xl px-6 py-14 md:py-20">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.96, y: 30 }}
-          whileInView={{ opacity: 1, scale: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.7 }}
+        <div
           className="apple-liquid-glass relative overflow-hidden rounded-3xl px-8 py-14 text-center shadow-2xl border border-slate-200/80 dark:border-white/10"
         >
           <div className="absolute top-0 left-1/2 -z-10 h-64 w-64 -translate-x-1/2 rounded-full bg-violet-500/10 blur-[80px]" />
@@ -680,7 +645,7 @@ export default function LandingPage() {
               </Link>
             </div>
           </div>
-        </motion.div>
+        </div>
       </section>
 
       {/* --- FOOTER --- */}
