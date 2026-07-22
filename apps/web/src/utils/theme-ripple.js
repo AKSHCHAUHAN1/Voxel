@@ -1,12 +1,12 @@
 /**
  * Nothing OS Power Button Screen Reveal Effect
- * Creates an instant, 60 FPS circular power-on/off light wave originating
- * from the power/theme button that expands across the entire viewport.
+ * Originates from the exact center of the theme icon button and gracefully
+ * expands across the screen in slow-motion with a glowing aura ring.
  */
 export function toggleThemeWithRipple(event, currentTheme, setTheme) {
   const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
 
-  // Get click origin coordinates (center of power button)
+  // Get click origin coordinates (exact center of theme icon button)
   let x = window.innerWidth / 2;
   let y = window.innerHeight / 2;
 
@@ -28,7 +28,7 @@ export function toggleThemeWithRipple(event, currentTheme, setTheme) {
     Math.max(y, window.innerHeight - y)
   );
 
-  // Clean up any previous active ripple
+  // Clean up any previous active ripple overlay
   const existing = document.getElementById('nothing-os-power-ripple');
   if (existing) existing.remove();
 
@@ -38,8 +38,8 @@ export function toggleThemeWithRipple(event, currentTheme, setTheme) {
 
   const bgColor = nextTheme === 'dark' ? '#04060d' : '#f8fafc';
   const ringGlow = nextTheme === 'dark'
-    ? 'rgba(168, 85, 247, 0.7)'
-    : 'rgba(99, 102, 241, 0.6)';
+    ? 'rgba(168, 85, 247, 0.85)'
+    : 'rgba(99, 102, 241, 0.75)';
 
   overlay.style.cssText = `
     position: fixed;
@@ -52,8 +52,8 @@ export function toggleThemeWithRipple(event, currentTheme, setTheme) {
     background: ${bgColor};
     clip-path: circle(0px at ${x}px ${y}px);
     will-change: clip-path;
-    box-shadow: inset 0 0 80px ${ringGlow};
-    transition: clip-path 380ms cubic-bezier(0.1, 0.9, 0.2, 1);
+    box-shadow: inset 0 0 100px ${ringGlow}, 0 0 50px ${ringGlow};
+    transition: clip-path 850ms cubic-bezier(0.25, 1, 0.4, 1);
   `;
 
   document.body.appendChild(overlay);
@@ -62,16 +62,16 @@ export function toggleThemeWithRipple(event, currentTheme, setTheme) {
   requestAnimationFrame(() => {
     setTheme(nextTheme);
 
-    // Expand power circle from 0px -> endRadius across screen
+    // Gracefully expand power circle slowly from theme icon center -> full screen
     requestAnimationFrame(() => {
-      overlay.style.clipPath = `circle(${endRadius + 60}px at ${x}px ${y}px)`;
+      overlay.style.clipPath = `circle(${endRadius + 80}px at ${x}px ${y}px)`;
     });
   });
 
-  // Remove overlay seamlessly as circle completes expanding
+  // Remove overlay seamlessly after 850ms slow-motion completion
   setTimeout(() => {
     if (overlay.parentNode) {
       overlay.parentNode.removeChild(overlay);
     }
-  }, 400);
+  }, 870);
 }
