@@ -232,15 +232,15 @@ export default function LandingPage() {
               <div className="flex items-center gap-2">
                 <Link
                   to="/login"
-                  className="inline-flex items-center justify-center rounded-full border border-violet-500/40 bg-violet-500/10 px-5 py-2 text-sm font-bold text-violet-600 hover:bg-violet-600 hover:text-white hover:border-violet-600 dark:border-violet-400/40 dark:bg-violet-500/15 dark:text-violet-300 dark:hover:bg-violet-500 dark:hover:text-white hover:shadow-lg hover:shadow-violet-500/25 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
-                >
-                  Sign In
-                </Link>
-                <Link
-                  to="/login"
                   className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-600 px-5 py-2 text-sm font-bold text-white shadow-md shadow-violet-500/25 hover:shadow-lg hover:shadow-violet-500/40 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
                 >
                   Sign Up <ArrowUpRight size={15} />
+                </Link>
+                <Link
+                  to="/login"
+                  className="inline-flex items-center justify-center rounded-full border border-violet-500/40 bg-violet-500/10 px-5 py-2 text-sm font-bold text-violet-600 hover:bg-violet-600 hover:text-white hover:border-violet-600 dark:border-violet-400/40 dark:bg-violet-500/15 dark:text-violet-300 dark:hover:bg-violet-500 dark:hover:text-white hover:shadow-lg hover:shadow-violet-500/25 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
+                >
+                  Sign In
                 </Link>
               </div>
             )}
@@ -253,14 +253,6 @@ export default function LandingPage() {
         <div className="grid gap-12 lg:grid-cols-12 lg:items-center">
           {/* Hero Content */}
           <div className="space-y-6 lg:col-span-5">
-            <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              className="inline-flex items-center gap-2 rounded-full border border-violet-500/20 bg-violet-500/10 px-3.5 py-1 text-xs font-extrabold tracking-wide text-violet-600 dark:text-violet-300 backdrop-blur-md"
-            >
-              <Sparkles size={12} className="animate-pulse" /> Visual Grid Engine v2.0
-            </motion.div>
 
             <motion.h1
               initial={{ opacity: 0, y: 20 }}
