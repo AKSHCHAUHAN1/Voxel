@@ -200,29 +200,32 @@ export default function LandingPage() {
           </Link>
 
           {/* Navigation Links */}
-          <nav className="hidden items-center gap-1 rounded-full bg-slate-200/50 p-1 dark:bg-white/5 md:flex">
+          <nav className="hidden items-center gap-2 md:flex">
             <a
               href="#features"
-              className="rounded-full px-4 py-1.5 text-xs font-extrabold text-slate-700 hover:bg-white hover:text-violet-600 hover:shadow-xs dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white transition-all"
+              className="relative px-3.5 py-1.5 text-xs font-extrabold text-slate-700 hover:text-violet-600 dark:text-slate-300 dark:hover:text-white transition-all group"
             >
               Features
+              <span className="absolute bottom-0 left-1/2 h-0.5 w-0 -translate-x-1/2 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 group-hover:w-3/4 transition-all duration-300" />
             </a>
             <a
               href="#sandbox"
-              className="rounded-full px-4 py-1.5 text-xs font-extrabold text-slate-700 hover:bg-white hover:text-violet-600 hover:shadow-xs dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white transition-all"
+              className="relative px-3.5 py-1.5 text-xs font-extrabold text-slate-700 hover:text-violet-600 dark:text-slate-300 dark:hover:text-white transition-all group"
             >
               Interactive Demo
+              <span className="absolute bottom-0 left-1/2 h-0.5 w-0 -translate-x-1/2 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 group-hover:w-3/4 transition-all duration-300" />
             </a>
             <a
               href="#integration"
-              className="rounded-full px-4 py-1.5 text-xs font-extrabold text-slate-700 hover:bg-white hover:text-violet-600 hover:shadow-xs dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white transition-all"
+              className="relative px-3.5 py-1.5 text-xs font-extrabold text-slate-700 hover:text-violet-600 dark:text-slate-300 dark:hover:text-white transition-all group"
             >
               Integrations
+              <span className="absolute bottom-0 left-1/2 h-0.5 w-0 -translate-x-1/2 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 group-hover:w-3/4 transition-all duration-300" />
             </a>
           </nav>
 
           {/* Actions */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <button
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               aria-label="Toggle Theme"
@@ -242,7 +245,7 @@ export default function LandingPage() {
               <div className="flex items-center gap-2">
                 <Link
                   to="/login"
-                  className="rounded-full px-3.5 py-1.5 text-xs font-extrabold text-slate-700 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white transition-colors"
+                  className="inline-flex items-center justify-center rounded-full border border-violet-500/40 bg-violet-500/10 px-4 py-2 text-xs font-extrabold text-violet-600 hover:bg-violet-500/20 hover:border-violet-600 dark:border-violet-400/40 dark:bg-violet-500/15 dark:text-violet-300 dark:hover:border-violet-400 hover:scale-105 transition-all cursor-pointer"
                 >
                   Sign In
                 </Link>
