@@ -7,4 +7,14 @@ export const authService = {
   loginUrl: () => `${runtime.apiBaseUrl}/api/v1/auth/google`,
   guestLogin: () =>
     request('/api/v1/auth/guest-login', { method: 'POST', body: JSON.stringify({}) }),
+  signup: ({ email, password, displayName }) =>
+    request('/api/v1/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, displayName }),
+    }),
+  login: ({ email, password }) =>
+    request('/api/v1/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    }),
 };

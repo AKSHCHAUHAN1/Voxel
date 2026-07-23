@@ -42,7 +42,6 @@ export function AppShell() {
   // Theme state and bubble animation state
   const theme = useThemeStore((state) => state.theme);
   const setTheme = useThemeStore((state) => state.setTheme);
-  const [bubble, setBubble] = useState(null);
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -108,7 +107,7 @@ export function AppShell() {
   const logout = async () => {
     await authService.logout();
     queryClient.clear();
-    navigate('/');
+    navigate('/login');
   };
 
   const handleLogoutClick = () => {
@@ -184,7 +183,7 @@ export function AppShell() {
           if (res && res.data) {
             all.push(...res.data.map(d => ({ ...d, workspaceName: ws.name })));
           }
-        } catch (e) {
+        } catch (_e) {
           // ignore
         }
       }
@@ -208,20 +207,7 @@ export function AppShell() {
     <div
       className="min-h-screen bg-slate-50 text-slate-900 dark:bg-[#060913] dark:text-slate-100 transition-colors duration-300"
     >
-      {/* Expanding Transition Bubble */}
-      {bubble && (
-        <div
-          className="fixed pointer-events-none rounded-full z-[9999] -translate-x-1/2 -translate-y-1/2 transition-transform duration-700 ease-out"
-          style={{
-            left: bubble.x,
-            top: bubble.y,
-            width: '250vmax',
-            height: '250vmax',
-            backgroundColor: bubble.color,
-            transform: `translate(-50%, -50%) scale(${bubble.active ? 1 : 0})`,
-          }}
-        />
-      )}
+      {/* Main Content Area */}
 
       <aside
         className={`flex flex-col fixed left-0 top-0 h-full bg-white dark:bg-slate-950 z-50 transition-all duration-300 overflow-hidden border-r border-slate-200 dark:border-white/10 ${collapsed ? 'w-20' : 'w-64'}`}

@@ -12,8 +12,6 @@ import {
   Plus,
   Command,
   Keyboard,
-  Undo2,
-  Redo2,
   Home,
   Layers,
 } from 'lucide-react';

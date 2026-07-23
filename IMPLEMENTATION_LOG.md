@@ -121,4 +121,150 @@
 
 **Next milestone**
 
-- Milestone 4: Backend platform - caching, queues, test databases, and OpenAPI schemas.
+- Milestone 4: Codebase Audit & Compliance Verification with Prompt Specs.
+
+## Milestone 4 — Audit Logging & Quality Gates Verification
+
+**Status:** Complete
+
+**Completed work**
+
+- Fixed ESLint configuration (`eslint.config.js`) to support Node and Browser environments for JS/JSX monorepo files, resolving all 34 lint errors.
+- Added automated `AuditEvent` security logging in `workspace-routes.js` for workspace and dashboard mutations (create, update, delete).
+- Added `GET /api/v1/workspaces/:workspaceId/audit-events` API endpoint for workspace admin audit log review.
+- Verified clean passage of `npm run lint` (0 errors, 0 warnings), `npm test`, and production build `npm run build`.
+
+**Modified files**
+
+- `eslint.config.js`
+- `apps/api/src/features/workspaces/workspace-routes.js`
+- `apps/web/src/components/command/CommandPalette.jsx`
+- `apps/web/src/components/feedback/CustomConfirmModal.jsx`
+- `apps/web/src/components/layout/AppShell.jsx`
+- `apps/web/src/features/editor/EditorPage.jsx`
+- `apps/web/src/features/editor/VersionHistory.jsx`
+- `apps/web/src/features/editor/use-yjs.js`
+- `apps/web/src/features/landing/LandingPage.jsx`
+- `apps/web/src/lib/keyboard.js`
+- `apps/web/src/store/notification-store.js`
+- `IMPLEMENTATION_LOG.md`
+
+**Architectural decisions**
+
+- Audit events log non-blocking security mutations without disrupting active requests.
+- ESLint ignores unused variables prefixed with an underscore to align with TypeScript conventions across shared packages and apps.
+
+**Next milestone**
+
+- Milestone 5: Full Email & Password Sign In & Sign Up Authentication.
+
+## Milestone 5 — Full Sign In & Sign Up Authentication
+
+**Status:** Complete
+
+**Completed work**
+
+- Added `passwordHash` field to Prisma `User` schema (`apps/api/prisma/schema.prisma`) and synchronized local database using `prisma db push`.
+- Built secure Node.js `scryptSync` password hashing and constant-time verification in `apps/api/src/features/auth/auth-service.js`.
+- Added email/password registration (`POST /api/v1/auth/signup`) and email/password authentication (`POST /api/v1/auth/login`) API endpoints in `auth-routes.js`.
+- Implemented automatic initial workspace creation (`ensureDefaultWorkspace`) for newly signed-up users so they land in a ready workspace.
+- Redesigned `LoginPage.jsx` with an interactive tabbed **Sign In** and **Sign Up** UI, inline validation, password show/hide toggle, loading feedback, and smooth mode switching.
+- Updated `LandingPage.jsx` header links to route directly to `?mode=signin` and `?mode=signup`.
+- Added unit tests for password hashing in `auth-service.test.js`.
+
+**Modified files**
+
+- `apps/api/prisma/schema.prisma`
+- `apps/api/src/features/auth/auth-service.js`
+- `apps/api/src/features/auth/auth-routes.js`
+- `apps/api/src/features/auth/auth-service.test.js`
+- `apps/web/src/features/auth/auth-service.js`
+- `apps/web/src/features/auth/LoginPage.jsx`
+- `apps/web/src/features/landing/LandingPage.jsx`
+- `apps/web/src/components/layout/AppShell.jsx`
+- `IMPLEMENTATION_LOG.md`
+
+**Architectural decisions**
+
+- Password hashing relies on Node.js built-in `crypto.scryptSync` with random salt per user to avoid external dependency vulnerabilities.
+- New accounts automatically seed a initial default workspace so first-time users can immediately start building canvas dashboards.
+
+**Blockers**
+
+- None.
+
+**Next milestone**
+
+- Milestone 6: Enterprise Platform Settings Suite Remake.
+
+## Milestone 6 — Enterprise Platform Settings Suite Remake
+
+**Status:** Complete
+
+**Completed work**
+
+- Redesigned [SettingsPage.jsx](file:///Users/akshchauhan/Igris/NOTES/PROJECTS/voxel/apps/web/src/features/settings/SettingsPage.jsx) into an enterprise-grade multi-tab settings suite.
+- Implemented **7 dedicated settings modules**:
+  1. **Account & Profile**: Avatar badge color customizer, display name, email, job title, primary language, timezone selector, and bio notes.
+  2. **Appearance & Canvas**: Dark/Light theme toggle, Canvas accent color palette, Default grid style selection (Dot Matrix, Grid Lines, Radial Mesh, Clean Canvas), Autosave sync frequency, snap-to-grid toggle, and reduced motion settings.
+  3. **Workspace & Team**: Member search, role-based access control badges (OWNER, ADMIN, EDITOR, VIEWER), invite link generator, member removal, and invitation modal.
+  4. **Security & Sessions**: Password update form with strength checks, Active browser & device session revocation list, and immutable audit event log viewer.
+  5. **Notifications**: Email digests, collaboration mention alerts, real-time desktop notifications, and feature update toggles.
+  6. **API & Developer SDK**: Production API secret key viewer with copy-to-clipboard and key regeneration, plus webhook URL endpoint settings.
+  7. **Danger Zone**: Account soft-deletion confirmation workflow with mandatory text verification.
+- Verified clean build (`npm run build`), linting (`npm run lint`), and tests (`npm test`).
+
+**Modified files**
+
+- `apps/web/src/features/settings/SettingsPage.jsx`
+- `IMPLEMENTATION_LOG.md`
+
+**Architectural decisions**
+
+- Modular tabbed layout maintains clean focus per administrative task without cluttering the screen.
+- State feedback is piped to the central notification store for instant feedback on actions.
+
+**Blockers**
+
+- None.
+
+**Next milestone**
+
+- Milestone 7: Dynamic Autosave Settings & Git-Style Version Reverting.
+
+## Milestone 7 — Dynamic Autosave Settings & Git-Style Version Reverting
+
+**Status:** Complete
+
+**Completed work**
+
+- Created persistent Zustand settings store ([settings-store.js](file:///Users/akshchauhan/Igris/NOTES/PROJECTS/voxel/apps/web/src/store/settings-store.js)) for Autosave configurations (`autosaveEnabled`, `autosaveInterval`).
+- Integrated **Master Autosave Engine Switch** into [SettingsPage.jsx](file:///Users/akshchauhan/Igris/NOTES/PROJECTS/voxel/apps/web/src/features/settings/SettingsPage.jsx) (Supports Realtime, Every 5s, Every 30s, or Manual Save Only).
+- Updated [EditorPage.jsx](file:///Users/akshchauhan/Igris/NOTES/PROJECTS/voxel/apps/web/src/features/editor/EditorPage.jsx) header toolbar:
+  - When **Autosave is ON**, the manual Save button is hidden and debounced background autosave automatically persists changes to the backend.
+  - When **Autosave is OFF**, the manual Save button is shown and autosave is disabled.
+- Redesigned [VersionHistory.jsx](file:///Users/akshchauhan/Igris/NOTES/PROJECTS/voxel/apps/web/src/features/editor/VersionHistory.jsx) to display version checkpoints:
+  - Clicking any version card expands a Git-style checkpoint inspector with node/link metadata.
+  - Provides a one-click **"Revert to Version #X"** action button that restores the target canvas layout state and commits a new version checkpoint to the backend database.
+- Added unit tests for settings store in `settings-store.test.js`. Verified clean passage of `npm run lint`, `npm test`, and `npm run build`.
+
+**Modified files**
+
+- `apps/web/src/store/settings-store.js`
+- `apps/web/src/store/settings-store.test.js`
+- `apps/web/src/features/settings/SettingsPage.jsx`
+- `apps/web/src/features/editor/EditorPage.jsx`
+- `apps/web/src/features/editor/VersionHistory.jsx`
+- `IMPLEMENTATION_LOG.md`
+
+**Architectural decisions**
+
+- Persistent Zustand store syncs user autosave preferences across pages instantly via reactive state listeners.
+- Reverting a historical version creates a new incremented version snapshot in the backend transaction log, preserving full auditability.
+
+**Blockers**
+
+- None.
+
+
+

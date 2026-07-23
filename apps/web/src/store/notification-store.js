@@ -11,13 +11,13 @@ const DEFAULT_NOTIFICATIONS = [
   { id: '3', text: 'Monthly expense report is ready to download.', time: '3h ago', read: true, type: 'success' },
 ];
 
-export const useNotificationStore = create((set, get) => {
+export const useNotificationStore = create((set, _get) => {
   // Load initial notifications
   let initialList = DEFAULT_NOTIFICATIONS;
   try {
     const saved = localStorage.getItem('voxel_notifications');
     if (saved) initialList = JSON.parse(saved);
-  } catch (e) {
+  } catch (_e) {
     // ignore
   }
 

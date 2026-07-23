@@ -83,7 +83,7 @@ export function useYjs(dashboardId, initialScene) {
               yScene.set(key, value);
             }
           });
-        } catch (err) {
+        } catch (_err) {
           // ignore
         }
       }

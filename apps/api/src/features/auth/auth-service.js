@@ -1,13 +1,30 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 
 const ACCESS_TOKEN_LIFETIME_SECONDS = 15 * 60;
 const REFRESH_TOKEN_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 
 const digest = (value) => createHash('sha256').update(value).digest('hex');
-const secret = (environment) =>
-  new TextEncoder().encode(environment.SESSION_SECRET);
+const secret = (environment) => new TextEncoder().encode(environment.SESSION_SECRET);
 const newRefreshToken = () => randomBytes(48).toString('base64url');
+
+export function hashPassword(password) {
+  const salt = randomBytes(16).toString('hex');
+  const hash = scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+
+export function verifyPassword(password, storedHash) {
+  if (!storedHash || typeof storedHash !== 'string' || !storedHash.includes(':')) {
+    return false;
+  }
+  const [salt, hash] = storedHash.split(':');
+  if (!salt || !hash) return false;
+  const targetHash = scryptSync(password, salt, 64);
+  const sourceHash = Buffer.from(hash, 'hex');
+  if (targetHash.length !== sourceHash.length) return false;
+  return timingSafeEqual(targetHash, sourceHash);
+}
 
 export class AuthService {
   constructor(database, environment) {
@@ -15,9 +32,130 @@ export class AuthService {
     this.environment = environment;
   }
 
+  async ensureDefaultWorkspace(userId, displayName) {
+    const existing = await this.database.workspaceMember.findFirst({
+      where: { userId, workspace: { deletedAt: null } },
+    });
+    if (!existing) {
+      const workspaceName = `${displayName.trim() || 'Personal'}'s Workspace`;
+      const slug = `${workspaceName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${randomBytes(4).toString('hex')}`;
+      await this.database.workspace.create({
+        data: {
+          ownerId: userId,
+          name: workspaceName,
+          slug,
+          icon: 'grid',
+          accentColor: 'violet',
+          members: {
+            create: {
+              userId,
+              role: 'OWNER',
+            },
+          },
+        },
+      });
+    }
+  }
+
+  async signUpWithEmail(input, metadata) {
+    const existingUser = await this.database.user.findUnique({
+      where: { email: input.email },
+    });
+
+    if (existingUser && existingUser.passwordHash) {
+      const err = new Error('An account with this email already exists. Please sign in.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const passwordHash = hashPassword(input.password);
+
+    let user;
+    if (existingUser) {
+      user = await this.database.user.update({
+        where: { id: existingUser.id },
+        data: {
+          passwordHash,
+          displayName: input.displayName || existingUser.displayName,
+          emailVerified: true,
+          deletedAt: null,
+        },
+      });
+    } else {
+      user = await this.database.user.create({
+        data: {
+          email: input.email,
+          passwordHash,
+          displayName: input.displayName,
+          emailVerified: true,
+        },
+      });
+    }
+
+    await this.ensureDefaultWorkspace(user.id, user.displayName);
+    return this.generateSessionForUser(user, metadata);
+  }
+
+  async loginWithEmail(input, metadata) {
+    const user = await this.database.user.findUnique({
+      where: { email: input.email },
+    });
+
+    if (!user || user.deletedAt) {
+      const err = new Error('Invalid email or password.');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    if (!user.passwordHash) {
+      const err = new Error('This account uses Google Sign In. Please click "Continue with Google".');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    const isValid = verifyPassword(input.password, user.passwordHash);
+    if (!isValid) {
+      const err = new Error('Invalid email or password.');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    await this.ensureDefaultWorkspace(user.id, user.displayName);
+    return this.generateSessionForUser(user, metadata);
+  }
+
+  async generateSessionForUser(user, metadata) {
+    const refreshToken = newRefreshToken();
+    const session = await this.database.session.create({
+      data: {
+        userId: user.id,
+        userAgent: metadata.userAgent ?? null,
+        ipAddress: metadata.ip ?? null,
+        expiresAt: new Date(Date.now() + REFRESH_TOKEN_LIFETIME_SECONDS * 1_000),
+        tokens: {
+          create: {
+            tokenHash: digest(refreshToken),
+            expiresAt: new Date(Date.now() + REFRESH_TOKEN_LIFETIME_SECONDS * 1_000),
+          },
+        },
+      },
+    });
+
+    return {
+      accessToken: await this.signAccessToken(user, session.id),
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
+      },
+    };
+  }
+
   async createSession(identity, metadata) {
     if (!identity.emailVerified) {
-      throw new Error('The Google account email address must be verified.');
+      throw new Error('The email address must be verified.');
     }
 
     const user = await this.database.user.upsert({
@@ -38,23 +176,8 @@ export class AuthService {
       },
     });
 
-    const refreshToken = newRefreshToken();
-    const session = await this.database.session.create({
-      data: {
-        userId: user.id,
-        userAgent: metadata.userAgent ?? null,
-        ipAddress: metadata.ip ?? null,
-        expiresAt: new Date(Date.now() + REFRESH_TOKEN_LIFETIME_SECONDS * 1_000),
-        tokens: {
-          create: {
-            tokenHash: digest(refreshToken),
-            expiresAt: new Date(Date.now() + REFRESH_TOKEN_LIFETIME_SECONDS * 1_000),
-          },
-        },
-      },
-    });
-
-    return { accessToken: await this.signAccessToken(user, session.id), refreshToken };
+    await this.ensureDefaultWorkspace(user.id, user.displayName);
+    return this.generateSessionForUser(user, metadata);
   }
 
   async rotateSession(refreshToken) {

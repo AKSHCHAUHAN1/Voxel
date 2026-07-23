@@ -5,7 +5,6 @@ import { useParams, Link } from 'react-router-dom';
 import {
   BarChart3,
   FileText,
-  GripVertical,
   Plus,
   Save,
   Sparkles,
@@ -32,6 +31,7 @@ import {
 import { workspaceService } from '@/features/workspaces/workspace-service';
 import { useShortcut } from '@/lib/keyboard';
 import { useHistoryStore } from '@/store/history-store';
+import { useSettingsStore } from '@/store/settings-store';
 import { VersionHistory } from './VersionHistory';
 import { useYjs } from './use-yjs';
 import { CustomConfirmModal } from '@/components/feedback/CustomConfirmModal';
@@ -202,7 +202,6 @@ export default function EditorPage() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
-  const [coordinates, setCoordinates] = useState({});
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
     title: '',
@@ -212,6 +211,7 @@ export default function EditorPage() {
     onConfirm: null,
   });
   const gridRef = useRef(null);
+  const { autosaveEnabled, autosaveInterval } = useSettingsStore();
 
   const canUndo = useHistoryStore((s) => s.past.length > 0);
   const canRedo = useHistoryStore((s) => s.future.length > 0);
@@ -582,39 +582,7 @@ export default function EditorPage() {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  // Dynamic coordinates math supporting canvas scrolling
-  const recalculateCoordinates = () => {
-    if (!gridRef.current) return;
-    const gridRect = gridRef.current.getBoundingClientRect();
-    const coords = {};
-    scene.nodes.forEach((node) => {
-      const element = document.getElementById(`node-card-${node.id}`);
-      if (element) {
-        const rect = element.getBoundingClientRect();
-        coords[node.id] = {
-          x: rect.left + rect.width / 2 - gridRect.left + (gridRef.current?.scrollLeft || 0),
-          y: rect.top + rect.height / 2 - gridRect.top + (gridRef.current?.scrollTop || 0),
-        };
-      }
-    });
-    setCoordinates(coords);
-  };
 
-  useEffect(() => {
-    const timer = setTimeout(recalculateCoordinates, 100);
-    const scrollContainer = gridRef.current;
-    if (scrollContainer) {
-      scrollContainer.addEventListener('scroll', recalculateCoordinates);
-    }
-    window.addEventListener('resize', recalculateCoordinates);
-    return () => {
-      clearTimeout(timer);
-      if (scrollContainer) {
-        scrollContainer.removeEventListener('scroll', recalculateCoordinates);
-      }
-      window.removeEventListener('resize', recalculateCoordinates);
-    };
-  }, [scene.nodes, yScene]);
 
 
   const update = (next, skipHistory = false) => {
@@ -624,14 +592,16 @@ export default function EditorPage() {
     updateScene(next);
   };
 
-  // Autosave Engine
+  // Autosave Engine respecting user settings
   useEffect(() => {
-    if (!yScene) return;
+    if (!autosaveEnabled || !draft || save.isPending) return;
+    const delay =
+      autosaveInterval === '5s' ? 5000 : autosaveInterval === '30s' ? 30000 : 1200;
     const timer = setTimeout(() => {
-      save.mutate(yScene);
-    }, 2000);
+      save.mutate(scene);
+    }, delay);
     return () => clearTimeout(timer);
-  }, [yScene, save.mutate]);
+  }, [scene, draft, autosaveEnabled, autosaveInterval, save]);
 
   // Sync selectedNodeId to awareness
   useEffect(() => {
@@ -685,7 +655,7 @@ export default function EditorPage() {
       try {
         const stored = localStorage.getItem('voxel_copied_node');
         if (stored) raw = JSON.parse(stored);
-      } catch (err) {
+      } catch (_err) {
         // ignore
       }
     }
@@ -716,15 +686,17 @@ export default function EditorPage() {
   };
 
   const handleRestoreVersion = (ver) => {
+    if (!ver?.scene) return;
     setConfirmModal({
       isOpen: true,
-      title: `Restore Version #${ver.version}?`,
-      message: `Are you sure you want to revert your current layout to Version #${ver.version}? All unsaved changes will be replaced.`,
-      confirmText: 'Restore Version',
+      title: `Revert to Version #${ver.version}?`,
+      message: `Are you sure you want to revert your current canvas layout to Version #${ver.version}? A new version checkpoint will be recorded in history.`,
+      confirmText: `Revert to #${ver.version}`,
       type: 'warning',
       onConfirm: () => {
         setConfirmModal({ isOpen: false });
         update(ver.scene);
+        save.mutate(ver.scene);
       },
       onCancel: () => setConfirmModal({ isOpen: false }),
     });
@@ -1045,24 +1017,42 @@ export default function EditorPage() {
           </button>
 
           <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mr-2 flex items-center gap-1.5">
-            <span className={`inline-block size-1.5 rounded-full ${save.isPending ? 'bg-amber-500 animate-pulse' : draft ? 'bg-violet-500' : 'bg-emerald-500'}`} />
-            {save.isPending ? 'Saving…' : draft ? 'Unsaved changes (Autosaving)' : 'All changes saved'}
+            <span
+              className={`inline-block size-1.5 rounded-full ${
+                save.isPending
+                  ? 'bg-amber-500 animate-pulse'
+                  : draft
+                    ? 'bg-violet-500'
+                    : 'bg-emerald-500'
+              }`}
+            />
+            {save.isPending
+              ? 'Saving…'
+              : autosaveEnabled
+                ? draft
+                  ? 'Autosave: ON (Syncing…)'
+                  : 'Autosave: ON (All saved)'
+                : draft
+                  ? 'Autosave: OFF (Unsaved changes)'
+                  : 'Autosave: OFF (Saved)'}
           </span>
 
           <button
             onClick={() => setPickerOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-bold uppercase tracking-wider hover:bg-slate-50 dark:border-white/5 dark:hover:bg-white/5 transition cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-violet-500/40 bg-violet-500/10 px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-violet-600 dark:text-violet-300 hover:bg-violet-600 hover:text-white dark:hover:bg-violet-600 dark:hover:text-white transition cursor-pointer shadow-sm"
           >
-            <Plus size={14} /> Node
+            <Plus size={14} className="stroke-[2.5]" /> Add Node
           </button>
 
-          <button
-            disabled={!draft || save.isPending}
-            onClick={() => save.mutate(scene)}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white hover:opacity-95 disabled:opacity-50 transition cursor-pointer shadow-lg shadow-violet-600/10"
-          >
-            <Save size={14} /> {save.isPending ? 'Saving…' : 'Save'}
-          </button>
+          {!autosaveEnabled && (
+            <button
+              disabled={!draft || save.isPending}
+              onClick={() => save.mutate(scene)}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white hover:opacity-95 disabled:opacity-50 transition cursor-pointer shadow-lg shadow-violet-600/10"
+            >
+              <Save size={14} /> {save.isPending ? 'Saving…' : 'Save'}
+            </button>
+          )}
         </div>
       </header>
 
@@ -1113,8 +1103,6 @@ export default function EditorPage() {
                   const endX = (toNode.x ?? 40) + 140;
                   const endY = (toNode.y ?? 40) + 100;
 
-                  const dx = endX - startX;
-                  const dy = endY - startY;
                   const offset = 100;
                   const path = `M ${startX} ${startY} C ${startX + offset} ${startY}, ${endX - offset} ${endY}, ${endX} ${endY}`;
 
@@ -2339,17 +2327,16 @@ function CanvasEmpty({ onAdd }) {
         <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-white text-violet-600 shadow-sm dark:bg-slate-900">
           <Sparkles size={21} className="animate-pulse" />
         </span>
-        <h2 className="text-lg font-bold">This dashboard has no nodes yet</h2>
-        <p className="text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-          You can load a predefined template from the **Preset** dropdown at the top, or click **Add
-          Node** to start designing your visual map from scratch.
+        <h2 className="text-lg font-extrabold tracking-tight">This dashboard has no nodes yet</h2>
+        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300 font-medium">
+          You can load a predefined template from the <strong className="font-extrabold text-violet-600 dark:text-violet-400">Preset</strong> dropdown at the top, or click <strong className="font-extrabold text-violet-600 dark:text-violet-400">+ Add Node</strong> to start designing your visual map from scratch.
         </p>
         <div className="pt-2">
           <button
             onClick={onAdd}
-            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-violet-500/10 cursor-pointer hover:bg-violet-500"
+            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-600/25 cursor-pointer hover:bg-violet-500 transition-all hover:scale-105"
           >
-            <Plus size={16} /> Add First Node
+            <Plus size={18} className="stroke-[2.5]" /> Add First Node
           </button>
         </div>
       </div>

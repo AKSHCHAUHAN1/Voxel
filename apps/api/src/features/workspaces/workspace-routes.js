@@ -47,16 +47,41 @@ const requireUser = async (request, auth) => {
   return user;
 };
 
-const requireMembership = async (
-  workspaceId,
-  userId,
-  roles,
-) => {
+const requireMembership = async (workspaceId, userId, roles) => {
   const membership = await prisma.workspaceMember.findUnique({
     where: { workspaceId_userId: { workspaceId, userId } },
   });
   if (!membership || !roles.includes(membership.role)) {
     throw new RequestError('You do not have permission to access this workspace.', 403);
+  }
+};
+
+const recordAuditEvent = async ({
+  actorId,
+  workspaceId,
+  action,
+  resourceType,
+  resourceId,
+  before,
+  after,
+  request,
+}) => {
+  try {
+    await prisma.auditEvent.create({
+      data: {
+        actorId,
+        workspaceId,
+        action,
+        resourceType,
+        resourceId,
+        before: before ? JSON.parse(JSON.stringify(before)) : undefined,
+        after: after ? JSON.parse(JSON.stringify(after)) : undefined,
+        ipAddress: request?.ip || null,
+        userAgent: request?.headers?.['user-agent'] || null,
+      },
+    });
+  } catch (_err) {
+    // Non-blocking audit event failure
   }
 };
 
@@ -72,10 +97,7 @@ const serializeDashboard = (dashboard) => ({
   updatedAt: dashboard.updatedAt.toISOString(),
 });
 
-export const registerWorkspaceRoutes = async (
-  app,
-  environment,
-) => {
+export const registerWorkspaceRoutes = async (app, environment) => {
   const auth = new AuthService(prisma, environment);
 
   app.get('/api/v1/workspaces', async (request, reply) => {
@@ -115,6 +137,17 @@ export const registerWorkspaceRoutes = async (
         members: { create: { userId: user.id, role: 'OWNER' } },
       },
     });
+
+    await recordAuditEvent({
+      actorId: user.id,
+      workspaceId: workspace.id,
+      action: 'workspace.create',
+      resourceType: 'workspace',
+      resourceId: workspace.id,
+      after: workspace,
+      request,
+    });
+
     return reply.status(201).send(success(workspace, createRequestId(request.id)));
   });
 
@@ -150,6 +183,17 @@ export const registerWorkspaceRoutes = async (
         scene: { schemaVersion: 1, nodes: [] },
       },
     });
+
+    await recordAuditEvent({
+      actorId: user.id,
+      workspaceId: params.workspaceId,
+      action: 'dashboard.create',
+      resourceType: 'dashboard',
+      resourceId: dashboard.id,
+      after: dashboard,
+      request,
+    });
+
     return reply
       .status(201)
       .send(success(serializeDashboard(dashboard), createRequestId(request.id)));
@@ -233,6 +277,18 @@ export const registerWorkspaceRoutes = async (
       });
       return next;
     });
+
+    await recordAuditEvent({
+      actorId: user.id,
+      workspaceId: dashboard.workspaceId,
+      action: 'dashboard.update',
+      resourceType: 'dashboard',
+      resourceId: updated.id,
+      before: dashboard,
+      after: updated,
+      request,
+    });
+
     return reply.send(success(serializeDashboard(updated), createRequestId(request.id)));
   });
 
@@ -248,6 +304,8 @@ export const registerWorkspaceRoutes = async (
 
     await requireMembership(params.workspaceId, user.id, ['OWNER', 'ADMIN', 'EDITOR']);
 
+    const previous = await prisma.workspace.findUnique({ where: { id: params.workspaceId } });
+
     const updated = await prisma.workspace.update({
       where: { id: params.workspaceId },
       data: {
@@ -255,6 +313,18 @@ export const registerWorkspaceRoutes = async (
         ...(input.description !== undefined ? { description: input.description } : {}),
       },
     });
+
+    await recordAuditEvent({
+      actorId: user.id,
+      workspaceId: params.workspaceId,
+      action: 'workspace.update',
+      resourceType: 'workspace',
+      resourceId: updated.id,
+      before: previous,
+      after: updated,
+      request,
+    });
+
     return reply.send(success(updated, createRequestId(request.id)));
   });
 
@@ -268,6 +338,17 @@ export const registerWorkspaceRoutes = async (
       where: { id: params.workspaceId },
       data: { deletedAt: new Date() },
     });
+
+    await recordAuditEvent({
+      actorId: user.id,
+      workspaceId: params.workspaceId,
+      action: 'workspace.delete',
+      resourceType: 'workspace',
+      resourceId: deleted.id,
+      after: deleted,
+      request,
+    });
+
     return reply.send(success({ id: deleted.id, deleted: true }, createRequestId(request.id)));
   });
 
@@ -283,6 +364,48 @@ export const registerWorkspaceRoutes = async (
       where: { id: dashboard.id },
       data: { deletedAt: new Date() },
     });
+
+    await recordAuditEvent({
+      actorId: user.id,
+      workspaceId: dashboard.workspaceId,
+      action: 'dashboard.delete',
+      resourceType: 'dashboard',
+      resourceId: deleted.id,
+      after: deleted,
+      request,
+    });
+
     return reply.send(success({ id: deleted.id, deleted: true }, createRequestId(request.id)));
+  });
+
+  app.get('/api/v1/workspaces/:workspaceId/audit-events', async (request, reply) => {
+    const user = await requireUser(request, auth);
+    const params = z.object({ workspaceId: idSchema }).parse(request.params);
+    await requireMembership(params.workspaceId, user.id, ['OWNER', 'ADMIN']);
+
+    const events = await prisma.auditEvent.findMany({
+      where: { workspaceId: params.workspaceId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: {
+        actor: {
+          select: { id: true, displayName: true, email: true, avatarUrl: true },
+        },
+      },
+    });
+
+    return reply.send(
+      success(
+        events.map((e) => ({
+          id: e.id,
+          action: e.action,
+          resourceType: e.resourceType,
+          resourceId: e.resourceId,
+          createdAt: e.createdAt.toISOString(),
+          actor: e.actor,
+        })),
+        createRequestId(request.id),
+      ),
+    );
   });
 };

@@ -10,7 +10,6 @@ import horizontalLogoDark from '@/assets/horizontal-logo-dark.png';
 import { motion } from 'framer-motion';
 import {
   ArrowRight,
-  Sparkles,
   Plus,
   Moon,
   Sun,
@@ -231,13 +230,13 @@ export default function LandingPage() {
             ) : (
               <div className="flex items-center gap-2">
                 <Link
-                  to="/login"
+                  to="/login?mode=signin"
                   className="inline-flex items-center justify-center rounded-full border border-violet-500/40 bg-violet-500/10 px-5 py-2 text-sm font-bold text-violet-600 hover:bg-violet-600 hover:text-white hover:border-violet-600 dark:border-violet-400/40 dark:bg-violet-500/15 dark:text-violet-300 dark:hover:bg-violet-500 dark:hover:text-white hover:shadow-lg hover:shadow-violet-500/25 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
                 >
                   Sign In
                 </Link>
                 <Link
-                  to="/login"
+                  to="/login?mode=signup"
                   className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-600 px-5 py-2 text-sm font-bold text-white shadow-md shadow-violet-500/25 hover:shadow-lg hover:shadow-violet-500/40 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
                 >
                   Sign Up <ArrowUpRight size={15} />

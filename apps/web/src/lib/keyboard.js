@@ -145,6 +145,5 @@ export function useShortcut(combo, handler, opts = {}, deps = []) {
       handler: (e) => handlerRef.current(e),
     });
     return unregister;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [combo, ...deps]);
 }

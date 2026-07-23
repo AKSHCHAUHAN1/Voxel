@@ -14,6 +14,17 @@ const googleIdentitySchema = z.object({
   picture: z.string().url().optional(),
 });
 
+const signupSchema = z.object({
+  email: z.string().trim().email('Please enter a valid email address.'),
+  password: z.string().min(6, 'Password must be at least 6 characters.'),
+  displayName: z.string().trim().min(2, 'Name must be at least 2 characters.').max(80),
+});
+
+const loginSchema = z.object({
+  email: z.string().trim().email('Please enter a valid email address.'),
+  password: z.string().min(1, 'Password is required.'),
+});
+
 const ACCESS_COOKIE = 'voxel_access';
 const REFRESH_COOKIE = 'voxel_refresh';
 const accessCookieAge = 15 * 60;
@@ -26,11 +37,7 @@ class AuthenticationError extends Error {
   }
 }
 
-const applySessionCookies = (
-  reply,
-  tokens,
-  environment,
-) => {
+const applySessionCookies = (reply, tokens, environment) => {
   const secure = environment.NODE_ENV === 'production';
   reply.setCookie(ACCESS_COOKIE, tokens.accessToken, {
     httpOnly: true,
@@ -48,10 +55,7 @@ const applySessionCookies = (
   });
 };
 
-export const registerAuthRoutes = async (
-  app,
-  environment,
-) => {
+export const registerAuthRoutes = async (app, environment) => {
   const authService = new AuthService(prisma, environment);
 
   // Production Real Google OAuth 2.0 PKCE Flow
@@ -70,6 +74,44 @@ export const registerAuthRoutes = async (
     startRedirectPath: '/api/v1/auth/google',
     callbackUri: `${environment.VOXEL_PUBLIC_APP_URL}/api/v1/auth/google/callback`,
     pkce: 'S256',
+  });
+
+  app.post('/api/v1/auth/signup', async (request, reply) => {
+    const input = signupSchema.parse(request.body);
+    const result = await authService.signUpWithEmail(input, {
+      ip: request.ip,
+      ...(request.headers['user-agent'] ? { userAgent: request.headers['user-agent'] } : {}),
+    });
+
+    applySessionCookies(reply, result, environment);
+    return reply.status(201).send(
+      success(
+        {
+          authenticated: true,
+          user: result.user,
+        },
+        createRequestId(request.id),
+      ),
+    );
+  });
+
+  app.post('/api/v1/auth/login', async (request, reply) => {
+    const input = loginSchema.parse(request.body);
+    const result = await authService.loginWithEmail(input, {
+      ip: request.ip,
+      ...(request.headers['user-agent'] ? { userAgent: request.headers['user-agent'] } : {}),
+    });
+
+    applySessionCookies(reply, result, environment);
+    return reply.send(
+      success(
+        {
+          authenticated: true,
+          user: result.user,
+        },
+        createRequestId(request.id),
+      ),
+    );
   });
 
   app.get('/api/v1/auth/google/callback', async (request, reply) => {
