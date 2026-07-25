@@ -43,6 +43,7 @@ export default function WorkspacesPage() {
     mutationFn: workspaceService.create,
     onSuccess: async (workspace) => {
       await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      addNotification(`Created workspace "${workspace.name}"`, 'success');
       setDialogOpen(false);
       navigate(`/workspaces/${workspace.id}/dashboards`);
     },
@@ -51,8 +52,9 @@ export default function WorkspacesPage() {
   const rename = useMutation({
     mutationFn: ({ id, name, description }) =>
       workspaceService.update(id, { name, description: description ?? null }),
-    onSuccess: async () => {
+    onSuccess: async (_res, variables) => {
       await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      addNotification(`Updated workspace "${variables.name}"`, 'info');
       setEditWorkspace(null);
     },
   });
@@ -61,6 +63,7 @@ export default function WorkspacesPage() {
     mutationFn: workspaceService.delete,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      addNotification('Workspace deleted successfully', 'warning');
       setDeleteWorkspace(null);
     },
     onError: (error) => {

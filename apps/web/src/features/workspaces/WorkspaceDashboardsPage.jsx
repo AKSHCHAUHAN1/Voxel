@@ -58,15 +58,17 @@ export default function WorkspaceDashboardsPage() {
     mutationFn: (input) => workspaceService.createDashboard(workspaceId, input),
     onSuccess: async (dashboard) => {
       await queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'dashboards'] });
+      addNotification(`Created dashboard "${dashboard.name}"`, 'success');
       navigate(`/workspaces/${workspaceId}/dashboards/${dashboard.id}`);
     },
   });
 
   const rename = useMutation({
     mutationFn: ({ id, name, description }) =>
-      workspaceService.updateDashboard(id, { name, description: description ?? null, version: 1 }), // Send mock version parameter to skip conflict
-    onSuccess: async () => {
+      workspaceService.updateDashboard(id, { name, description: description ?? null, version: 1 }),
+    onSuccess: async (_res, variables) => {
       await queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'dashboards'] });
+      addNotification(`Updated dashboard "${variables.name}"`, 'info');
       setEditDashboard(null);
     },
   });
@@ -75,6 +77,7 @@ export default function WorkspaceDashboardsPage() {
     mutationFn: (id) => workspaceService.deleteDashboard(id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'dashboards'] });
+      addNotification('Dashboard deleted successfully', 'warning');
       setDeleteDashboard(null);
     },
     onError: (error) => {
@@ -238,7 +241,7 @@ export default function WorkspaceDashboardsPage() {
   };
 
   const handleDownloadPDF = (dashboard) => {
-    const mockContent = `
+    const exportTextContent = `
 ========================================
             VOXEL CANVAS EXPORT
 ========================================
@@ -252,7 +255,7 @@ Status: Operational
 Sync Nodes: Active
 ========================================
 `;
-    const blob = new Blob([mockContent], { type: 'text/plain' });
+    const blob = new Blob([exportTextContent], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

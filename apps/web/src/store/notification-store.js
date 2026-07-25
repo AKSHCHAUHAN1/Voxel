@@ -5,15 +5,9 @@ import { create } from 'zustand';
  * Handles read/unread states, mock-live additions, and toast triggers.
  */
 
-const DEFAULT_NOTIFICATIONS = [
-  { id: '1', text: 'System update completed successfully.', time: '2m ago', read: false, type: 'info' },
-  { id: '2', text: 'New login from unknown device. Please review.', time: '1h ago', read: false, type: 'warning' },
-  { id: '3', text: 'Monthly expense report is ready to download.', time: '3h ago', read: true, type: 'success' },
-];
-
 export const useNotificationStore = create((set, _get) => {
-  // Load initial notifications
-  let initialList = DEFAULT_NOTIFICATIONS;
+  // Load real user notifications
+  let initialList = [];
   try {
     const saved = localStorage.getItem('voxel_notifications');
     if (saved) initialList = JSON.parse(saved);

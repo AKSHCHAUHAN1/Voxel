@@ -56,26 +56,8 @@ export function AppShell() {
   const dismiss = useNotificationStore((s) => s.dismiss);
   const markAllAsRead = useNotificationStore((s) => s.markAllAsRead);
   const clearAll = useNotificationStore((s) => s.clearAll);
-  const addNotification = useNotificationStore((s) => s.add);
   const toasts = useNotificationStore((s) => s.toasts);
   const removeToast = useNotificationStore((s) => s.removeToast);
-
-  // Simulate mock-live notifications periodically
-  useEffect(() => {
-    const mockMessages = [
-      { text: 'Core Postgres scaling sequence completed.', type: 'success' },
-      { text: 'Alice Vance updated the Operations Center layout.', type: 'info' },
-      { text: 'System check verified 100% operational relay.', type: 'success' },
-      { text: 'New login detected from Safari (macOS).', type: 'warning' },
-    ];
-    const interval = setInterval(() => {
-      if (Math.random() < 0.25) {
-        const selected = mockMessages[Math.floor(Math.random() * mockMessages.length)];
-        addNotification(selected.text, selected.type);
-      }
-    }, 15000);
-    return () => clearInterval(interval);
-  }, [addNotification]);
 
   // Fetch current user details
   const userQuery = useQuery({

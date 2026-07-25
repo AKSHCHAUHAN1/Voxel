@@ -32,6 +32,7 @@ import { workspaceService } from '@/features/workspaces/workspace-service';
 import { useShortcut } from '@/lib/keyboard';
 import { useHistoryStore } from '@/store/history-store';
 import { useSettingsStore } from '@/store/settings-store';
+import { useNotificationStore } from '@/store/notification-store';
 import { VersionHistory } from './VersionHistory';
 import { useYjs } from './use-yjs';
 import { CustomConfirmModal } from '@/components/feedback/CustomConfirmModal';
@@ -242,6 +243,7 @@ export default function EditorPage() {
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['dashboard', dashboardId] });
+      useNotificationStore.getState().add('Dashboard canvas changes saved to database.', 'success');
     },
   });
 

@@ -16,6 +16,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { authService } from './auth-service';
 import { useThemeStore } from '@/store/theme-store';
+import { useNotificationStore } from '@/store/notification-store';
 import appIcon from '@/assets/app-icon.png';
 import appIconDark from '@/assets/app-icon-dark.png';
 import horizontalLogo from '@/assets/horizontal-logo.png';
@@ -55,6 +56,8 @@ export function LoginPage() {
       setLoading(true);
       setErrorMsg('');
       await authService.guestLogin();
+      useNotificationStore.getState().add('Signed in as Guest User', 'info');
+      useNotificationStore.getState().add(`New authentication session created from ${navigator.platform || 'Device'}`, 'warning');
       navigate('/workspaces');
     } catch (error) {
       console.error('Failed to log in as guest:', error);
@@ -87,12 +90,16 @@ export function LoginPage() {
       setLoading(true);
       if (mode === 'signup') {
         await authService.signup({ email, password, displayName: displayName.trim() });
+        useNotificationStore.getState().add(`Account created for ${email}. Welcome to Voxel!`, 'success');
       } else {
         await authService.login({ email, password });
+        useNotificationStore.getState().add(`Signed in successfully as ${email}`, 'success');
+        useNotificationStore.getState().add(`New authentication session active on ${navigator.platform || 'Device'}`, 'info');
       }
       navigate('/workspaces');
     } catch (err) {
       setErrorMsg(err.message || (mode === 'signup' ? 'Failed to create account.' : 'Invalid email or password.'));
+      useNotificationStore.getState().add(err.message || 'Authentication failed', 'warning');
     } finally {
       setLoading(false);
     }

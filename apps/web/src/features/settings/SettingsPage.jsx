@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   User,
   Users,
@@ -26,50 +26,6 @@ import { useSettingsStore } from '@/store/settings-store';
 import { authService } from '@/features/auth/auth-service';
 import { workspaceService } from '@/features/workspaces/workspace-service';
 
-const INITIAL_MEMBERS = [
-  { id: '1', name: 'Alex Rivers', email: 'alex@company.com', role: 'OWNER', avatar: 'AR', color: 'bg-violet-600' },
-  { id: '2', name: 'Elena Rostova', email: 'elena@company.com', role: 'ADMIN', avatar: 'ER', color: 'bg-indigo-600' },
-  { id: '3', name: 'Marcus Chen', email: 'marcus@company.com', role: 'EDITOR', avatar: 'MC', color: 'bg-cyan-600' },
-  { id: '4', name: 'Sarah Jenkins', email: 'sarah@company.com', role: 'VIEWER', avatar: 'SJ', color: 'bg-emerald-600' },
-];
-
-const INITIAL_SESSIONS = [
-  {
-    id: 's1',
-    device: 'MacBook Pro 16" (macOS)',
-    browser: 'Chrome 122.0',
-    location: 'San Francisco, CA, USA',
-    ip: '192.168.1.104',
-    lastActive: 'Active now',
-    current: true,
-  },
-  {
-    id: 's2',
-    device: 'iPhone 15 Pro (iOS)',
-    browser: 'Safari Mobile',
-    location: 'San Francisco, CA, USA',
-    ip: '172.56.21.90',
-    lastActive: '2 hours ago',
-    current: false,
-  },
-  {
-    id: 's3',
-    device: 'Dell XPS 15 (Windows 11)',
-    browser: 'Firefox 123.0',
-    location: 'New York, NY, USA',
-    ip: '68.192.44.12',
-    lastActive: '3 days ago',
-    current: false,
-  },
-];
-
-const AUDIT_LOGS = [
-  { id: 'a1', action: 'workspace.update', resource: 'Design Systems Workspace', actor: 'Alex Rivers', time: '10 mins ago' },
-  { id: 'a2', action: 'dashboard.create', resource: 'Q3 Financial Overview', actor: 'Elena Rostova', time: '1 hour ago' },
-  { id: 'a3', action: 'member.invite', resource: 'sarah@company.com', actor: 'Alex Rivers', time: '4 hours ago' },
-  { id: 'a4', action: 'security.session_revoke', resource: 'Safari (macOS)', actor: 'Alex Rivers', time: 'Yesterday' },
-];
-
 export default function SettingsPage() {
   const { theme, setTheme } = useThemeStore();
   const addToast = useNotificationStore((s) => s.add);
@@ -91,13 +47,20 @@ export default function SettingsPage() {
   });
 
   // Account & Profile State
-  const [displayName, setDisplayName] = useState(user?.displayName || 'Alex Rivers');
-  const [email, setEmail] = useState(user?.email || 'alex@company.com');
-  const [jobTitle, setJobTitle] = useState('Principal Product Architect');
+  const [displayName, setDisplayName] = useState(user?.displayName || 'User');
+  const [email, setEmail] = useState(user?.email || 'user@voxel.com');
+  const [jobTitle, setJobTitle] = useState('Product Engineer');
   const [timezone, setTimezone] = useState('America/Los_Angeles (UTC-08:00)');
   const [language, setLanguage] = useState('English (US)');
   const [bio, setBio] = useState('Designing interactive canvas workspaces and visual telemetry systems.');
   const [avatarColor, setAvatarColor] = useState('bg-violet-600');
+
+  useEffect(() => {
+    if (user) {
+      setDisplayName(user.displayName || 'User');
+      setEmail(user.email || 'user@voxel.com');
+    }
+  }, [user]);
 
   // Appearance & Canvas State
   const [accentColor, setAccentColor] = useState('violet');
@@ -108,7 +71,22 @@ export default function SettingsPage() {
   const [reducedMotion, setReducedMotion] = useState(false);
 
   // Workspace & Team State
-  const [members, setMembers] = useState(INITIAL_MEMBERS);
+  const [members, setMembers] = useState([]);
+  useEffect(() => {
+    if (user) {
+      setMembers([
+        {
+          id: user.id || 'usr-1',
+          name: user.displayName || 'Authenticated User',
+          email: user.email || 'user@voxel.com',
+          role: 'OWNER',
+          avatar: (user.displayName || 'US').substring(0, 2).toUpperCase(),
+          color: 'bg-violet-600',
+        },
+      ]);
+    }
+  }, [user]);
+
   const [memberSearch, setMemberSearch] = useState('');
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [inviteName, setInviteName] = useState('');
@@ -116,13 +94,55 @@ export default function SettingsPage() {
   const [inviteRole, setInviteRole] = useState('EDITOR');
   const [inviteCopied, setInviteCopied] = useState(false);
 
-  // Security & Sessions State
-  const [sessions, setSessions] = useState(INITIAL_SESSIONS);
+  // Dynamic Browser & OS detection for active session
+  const currentBrowser = useMemo(() => {
+    const ua = navigator.userAgent;
+    if (ua.includes('Chrome')) return 'Chrome';
+    if (ua.includes('Safari')) return 'Safari';
+    if (ua.includes('Firefox')) return 'Firefox';
+    if (ua.includes('Edg')) return 'Edge';
+    return 'Web Browser';
+  }, []);
+
+  const currentOS = useMemo(() => {
+    const platform = navigator.platform || '';
+    if (platform.includes('Mac')) return 'macOS';
+    if (platform.includes('Win')) return 'Windows';
+    if (platform.includes('Linux')) return 'Linux';
+    return 'Desktop Device';
+  }, []);
+
+  // Security & Active Sessions State
+  const [sessions, setSessions] = useState([]);
+  useEffect(() => {
+    setSessions([
+      {
+        id: 'session-active',
+        device: `${currentOS} (${navigator.platform || 'Device'})`,
+        browser: currentBrowser,
+        location: 'Active Session',
+        ip: '127.0.0.1 (Current)',
+        lastActive: 'Active now',
+        current: true,
+      },
+    ]);
+  }, [currentBrowser, currentOS]);
+
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+
+  // Fetch Real Audit Logs from API
+  const activeWorkspaceId = workspacesData?.[0]?.id;
+  const { data: auditEventsData, isPending: auditPending } = useQuery({
+    queryKey: ['audit-events', activeWorkspaceId],
+    queryFn: () => workspaceService.auditEvents(activeWorkspaceId),
+    enabled: Boolean(activeWorkspaceId),
+  });
+
+  const auditLogs = auditEventsData?.data || [];
 
   // Notifications State
   const [notifEmailDigest, setNotifEmailDigest] = useState(true);
@@ -133,7 +153,7 @@ export default function SettingsPage() {
   // Developer API State
   const [apiKey, setApiKey] = useState('vxl_live_948f2a1b6c890e1d2e3f4a5b6c7d8e9f');
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
-  const [webhookUrl, setWebhookUrl] = useState('https://api.company.com/webhooks/voxel');
+  const [webhookUrl, setWebhookUrl] = useState('http://localhost:3000/webhooks/voxel');
 
   // Danger Zone State
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -882,14 +902,29 @@ export default function SettingsPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                        {AUDIT_LOGS.map((log) => (
+                        {auditLogs.map((log) => (
                           <tr key={log.id}>
-                            <td className="px-4 py-3 font-mono text-[11px] text-violet-600 dark:text-violet-300">{log.action}</td>
-                            <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-300">{log.resource}</td>
-                            <td className="px-4 py-3 text-slate-500">{log.actor}</td>
-                            <td className="px-4 py-3 text-right text-slate-400 text-[10px]">{log.time}</td>
+                            <td className="px-4 py-3 font-mono text-[11px] text-violet-600 dark:text-violet-300">
+                              {log.action}
+                            </td>
+                            <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-300">
+                              {log.resourceType}: {log.resourceId}
+                            </td>
+                            <td className="px-4 py-3 text-slate-500">
+                              {log.actor?.displayName || log.actor?.email || 'System'}
+                            </td>
+                            <td className="px-4 py-3 text-right text-slate-400 text-[10px]">
+                              {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </td>
                           </tr>
                         ))}
+                        {auditLogs.length === 0 && !auditPending && (
+                          <tr>
+                            <td colSpan={4} className="px-4 py-6 text-center text-xs text-slate-400">
+                              No security audit logs recorded yet.
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
