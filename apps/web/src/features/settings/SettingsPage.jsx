@@ -23,6 +23,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useThemeStore } from '@/store/theme-store';
 import { useNotificationStore } from '@/store/notification-store';
 import { useSettingsStore } from '@/store/settings-store';
+import { getDeviceOSString } from '@/utils/device-info';
 import { authService } from '@/features/auth/auth-service';
 import { workspaceService } from '@/features/workspaces/workspace-service';
 
@@ -105,11 +106,7 @@ export default function SettingsPage() {
   }, []);
 
   const currentOS = useMemo(() => {
-    const platform = navigator.platform || '';
-    if (platform.includes('Mac')) return 'macOS';
-    if (platform.includes('Win')) return 'Windows';
-    if (platform.includes('Linux')) return 'Linux';
-    return 'Desktop Device';
+    return getDeviceOSString();
   }, []);
 
   // Security & Active Sessions State
@@ -118,7 +115,7 @@ export default function SettingsPage() {
     setSessions([
       {
         id: 'session-active',
-        device: `${currentOS} (${navigator.platform || 'Device'})`,
+        device: currentOS,
         browser: currentBrowser,
         location: 'Active Session',
         ip: '127.0.0.1 (Current)',

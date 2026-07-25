@@ -559,7 +559,8 @@ Sync Nodes: Active
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
                 Direct share
               </p>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2.5">
+                {/* WhatsApp */}
                 <button
                   onClick={() => {
                     const link = `${window.location.origin}/workspaces/${workspaceId}/dashboards/${shareDashboard.id}`;
@@ -568,13 +569,16 @@ Sync Nodes: Active
                       '_blank',
                     );
                   }}
-                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-50/50 dark:bg-white/5 py-2.5 px-3 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10 transition cursor-pointer"
+                  className="flex items-center justify-center gap-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 py-2.5 px-3.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
                 >
-                  <svg className="size-4 shrink-0" viewBox="0 0 24 24" fill="none">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c0-5.445 4.43-9.874 9.877-9.874 2.636 0 5.115 1.028 6.98 2.895A9.833 9.833 0 0121.94 11.8c0 5.447-4.429 9.877-9.876 9.877m0-18.067c-6.643 0-12.046 5.402-12.046 12.046 0 2.12.553 4.188 1.605 6.012L0 24l6.326-1.658a12.002 12.002 0 005.69 1.446h.005c6.643 0 12.046-5.404 12.046-12.047 0-3.218-1.254-6.242-3.53-8.518A11.96 11.96 0 0012.051 3.71" fill="#25D366"/>
+                  <svg className="size-5 shrink-0" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 2C6.48 2 2 6.48 2 12c0 2.17.69 4.18 1.86 5.83L2.5 21.5l3.81-1.33A9.94 9.94 0 0012 22c5.52 0 10-4.48 10-10S17.52 2 12 2z" fill="#25D366" />
+                    <path d="M17.5 14.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.16-.17.2-.35.22-.64.08-.3-.15-1.26-.46-2.39-1.48-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.6.13-.14.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.03-.52-.07-.15-.67-1.61-.91-2.2-.25-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48 0 1.46 1.07 2.88 1.21 3.07.15.2 2.1 3.2 5.08 4.49.71.3 1.26.49 1.69.63.71.22 1.36.19 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.7.25-1.29.17-1.41-.07-.13-.27-.2-.57-.35z" fill="#FFFFFF" />
                   </svg>
                   <span>WhatsApp</span>
                 </button>
+
+                {/* X */}
                 <button
                   onClick={() => {
                     const link = `${window.location.origin}/workspaces/${workspaceId}/dashboards/${shareDashboard.id}`;
@@ -583,13 +587,15 @@ Sync Nodes: Active
                       '_blank',
                     );
                   }}
-                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-50/50 dark:bg-white/5 py-2.5 px-3 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10 transition cursor-pointer"
+                  className="flex items-center justify-center gap-2.5 rounded-xl border border-slate-300 dark:border-white/15 bg-slate-100 dark:bg-white/10 py-2.5 px-3.5 text-xs font-bold text-slate-900 dark:text-white hover:bg-slate-200 dark:hover:bg-white/20 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
                 >
-                  <svg className="size-4 shrink-0 fill-current text-slate-900 dark:text-white" viewBox="0 0 24 24">
+                  <svg className="size-4 shrink-0 fill-current" viewBox="0 0 24 24">
                     <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                   </svg>
                   <span>X</span>
                 </button>
+
+                {/* Telegram */}
                 <button
                   onClick={() => {
                     const link = `${window.location.origin}/workspaces/${workspaceId}/dashboards/${shareDashboard.id}`;
@@ -598,14 +604,16 @@ Sync Nodes: Active
                       '_blank',
                     );
                   }}
-                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-50/50 dark:bg-white/5 py-2.5 px-3 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10 transition cursor-pointer"
+                  className="flex items-center justify-center gap-2.5 rounded-xl border border-sky-500/20 bg-sky-500/10 py-2.5 px-3.5 text-xs font-bold text-sky-600 dark:text-sky-400 hover:bg-sky-500/20 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
                 >
-                  <svg className="size-4 shrink-0" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="12" r="12" fill="#229ED9"/>
-                    <path d="M5.4 11.9L16.8 7.3c.5-.2 1 .1.9.7l-1.9 9.1c-.1.6-.7.8-1.2.5l-3.3-2.4-1.6 1.5c-.2.2-.4.4-.8.4l.2-3.4 6.2-5.6c.3-.3-.1-.4-.4-.2L7.3 13.9l-3.3-1c-.6-.2-.6-.6.1-.9z" fill="#FFFFFF"/>
+                  <svg className="size-5 shrink-0" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="12" fill="#229ED9" />
+                    <path d="M5.4 11.9L16.8 7.3c.5-.2 1 .1.9.7l-1.9 9.1c-.1.6-.7.8-1.2.5l-3.3-2.4-1.6 1.5c-.2.2-.4.4-.8.4l.2-3.4 6.2-5.6c.3-.3-.1-.4-.4-.2L7.3 13.9l-3.3-1c-.6-.2-.6-.6.1-.9z" fill="#FFFFFF" />
                   </svg>
                   <span>Telegram</span>
                 </button>
+
+                {/* Gmail */}
                 <button
                   onClick={() => {
                     const link = `${window.location.origin}/workspaces/${workspaceId}/dashboards/${shareDashboard.id}`;
@@ -614,13 +622,13 @@ Sync Nodes: Active
                       '_blank',
                     );
                   }}
-                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-50/50 dark:bg-white/5 py-2.5 px-3 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10 transition cursor-pointer"
+                  className="flex items-center justify-center gap-2.5 rounded-xl border border-rose-500/20 bg-rose-500/10 py-2.5 px-3.5 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
                 >
-                  <svg className="size-4 shrink-0" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M22.5 5.25v13.5c0 .966-.784 1.75-1.75 1.75h-2.5V8.536l-6.25 4.687L5.75 8.536V20.5h-2.5C2.284 20.5 1.5 19.716 1.5 18.75V5.25c0-1.272 1.458-1.996 2.45-1.25L12 10.064l8.05-6.064c.992-.746 2.45.022 2.45 1.25z"/>
-                    <path fill="#34A853" d="M1.5 5.25c0-.443.176-.868.49-1.182.314-.313.739-.489 1.182-.489H5.75v16.921H3.172A1.672 1.672 0 011.5 18.828V5.25z" />
-                    <path fill="#EA4335" d="M22.5 5.25v13.578c0 .443-.176.868-.49 1.182a1.672 1.672 0 01-1.182.49H18.25V3.579h2.572c.443 0 .868.176 1.182.489.314.314.49.739.49 1.182z"/>
-                    <path fill="#FBBC04" d="M12 10.064L3.95 3.999C2.958 3.253 1.5 3.978 1.5 5.25v.75L12 13.5l10.5-7.5v-.75c0-1.272-1.458-1.996-2.45-1.25L12 10.064z"/>
+                  <svg className="size-5 shrink-0" viewBox="0 0 24 24" fill="none">
+                    <path d="M22.5 5.25v13.5c0 .966-.784 1.75-1.75 1.75h-2.5V8.536l-6.25 4.687L5.75 8.536V20.5h-2.5C2.284 20.5 1.5 19.716 1.5 18.75V5.25c0-1.272 1.458-1.996 2.45-1.25L12 10.064l8.05-6.064c.992-.746 2.45.022 2.45 1.25z" fill="#4285F4" />
+                    <path d="M1.5 5.25c0-.443.176-.868.49-1.182.314-.313.739-.489 1.182-.489H5.75v16.921H3.172A1.672 1.672 0 011.5 18.828V5.25z" fill="#34A853" />
+                    <path d="M22.5 5.25v13.578c0 .443-.176.868-.49 1.182a1.672 1.672 0 01-1.182.49H18.25V3.579h2.572c.443 0 .868.176 1.182.489.314.314.49.739.49 1.182z" fill="#EA4335" />
+                    <path d="M12 10.064L3.95 3.999C2.958 3.253 1.5 3.978 1.5 5.25v.75L12 13.5l10.5-7.5v-.75c0-1.272-1.458-1.996-2.45-1.25L12 10.064z" fill="#FBBC04" />
                   </svg>
                   <span>Gmail</span>
                 </button>

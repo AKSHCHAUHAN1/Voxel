@@ -22,6 +22,7 @@ import appIconDark from '@/assets/app-icon-dark.png';
 import horizontalLogo from '@/assets/horizontal-logo.png';
 import horizontalLogoDark from '@/assets/horizontal-logo-dark.png';
 import { toggleThemeWithRipple } from '@/utils/theme-ripple';
+import { getDeviceOSString } from '@/utils/device-info';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -57,7 +58,7 @@ export function LoginPage() {
       setErrorMsg('');
       await authService.guestLogin();
       useNotificationStore.getState().add('Signed in as Guest User', 'info');
-      useNotificationStore.getState().add(`New authentication session created from ${navigator.platform || 'Device'}`, 'warning');
+      useNotificationStore.getState().add(`New authentication session created from ${getDeviceOSString()}`, 'warning');
       navigate('/workspaces');
     } catch (error) {
       console.error('Failed to log in as guest:', error);
@@ -94,7 +95,7 @@ export function LoginPage() {
       } else {
         await authService.login({ email, password });
         useNotificationStore.getState().add(`Signed in successfully as ${email}`, 'success');
-        useNotificationStore.getState().add(`New authentication session active on ${navigator.platform || 'Device'}`, 'info');
+        useNotificationStore.getState().add(`New authentication session active on ${getDeviceOSString()}`, 'info');
       }
       navigate('/workspaces');
     } catch (err) {

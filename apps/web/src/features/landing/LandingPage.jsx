@@ -64,7 +64,7 @@ export default function LandingPage() {
       title: 'Daily Visitors',
       type: 'metric',
       x: 60,
-      y: 40,
+      y: 35,
       value: 1200,
       icon: <Activity className="text-cyan-500 dark:text-cyan-400" size={18} />,
     },
@@ -73,7 +73,7 @@ export default function LandingPage() {
       title: 'Conversion Rate',
       type: 'logic',
       x: 60,
-      y: 220,
+      y: 180,
       value: 2.5,
       icon: <Cpu className="text-violet-600 dark:text-violet-400" size={18} />,
     },
@@ -82,11 +82,51 @@ export default function LandingPage() {
       title: 'Projected Sales',
       type: 'display',
       x: 360,
-      y: 130,
+      y: 110,
       value: 30, // calculated traffic * conversion / 100
       icon: <Zap className="text-amber-500 dark:text-amber-400" size={18} />,
     },
   ]);
+
+  // Auto-center sandbox nodes on mount / container resize
+  useEffect(() => {
+    const centerNodes = () => {
+      if (!containerRef.current) return;
+      const w = containerRef.current.clientWidth;
+      const h = containerRef.current.clientHeight;
+      if (w <= 0 || h <= 0) return;
+
+      // Flow bounding size: 220px node + 90px gap + 220px node = 530px total width
+      // Flow height: 110px node + 25px gap + 110px node = 245px total height
+      const leftX = Math.max(20, Math.round((w - 530) / 2));
+      const rightX = Math.min(w - 240, leftX + 310);
+      const topY = Math.max(20, Math.round((h - 245) / 2));
+      const bottomY = topY + 135;
+      const centerY = topY + 68;
+
+      setNodes((prev) => [
+        {
+          ...prev[0],
+          x: leftX,
+          y: topY,
+        },
+        {
+          ...prev[1],
+          x: leftX,
+          y: bottomY,
+        },
+        {
+          ...prev[2],
+          x: rightX,
+          y: centerY,
+        },
+      ]);
+    };
+
+    centerNodes();
+    window.addEventListener('resize', centerNodes);
+    return () => window.removeEventListener('resize', centerNodes);
+  }, []);
 
   const [draggingNodeId, setDraggingNodeId] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -179,10 +219,10 @@ export default function LandingPage() {
 
       {/* --- FLOATING PILL NAVBAR --- */}
       <header
-        className={`fixed top-5 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-6xl rounded-full px-5 transition-all duration-500 ${
+        className={`fixed top-5 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-6xl rounded-full px-6 transition-all duration-300 ${
           scrolled
-            ? 'py-2 bg-white/70 dark:bg-[#060a17]/70 backdrop-blur-2xl saturate-200 border border-white/80 dark:border-violet-500/20 shadow-2xl shadow-violet-500/15 scale-[0.99]'
-            : 'py-3 bg-white/40 dark:bg-slate-900/30 backdrop-blur-md border border-white/60 dark:border-white/10 shadow-lg shadow-black/5'
+            ? 'py-2.5 bg-white/95 dark:bg-[#090d19]/90 backdrop-blur-2xl border border-slate-300/80 dark:border-violet-500/40 shadow-2xl shadow-violet-500/20 ring-1 ring-slate-900/5 dark:ring-violet-500/30 scale-[0.99]'
+            : 'py-3.5 bg-white/90 dark:bg-[#0c1122]/90 backdrop-blur-xl border border-slate-200 dark:border-white/20 shadow-xl shadow-slate-900/10 dark:shadow-2xl dark:shadow-black/70 ring-1 ring-slate-900/5 dark:ring-white/10'
         }`}
       >
         <div className="flex items-center justify-between px-2">
@@ -215,7 +255,7 @@ export default function LandingPage() {
             <button
               onClick={(e) => toggleThemeWithRipple(e, theme, setTheme)}
               aria-label="Toggle Theme"
-              className="flex items-center justify-center size-9.5 rounded-full border border-slate-200/80 bg-white/80 text-slate-600 shadow-xs hover:bg-violet-500/10 hover:text-violet-600 hover:border-violet-500/40 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-violet-400/15 dark:hover:text-violet-300 hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer"
+              className="flex items-center justify-center size-9.5 rounded-full border border-slate-200 bg-slate-100/80 text-slate-700 shadow-xs hover:bg-violet-500/10 hover:text-violet-600 hover:border-violet-500/40 dark:border-white/20 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-violet-400/20 dark:hover:text-amber-300 hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer"
             >
               {theme === 'dark' ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} className="text-violet-600" />}
             </button>

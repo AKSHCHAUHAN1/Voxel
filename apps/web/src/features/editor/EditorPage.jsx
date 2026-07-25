@@ -21,12 +21,18 @@ import {
   Palette,
   Undo2,
   Redo2,
-  Image,
+  Image as ImageIcon,
   Code2,
   Table,
   Timer,
   Minus,
   Clock,
+  ChevronDown,
+  Download,
+  SlidersHorizontal,
+  FolderOpen,
+  MousePointerClick,
+  Zap,
 } from 'lucide-react';
 import { workspaceService } from '@/features/workspaces/workspace-service';
 import { useShortcut } from '@/lib/keyboard';
@@ -200,6 +206,11 @@ const textFonts = {
 export default function EditorPage() {
   const { workspaceId, dashboardId } = useParams();
   const queryClient = useQueryClient();
+  const [fileMenuOpen, setFileMenuOpen] = useState(false);
+  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [leftPanelTab, setLeftPanelTab] = useState('elements');
+  const fileMenuRef = useRef(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
@@ -213,6 +224,56 @@ export default function EditorPage() {
   });
   const gridRef = useRef(null);
   const { autosaveEnabled, autosaveInterval } = useSettingsStore();
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (fileMenuRef.current && !fileMenuRef.current.contains(event.target)) {
+        setFileMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleExportJSON = () => {
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(scene, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute('href', dataStr);
+    downloadAnchor.setAttribute('download', `${dashboard.data?.name || 'canvas'}-export.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    useNotificationStore.getState().add('Canvas exported as JSON blueprint successfully.', 'success');
+  };
+
+  const handleExportPNG = () => {
+    if (!gridRef.current) return;
+    try {
+      const svg = gridRef.current.querySelector('svg');
+      const xml = new XMLSerializer().serializeToString(svg || document.createElement('svg'));
+      const svgBlob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = gridRef.current.clientWidth || 1200;
+        canvas.height = gridRef.current.clientHeight || 800;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = document.documentElement.classList.contains('dark') ? '#04060d' : '#f8fafc';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        const a = document.createElement('a');
+        a.download = `${dashboard.data?.name || 'canvas'}-export.png`;
+        a.href = canvas.toDataURL('image/png');
+        a.click();
+        useNotificationStore.getState().add('Canvas snapshot exported as PNG.', 'success');
+      };
+      img.src = url;
+    } catch {
+      useNotificationStore.getState().add('PNG export initiated.', 'info');
+    }
+  };
 
   const canUndo = useHistoryStore((s) => s.past.length > 0);
   const canRedo = useHistoryStore((s) => s.future.length > 0);
@@ -243,9 +304,51 @@ export default function EditorPage() {
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['dashboard', dashboardId] });
-      useNotificationStore.getState().add('Dashboard canvas changes saved to database.', 'success');
     },
   });
+
+  const addNode = (type) => {
+    const newNodeId = crypto.randomUUID();
+    const defaultTitle =
+      type === 'metric'
+        ? 'New Metric'
+        : type === 'logic'
+          ? 'Formula Logic'
+          : type === 'display'
+            ? 'Output Display'
+            : type === 'note'
+              ? 'Canvas Note'
+              : type === 'progress'
+                ? 'Goal Progress'
+                : 'New Node';
+
+    const defaultContent =
+      type === 'metric'
+        ? '100'
+        : type === 'note'
+          ? 'Add your project notes or documentation here.'
+          : type === 'progress'
+            ? '50'
+            : '0';
+
+    const newNode = {
+      id: newNodeId,
+      type,
+      title: defaultTitle,
+      content: defaultContent,
+      size: 'medium',
+      x: 120 + Math.floor(Math.random() * 80),
+      y: 120 + Math.floor(Math.random() * 80),
+      isBold: true,
+      colorPreset: 'violet',
+    };
+
+    update({
+      ...scene,
+      nodes: [...scene.nodes, newNode],
+    });
+    setSelectedNodeId(newNodeId);
+  };
 
   const loadPreset = (presetKey) => {
     if (!presetKey) return;
@@ -808,29 +911,135 @@ export default function EditorPage() {
       `}</style>
 
       {/* --- CANVAS HEADER --- */}
-      <header className="flex min-h-16 flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 bg-white/80 px-5 backdrop-blur-md dark:border-white/5 dark:bg-slate-950/80 sm:px-8 relative z-30">
+      <header className="flex h-14 items-center justify-between border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-xl dark:border-white/10 dark:bg-[#070b14]/90 relative z-30 select-none shadow-xs">
+        {/* Left Section: Back button, Logo, Title, File Menu Dropdown */}
         <div className="flex items-center gap-3">
           <Link
             to={`/workspaces/${workspaceId}/dashboards`}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-650 dark:hover:bg-white/5 dark:hover:text-slate-355 transition"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-slate-200 transition cursor-pointer"
+            title="Back to Dashboards"
           >
             <ArrowLeft size={16} />
           </Link>
-          <div>
-            <h1 className="text-sm font-extrabold text-slate-900 dark:text-white leading-tight">
-              {dashboard.data?.name || 'Dashboard'}
-            </h1>
-            <p className="text-[9px] uppercase tracking-widest text-violet-650 dark:text-violet-400 font-extrabold mt-0.5">
-              Freeform Workspace
-            </p>
+
+          <div className="size-7 rounded-lg bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-500 grid place-items-center text-white font-extrabold text-xs shadow-xs shrink-0">
+            V
+          </div>
+
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm font-extrabold text-slate-900 dark:text-white leading-none">
+                {dashboard.data?.name || 'Dashboard'}
+              </h1>
+              <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[9px] font-extrabold text-violet-600 dark:text-violet-400 uppercase tracking-widest border border-violet-500/20">
+                Freeform
+              </span>
+            </div>
+          </div>
+
+          {/* Figma-style File Menu Dropdown */}
+          <div className="relative ml-2" ref={fileMenuRef}>
+            <button
+              onClick={() => setFileMenuOpen(!fileMenuOpen)}
+              className="flex items-center gap-1 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 px-2.5 py-1 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 transition cursor-pointer"
+            >
+              <span>File</span>
+              <ChevronDown size={13} className={`transition-transform ${fileMenuOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {fileMenuOpen && (
+              <div className="absolute left-0 mt-1.5 w-56 rounded-xl border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0c101d]/95 backdrop-blur-xl p-1.5 shadow-2xl z-50 text-xs font-semibold text-slate-700 dark:text-slate-200 space-y-0.5">
+                {!autosaveEnabled && (
+                  <button
+                    disabled={!draft || save.isPending}
+                    onClick={() => {
+                      setFileMenuOpen(false);
+                      save.mutate(scene, {
+                        onSuccess: () => {
+                          useNotificationStore.getState().add('Dashboard canvas changes saved to database.', 'success');
+                        },
+                      });
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left hover:bg-violet-500/10 hover:text-violet-600 dark:hover:bg-violet-500/20 dark:hover:text-violet-300 transition cursor-pointer disabled:opacity-40"
+                  >
+                    <Save size={14} className="text-violet-500" />
+                    <span>Save Canvas</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => {
+                    setFileMenuOpen(false);
+                    handleExportPNG();
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left hover:bg-violet-500/10 hover:text-violet-600 dark:hover:bg-violet-500/20 dark:hover:text-violet-300 transition cursor-pointer"
+                >
+                  <Download size={14} className="text-cyan-500" />
+                  <span>Export PNG Image</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setFileMenuOpen(false);
+                    handleExportJSON();
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left hover:bg-violet-500/10 hover:text-violet-600 dark:hover:bg-violet-500/20 dark:hover:text-violet-300 transition cursor-pointer"
+                >
+                  <Code2 size={14} className="text-indigo-500" />
+                  <span>Export JSON Blueprint</span>
+                </button>
+
+                <div className="my-1 border-t border-slate-100 dark:border-white/5" />
+
+                <button
+                  onClick={() => {
+                    setFileMenuOpen(false);
+                    setVersionHistoryOpen(true);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left hover:bg-violet-500/10 hover:text-violet-600 dark:hover:bg-violet-500/20 dark:hover:text-violet-300 transition cursor-pointer"
+                >
+                  <Clock size={14} className="text-amber-500" />
+                  <span>Version History</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setFileMenuOpen(false);
+                    setGridDropdownOpen(true);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left hover:bg-violet-500/10 hover:text-violet-600 dark:hover:bg-violet-500/20 dark:hover:text-violet-300 transition cursor-pointer"
+                >
+                  <Palette size={14} className="text-rose-500" />
+                  <span>Grid Customization</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Toolbar Settings */}
-        <div className="flex flex-wrap items-center gap-3 relative">
-          {/* Preset templates dropdown */}
-          <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-2.5 py-1.5 dark:border-white/5 bg-slate-50 dark:bg-slate-900 text-xs font-bold">
-            <span className="text-slate-400 uppercase tracking-wider text-[8px]">Preset:</span>
+        {/* Center Section: Figma-style Tool Segment Bar */}
+        <div className="hidden md:flex items-center gap-1 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-100/80 dark:bg-white/5 p-1">
+          <button
+            onClick={() => setSelectedNodeId(null)}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-bold bg-white dark:bg-slate-800 text-violet-600 dark:text-violet-400 shadow-xs cursor-pointer"
+            title="Pointer Select (V)"
+          >
+            <MousePointerClick size={13} />
+            <span>Select</span>
+          </button>
+
+          <button
+            onClick={() => setPickerOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-white/10 transition cursor-pointer"
+            title="Add Node (A)"
+          >
+            <Plus size={13} />
+            <span>Add Node</span>
+          </button>
+
+          {/* Preset templates dropdown inside center segment */}
+          <div className="relative flex items-center gap-1 px-2 border-l border-slate-200 dark:border-white/10">
+            <span className="text-[9px] font-extrabold uppercase text-slate-400">Preset:</span>
             <select
               onChange={(e) => {
                 if (e.target.value) {
@@ -839,9 +1048,9 @@ export default function EditorPage() {
                 }
               }}
               defaultValue=""
-              className="bg-transparent font-bold text-xs focus:outline-none cursor-pointer text-slate-700 dark:text-slate-300"
+              className="bg-transparent text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
             >
-              <option value="">Load Template...</option>
+              <option value="">Choose Template...</option>
               <option value="server">Server Monitor</option>
               <option value="business">Sales Performance</option>
               <option value="tasks">Sprint Backlog</option>
@@ -849,18 +1058,43 @@ export default function EditorPage() {
               <option value="ops">Operations Center</option>
             </select>
           </div>
+        </div>
+
+        {/* Right Section: Toolbar Controls & Panel Toggles */}
+        <div className="flex items-center gap-2">
+          {/* Undo / Redo */}
+          <div className="flex items-center border border-slate-200 dark:border-white/10 rounded-xl overflow-hidden bg-slate-50 dark:bg-white/5">
+            <button
+              onClick={handleUndo}
+              disabled={!canUndo}
+              title="Undo (⌘Z)"
+              className="p-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-white/10 disabled:opacity-30 transition cursor-pointer"
+            >
+              <Undo2 size={14} />
+            </button>
+            <div className="w-px h-3.5 bg-slate-200 dark:bg-white/10" />
+            <button
+              onClick={handleRedo}
+              disabled={!canRedo}
+              title="Redo (⌘⇧Z)"
+              className="p-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-white/10 disabled:opacity-30 transition cursor-pointer"
+            >
+              <Redo2 size={14} />
+            </button>
+          </div>
 
           {/* Grid Settings Dropdown */}
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setGridDropdownOpen(!gridDropdownOpen)}
-              className={`inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-bold uppercase tracking-wider hover:bg-slate-50 dark:border-white/5 dark:hover:bg-white/5 transition cursor-pointer ${
+              title="Grid Customization"
+              className={`p-1.5 rounded-xl border transition cursor-pointer ${
                 gridDropdownOpen
-                  ? 'bg-slate-100 dark:bg-white/5 text-violet-650'
-                  : 'text-slate-600 dark:text-slate-300'
+                  ? 'border-violet-500 bg-violet-500/10 text-violet-600 dark:text-violet-400'
+                  : 'border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
               }`}
             >
-              <Palette size={14} /> Grid Settings
+              <Palette size={15} />
             </button>
 
             {gridDropdownOpen && (
@@ -881,8 +1115,8 @@ export default function EditorPage() {
                         onClick={() => update({ ...scene, gridStyle: style })}
                         className={`flex-1 rounded-lg py-1.5 text-[9px] font-bold uppercase tracking-wider cursor-pointer transition-all ${
                           scene.gridStyle === style
-                            ? 'bg-white text-violet-600 shadow-sm dark:bg-slate-800 dark:text-violet-400'
-                            : 'text-slate-400 hover:text-slate-655 dark:hover:text-slate-200'
+                            ? 'bg-white text-violet-600 shadow-xs dark:bg-slate-800 dark:text-violet-400'
+                            : 'text-slate-400 hover:text-slate-650 dark:hover:text-slate-200'
                         }`}
                       >
                         {style}
@@ -983,83 +1217,187 @@ export default function EditorPage() {
             )}
           </div>
 
-          <div className="flex items-center border border-slate-200 dark:border-white/5 rounded-xl overflow-hidden mr-1">
-            <button
-              onClick={handleUndo}
-              disabled={!canUndo}
-              title="Undo (⌘Z)"
-              className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-30 transition cursor-pointer"
-            >
-              <Undo2 size={14} />
-            </button>
-            <div className="w-px h-4 bg-slate-200 dark:bg-white/5" />
-            <button
-              onClick={handleRedo}
-              disabled={!canRedo}
-              title="Redo (⌘⇧Z)"
-              className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-30 transition cursor-pointer"
-            >
-              <Redo2 size={14} />
-            </button>
-          </div>
-
+          {/* Version History Toggle */}
           <button
             onClick={() => {
               setVersionHistoryOpen((prev) => !prev);
               setSelectedNodeId(null);
             }}
             title="Version History"
-            className={`p-2 rounded-xl border transition cursor-pointer flex items-center justify-center ${
+            className={`p-1.5 rounded-xl border transition cursor-pointer ${
               versionHistoryOpen
-                ? 'border-violet-500 bg-violet-50/10 text-violet-600 dark:text-violet-400'
-                : 'border-slate-200 text-slate-600 dark:border-white/5 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5'
+                ? 'border-violet-500 bg-violet-500/10 text-violet-600 dark:text-violet-400'
+                : 'border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
             }`}
           >
-            <Clock size={14} />
+            <Clock size={15} />
           </button>
 
-          <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mr-2 flex items-center gap-1.5">
-            <span
-              className={`inline-block size-1.5 rounded-full ${
-                save.isPending
-                  ? 'bg-amber-500 animate-pulse'
-                  : draft
-                    ? 'bg-violet-500'
-                    : 'bg-emerald-500'
-              }`}
-            />
-            {save.isPending
-              ? 'Saving…'
-              : autosaveEnabled
-                ? draft
-                  ? 'Autosave: ON (Syncing…)'
-                  : 'Autosave: ON (All saved)'
-                : draft
-                  ? 'Autosave: OFF (Unsaved changes)'
-                  : 'Autosave: OFF (Saved)'}
-          </span>
+          {/* Left Panel Toggle (Canva / Figma Assets Panel) */}
+          <button
+            onClick={() => setLeftPanelOpen((prev) => !prev)}
+            title="Toggle Left Assets Panel"
+            className={`p-1.5 rounded-xl border transition cursor-pointer ${
+              leftPanelOpen
+                ? 'border-violet-500 bg-violet-500/10 text-violet-600 dark:text-violet-400'
+                : 'border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
+            }`}
+          >
+            <Layers size={15} />
+          </button>
 
+          {/* Right Inspector Toggle */}
+          <button
+            onClick={() => setRightPanelOpen((prev) => !prev)}
+            title="Toggle Right Inspector Panel"
+            className={`p-1.5 rounded-xl border transition cursor-pointer ${
+              rightPanelOpen
+                ? 'border-violet-500 bg-violet-500/10 text-violet-600 dark:text-violet-400'
+                : 'border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
+            }`}
+          >
+            <SlidersHorizontal size={15} />
+          </button>
+
+          {/* Primary "+ Add Node" Button */}
           <button
             onClick={() => setPickerOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-violet-500/40 bg-violet-500/10 px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-violet-600 dark:text-violet-300 hover:bg-violet-600 hover:text-white dark:hover:bg-violet-600 dark:hover:text-white transition cursor-pointer shadow-sm"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-600 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-white hover:opacity-95 transition cursor-pointer shadow-md shadow-violet-600/20 active:scale-95"
           >
             <Plus size={14} className="stroke-[2.5]" /> Add Node
           </button>
-
-          {!autosaveEnabled && (
-            <button
-              disabled={!draft || save.isPending}
-              onClick={() => save.mutate(scene)}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white hover:opacity-95 disabled:opacity-50 transition cursor-pointer shadow-lg shadow-violet-600/10"
-            >
-              <Save size={14} /> {save.isPending ? 'Saving…' : 'Save'}
-            </button>
-          )}
         </div>
       </header>
 
       {/* --- GRID EDITOR WORKSPACE --- */}
-      <div className="flex flex-1 flex-col lg:flex-row relative">
+      <div className="flex flex-1 flex-col lg:flex-row relative overflow-hidden">
+        {/* --- CANVA/FIGMA LEFT SIDE ASSETS PANEL --- */}
+        {leftPanelOpen && (
+          <aside className="w-full lg:w-72 border-r border-slate-200/80 bg-white/95 dark:border-white/10 dark:bg-[#070a14]/95 backdrop-blur-xl flex flex-col z-20 shrink-0 select-none">
+            {/* Tabs */}
+            <div className="flex border-b border-slate-200/80 dark:border-white/10 p-1.5 gap-1 bg-slate-50/50 dark:bg-white/5">
+              <button
+                onClick={() => setLeftPanelTab('elements')}
+                className={`flex-1 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  leftPanelTab === 'elements'
+                    ? 'bg-white text-violet-600 shadow-xs dark:bg-slate-800 dark:text-violet-400'
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                }`}
+              >
+                <Plus size={12} /> Elements
+              </button>
+              <button
+                onClick={() => setLeftPanelTab('templates')}
+                className={`flex-1 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  leftPanelTab === 'templates'
+                    ? 'bg-white text-violet-600 shadow-xs dark:bg-slate-800 dark:text-violet-400'
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                }`}
+              >
+                <FolderOpen size={12} /> Presets
+              </button>
+              <button
+                onClick={() => setLeftPanelTab('layers')}
+                className={`flex-1 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  leftPanelTab === 'layers'
+                    ? 'bg-white text-violet-600 shadow-xs dark:bg-slate-800 dark:text-violet-400'
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                }`}
+              >
+                <Layers size={12} /> Layers
+              </button>
+            </div>
+
+            {/* Tab Contents */}
+            <div className="p-3.5 space-y-4 overflow-y-auto max-h-[calc(100vh-120px)] flex-1">
+              {leftPanelTab === 'elements' && (
+                <div className="space-y-2.5">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block">
+                    Click to Add Element
+                  </span>
+                  <div className="grid grid-cols-1 gap-2">
+                    {[
+                      { type: 'metric', label: 'Metric Node', desc: 'Live data input source', icon: <Activity className="text-cyan-500" size={16} /> },
+                      { type: 'logic', label: 'Formula Node', desc: 'Math formula & conditions', icon: <Cpu className="text-violet-500" size={16} /> },
+                      { type: 'display', label: 'Display Card', desc: 'Output KPI & summary', icon: <Zap className="text-amber-500" size={16} /> },
+                      { type: 'note', label: 'Annotation Note', desc: 'Markdown text block', icon: <FileText className="text-emerald-500" size={16} /> },
+                      { type: 'progress', label: 'Progress Gauge', desc: 'Goal completion bar', icon: <BarChart3 className="text-rose-500" size={16} /> },
+                    ].map((item) => (
+                      <button
+                        key={item.type}
+                        onClick={() => addNode(item.type)}
+                        className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5 hover:border-violet-500/40 hover:bg-violet-500/5 transition cursor-pointer text-left group"
+                      >
+                        <div className="size-8 rounded-lg bg-white dark:bg-slate-800 grid place-items-center shadow-xs group-hover:scale-105 transition-transform shrink-0">
+                          {item.icon}
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-tight">
+                            {item.label}
+                          </div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">{item.desc}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {leftPanelTab === 'templates' && (
+                <div className="space-y-2.5">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block">
+                    Canvas Template Presets
+                  </span>
+                  <div className="space-y-2">
+                    {[
+                      { key: 'server', title: 'Server Monitor', desc: 'CPU, RAM, & Request load pipeline' },
+                      { key: 'business', title: 'Sales Performance', desc: 'Daily visitors, conversion & revenue' },
+                      { key: 'tasks', title: 'Sprint Backlog', desc: 'Task completion & velocity stats' },
+                      { key: 'devhub', title: 'Developer Hub', desc: 'PRs, CI builds & test coverage' },
+                      { key: 'ops', title: 'Operations Center', desc: 'Uptime SLA & active error metrics' },
+                    ].map((t) => (
+                      <button
+                        key={t.key}
+                        onClick={() => loadPreset(t.key)}
+                        className="w-full text-left p-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5 hover:border-violet-500/40 hover:bg-violet-500/10 transition cursor-pointer"
+                      >
+                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200">{t.title}</div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">{t.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {leftPanelTab === 'layers' && (
+                <div className="space-y-2.5">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block">
+                    Nodes in Scene ({scene.nodes.length})
+                  </span>
+                  <div className="space-y-1">
+                    {scene.nodes.map((n) => (
+                      <button
+                        key={n.id}
+                        onClick={() => setSelectedNodeId(n.id)}
+                        className={`w-full flex items-center justify-between p-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                          selectedNodeId === n.id
+                            ? 'bg-violet-500/15 text-violet-600 dark:text-violet-300 border border-violet-500/30'
+                            : 'hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        <span className="truncate">{n.title || 'Untitled Node'}</span>
+                        <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-white/10 text-slate-500">
+                          {n.type}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </aside>
+        )}
+
         <main
           onClick={() => setSelectedNodeId(null)}
           className="flex-1 overflow-hidden relative bg-slate-50 dark:bg-[#030509] min-h-[500px] z-10"
@@ -1161,14 +1499,16 @@ export default function EditorPage() {
           />
         )}
 
-        {/* --- NODE PROPERTY INSPECTOR --- */}
-        {selectedNodeId &&
-          (() => {
-            const selectedNode = scene.nodes.find((node) => node.id === selectedNodeId);
-            if (!selectedNode) return null;
-            return (
-              <aside className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-slate-950 flex flex-col justify-between min-h-[400px] lg:min-h-0 relative z-20">
-                <div className="space-y-5 overflow-y-auto max-h-[calc(100vh-180px)] pb-4">
+        {/* --- FIGMA-STYLE RIGHT PROPERTIES INSPECTOR PANEL --- */}
+        {rightPanelOpen && (
+          <aside className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-slate-200/80 bg-white/95 p-4 dark:border-white/10 dark:bg-[#070a14]/95 backdrop-blur-xl flex flex-col justify-between min-h-[400px] lg:min-h-0 relative z-20 shrink-0 select-none">
+            {selectedNodeId ? (
+              (() => {
+                const selectedNode = scene.nodes.find((node) => node.id === selectedNodeId);
+                if (!selectedNode) return null;
+                return (
+                  <>
+                    <div className="space-y-5 overflow-y-auto max-h-[calc(100vh-180px)] pb-4">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-white/5">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-semibold bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 rounded px-1.5 py-0.5 uppercase tracking-wide">
@@ -1852,9 +2192,131 @@ export default function EditorPage() {
                     Delete Node
                   </button>
                 </div>
-              </aside>
+              </>
             );
-          })()}
+          })()
+        ) : (
+              /* Canvas Inspector Fallback */
+              <div className="space-y-5 overflow-y-auto max-h-[calc(100vh-140px)] pb-4">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 rounded px-2 py-0.5 uppercase tracking-wide">
+                      Canvas
+                    </span>
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">Properties</h3>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Canvas Grid Style */}
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block">
+                      Grid Pattern
+                    </span>
+                    <div className="flex items-center gap-0.5 rounded-xl border border-slate-200/60 p-0.5 dark:border-white/10 bg-slate-50/50 dark:bg-white/5">
+                      {['dots', 'lines', 'radial', 'blank'].map((style) => (
+                        <button
+                          key={style}
+                          onClick={() => update({ ...scene, gridStyle: style })}
+                          className={`flex-1 rounded-lg py-1.5 text-[9px] font-bold uppercase tracking-wider cursor-pointer transition-all ${
+                            scene.gridStyle === style
+                              ? 'bg-white text-violet-600 shadow-xs dark:bg-slate-800 dark:text-violet-400'
+                              : 'text-slate-400 hover:text-slate-650 dark:hover:text-slate-200'
+                          }`}
+                        >
+                          {style}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {scene.gridStyle !== 'blank' && (
+                    <>
+                      {/* Grid Spacing */}
+                      {scene.gridStyle !== 'radial' && (
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
+                            <span>Grid Spacing</span>
+                            <span>{scene.gridSize ?? 24}px</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="12"
+                            max="64"
+                            value={scene.gridSize ?? 24}
+                            onChange={(e) => update({ ...scene, gridSize: parseInt(e.target.value) })}
+                            className="w-full h-1 bg-slate-200 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-violet-600"
+                          />
+                        </div>
+                      )}
+
+                      {/* Grid Opacity */}
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
+                          <span>Grid Opacity</span>
+                          <span>{Math.round((scene.gridOpacity ?? 0.06) * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.01"
+                          max="0.25"
+                          step="0.01"
+                          value={scene.gridOpacity ?? 0.06}
+                          onChange={(e) => update({ ...scene, gridOpacity: parseFloat(e.target.value) })}
+                          className="w-full h-1 bg-slate-200 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-violet-600"
+                        />
+                      </div>
+
+                      {/* Grid Color Preset */}
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block">
+                          Grid Color
+                        </span>
+                        <div className="flex gap-2.5 pt-1">
+                          {[
+                            { id: 'slate', color: 'bg-slate-400' },
+                            { id: 'blue', color: 'bg-blue-500' },
+                            { id: 'violet', color: 'bg-violet-500' },
+                            { id: 'rose', color: 'bg-rose-500' },
+                            { id: 'emerald', color: 'bg-emerald-500' },
+                          ].map((preset) => (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => update({ ...scene, gridColorPreset: preset.id })}
+                              className={`size-5 rounded-full border border-white/20 transition hover:scale-110 cursor-pointer ${preset.color} ${
+                                (scene.gridColorPreset ?? 'violet') === preset.id
+                                  ? 'ring-2 ring-violet-500 ring-offset-2 dark:ring-offset-slate-900'
+                                  : ''
+                              }`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Scene Stats */}
+                  <div className="border-t border-slate-100 dark:border-white/5 pt-3 space-y-2">
+                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block">
+                      Canvas Statistics
+                    </span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="p-2.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-center">
+                        <div className="text-base font-extrabold text-slate-900 dark:text-white font-mono">{scene.nodes.length}</div>
+                        <div className="text-[9px] text-slate-400 uppercase font-bold">Total Nodes</div>
+                      </div>
+                      <div className="p-2.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-center">
+                        <div className="text-base font-extrabold text-slate-900 dark:text-white font-mono">{scene.connections.length}</div>
+                        <div className="text-[9px] text-slate-400 uppercase font-bold">Connections</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </aside>
+        )}
       </div>
 
       {pickerOpen && <NodePicker onClose={() => setPickerOpen(false)} onAdd={add} />}
@@ -2395,7 +2857,7 @@ function NodePicker({ onClose, onAdd }) {
       type: 'image',
       label: 'Image Showcase',
       desc: 'Display an online image card',
-      icon: <Image size={20} />,
+      icon: <ImageIcon size={20} />,
       color: 'text-violet-500 bg-violet-500/10',
     },
     {
