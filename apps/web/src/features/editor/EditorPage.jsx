@@ -31,8 +31,8 @@ import {
   Download,
   SlidersHorizontal,
   FolderOpen,
-  MousePointerClick,
   Zap,
+  Maximize2,
 } from 'lucide-react';
 import { workspaceService } from '@/features/workspaces/workspace-service';
 import { useShortcut } from '@/lib/keyboard';
@@ -56,8 +56,8 @@ const sceneOf = (value) => {
   if (!Array.isArray(candidate.nodes)) return emptyScene;
 
   const parsedNodes = candidate.nodes.map((node, index) => {
-    const x = typeof node.x === 'number' ? node.x : (index % 3) * 310 + 40;
-    const y = typeof node.y === 'number' ? node.y : Math.floor(index / 3) * 230 + 40;
+    const x = typeof node.x === 'number' ? node.x : (index % 3) * 400 + 40;
+    const y = typeof node.y === 'number' ? node.y : Math.floor(index / 3) * 280 + 40;
     return { ...node, x, y };
   });
 
@@ -66,6 +66,10 @@ const sceneOf = (value) => {
     nodes: parsedNodes,
     connections: Array.isArray(candidate.connections) ? candidate.connections : [],
     gridStyle: candidate.gridStyle ?? 'dots',
+    gridSize: candidate.gridSize ?? 24,
+    gridOpacity: candidate.gridOpacity ?? 0.08,
+    gridThickness: candidate.gridThickness ?? 1.2,
+    gridColorPreset: candidate.gridColorPreset ?? 'violet',
   };
 };
 
@@ -206,11 +210,18 @@ const textFonts = {
 export default function EditorPage() {
   const { workspaceId, dashboardId } = useParams();
   const queryClient = useQueryClient();
-  const [fileMenuOpen, setFileMenuOpen] = useState(false);
+
+  const dashboard = useQuery({
+    queryKey: ['dashboard', dashboardId],
+    queryFn: () => workspaceService.dashboard(dashboardId),
+    enabled: Boolean(dashboardId),
+  });
+
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [leftPanelTab, setLeftPanelTab] = useState('elements');
-  const fileMenuRef = useRef(null);
+  const exportMenuRef = useRef(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
@@ -225,10 +236,66 @@ export default function EditorPage() {
   const gridRef = useRef(null);
   const { autosaveEnabled, autosaveInterval } = useSettingsStore();
 
+  const [zoom, setZoom] = useState(1);
+
+  const handleZoomIn = useCallback(() => {
+    setZoom((prev) => Math.min(2.0, parseFloat((prev + 0.1).toFixed(2))));
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    setZoom((prev) => Math.max(0.25, parseFloat((prev - 0.1).toFixed(2))));
+  }, []);
+
+  const handleResetZoom = useCallback(() => {
+    setZoom(1);
+  }, []);
+
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+
+  // Trackpad pinch gesture and mouse wheel zoom support across Chrome, Safari, and Firefox
+  useEffect(() => {
+    if (!dashboard.data) return;
+    const gridEl = gridRef.current;
+    if (!gridEl) return;
+
+    let gestureStartZoom = 1;
+
+    const handleWheel = (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY ? e.deltaY * -0.005 : (e.wheelDelta || 0) * 0.002;
+        const next = Math.min(2.0, Math.max(0.25, zoomRef.current + delta));
+        setZoom(parseFloat(next.toFixed(2)));
+      }
+    };
+
+    const handleGestureStart = (e) => {
+      e.preventDefault();
+      gestureStartZoom = zoomRef.current;
+    };
+
+    const handleGestureChange = (e) => {
+      e.preventDefault();
+      const next = Math.min(2.0, Math.max(0.25, gestureStartZoom * e.scale));
+      setZoom(parseFloat(next.toFixed(2)));
+    };
+
+    gridEl.addEventListener('wheel', handleWheel, { passive: false });
+    gridEl.addEventListener('gesturestart', handleGestureStart, { passive: false });
+    gridEl.addEventListener('gesturechange', handleGestureChange, { passive: false });
+
+    return () => {
+      gridEl.removeEventListener('wheel', handleWheel);
+      gridEl.removeEventListener('gesturestart', handleGestureStart);
+      gridEl.removeEventListener('gesturechange', handleGestureChange);
+    };
+  }, [dashboard.data]);
+
   useEffect(() => {
     function handleClickOutside(event) {
-      if (fileMenuRef.current && !fileMenuRef.current.contains(event.target)) {
-        setFileMenuOpen(false);
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target)) {
+        setExportMenuOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -277,12 +344,6 @@ export default function EditorPage() {
 
   const canUndo = useHistoryStore((s) => s.past.length > 0);
   const canRedo = useHistoryStore((s) => s.future.length > 0);
-
-  const dashboard = useQuery({
-    queryKey: ['dashboard', dashboardId],
-    queryFn: () => workspaceService.dashboard(dashboardId),
-    enabled: Boolean(dashboardId),
-  });
 
   const { scene: yScene, updateScene, awareness, awarenessStates } = useYjs(dashboardId, dashboard.data?.scene);
 
@@ -391,6 +452,8 @@ export default function EditorPage() {
           size: 'small',
           color: 'emerald',
           borderStyle: 'glow',
+          x: 40,
+          y: 40,
         },
         {
           id: latencyId,
@@ -401,6 +464,8 @@ export default function EditorPage() {
           size: 'small',
           color: 'cyan',
           borderStyle: 'solid',
+          x: 320,
+          y: 40,
         },
         {
           id: chartId,
@@ -410,6 +475,8 @@ export default function EditorPage() {
           size: 'medium',
           color: 'violet',
           borderStyle: 'solid',
+          x: 600,
+          y: 40,
         },
         {
           id: noteId,
@@ -420,6 +487,8 @@ export default function EditorPage() {
           size: 'wide',
           color: 'slate',
           borderStyle: 'dashed',
+          x: 40,
+          y: 310,
         },
       ];
       newConns = [{ fromId: apiStatusId, toId: latencyId, style: 'pulsing' }];
@@ -437,6 +506,8 @@ export default function EditorPage() {
           size: 'medium',
           color: 'emerald',
           borderStyle: 'glow',
+          x: 40,
+          y: 40,
         },
         {
           id: goalId,
@@ -447,6 +518,8 @@ export default function EditorPage() {
           size: 'medium',
           color: 'amber',
           borderStyle: 'solid',
+          x: 400,
+          y: 40,
         },
         {
           id: trendId,
@@ -456,6 +529,8 @@ export default function EditorPage() {
           size: 'large',
           color: 'indigo',
           borderStyle: 'solid',
+          x: 760,
+          y: 40,
         },
       ];
       newConns = [{ fromId: salesId, toId: goalId, style: 'glowing' }];
@@ -472,14 +547,8 @@ export default function EditorPage() {
           size: 'large',
           color: 'slate',
           borderStyle: 'solid',
-        },
-        {
-          id: crypto.randomUUID(),
-          type: 'divider',
-          title: 'Development Links',
-          dividerStyle: 'dashed',
-          size: 'wide',
-          color: 'slate',
+          x: 40,
+          y: 40,
         },
         {
           id: linkId,
@@ -490,6 +559,18 @@ export default function EditorPage() {
           size: 'medium',
           color: 'cyan',
           borderStyle: 'solid',
+          x: 540,
+          y: 40,
+        },
+        {
+          id: crypto.randomUUID(),
+          type: 'divider',
+          title: 'Development Links',
+          dividerStyle: 'dashed',
+          size: 'wide',
+          color: 'slate',
+          x: 40,
+          y: 350,
         },
       ];
     } else if (preset === 'ops') {
@@ -505,6 +586,8 @@ export default function EditorPage() {
           size: 'large',
           color: 'slate',
           borderStyle: 'solid',
+          x: 40,
+          y: 40,
         },
         {
           id: timerId,
@@ -516,6 +599,8 @@ export default function EditorPage() {
           size: 'medium',
           color: 'amber',
           borderStyle: 'glow',
+          x: 560,
+          y: 40,
         },
       ];
     } else {
@@ -531,6 +616,8 @@ export default function EditorPage() {
           size: 'large',
           color: 'violet',
           borderStyle: 'solid',
+          x: 40,
+          y: 40,
         },
         {
           id: g2Id,
@@ -541,6 +628,8 @@ export default function EditorPage() {
           size: 'medium',
           color: 'emerald',
           borderStyle: 'glow',
+          x: 520,
+          y: 40,
         },
         {
           id: crypto.randomUUID(),
@@ -551,6 +640,8 @@ export default function EditorPage() {
           size: 'small',
           color: 'cyan',
           borderStyle: 'dashed',
+          x: 860,
+          y: 40,
         },
       ];
     }
@@ -637,31 +728,31 @@ export default function EditorPage() {
   // Dynamic Grid Background Inline Styles
   const gridStyleInline = useMemo(() => {
     const colorPresets = {
-      slate: '100, 116, 139',
+      slate: '148, 163, 184',
       blue: '59, 130, 246',
-      violet: '124, 58, 237',
+      violet: '139, 92, 246',
       rose: '244, 63, 94',
       emerald: '16, 185, 129',
     };
     const preset = scene.gridColorPreset ?? 'violet';
-    const rgb = colorPresets[preset];
-    const opacity = scene.gridOpacity ?? 0.06;
+    const rgb = colorPresets[preset] || '139, 92, 246';
+    const opacity = scene.gridOpacity ?? 0.08;
     const thickness = scene.gridThickness ?? 1.2;
     const size = scene.gridSize ?? 24;
     switch (scene.gridStyle) {
       case 'dots':
         return {
-          backgroundImage: `radial-gradient(circle, rgba(${rgb}, ${opacity}) ${thickness}px, transparent ${thickness}px)`,
+          backgroundImage: `radial-gradient(circle, rgba(${rgb}, ${opacity}) ${thickness}px, transparent ${thickness + 0.5}px)`,
           backgroundSize: `${size}px ${size}px`,
         };
       case 'lines':
         return {
-          backgroundImage: `linear-gradient(rgba(${rgb}, ${opacity}) ${thickness}px, transparent ${thickness}px), linear-gradient(90deg, rgba(${rgb}, ${opacity}) ${thickness}px, transparent ${thickness}px)`,
+          backgroundImage: `linear-gradient(to right, rgba(${rgb}, ${opacity}) ${thickness}px, transparent ${thickness}px), linear-gradient(to bottom, rgba(${rgb}, ${opacity}) ${thickness}px, transparent ${thickness}px)`,
           backgroundSize: `${size}px ${size}px`,
         };
       case 'radial':
         return {
-          backgroundImage: `radial-gradient(circle at center, rgba(${rgb}, ${opacity * 3.5}) 0%, transparent 100%)`,
+          backgroundImage: `radial-gradient(circle at center, rgba(${rgb}, ${Math.min(1, opacity * 4)}) 0%, transparent 85%)`,
         };
       default:
         return {};
@@ -729,19 +820,19 @@ export default function EditorPage() {
     awareness.setLocalStateField('cursor', null);
   }, [awareness]);
 
-  const handleUndo = () => {
+  const handleUndo = useCallback(() => {
     const prev = useHistoryStore.getState().undo(scene);
     if (prev) {
-      update(prev, true);
+      updateScene(prev);
     }
-  };
+  }, [scene, updateScene]);
 
-  const handleRedo = () => {
+  const handleRedo = useCallback(() => {
     const next = useHistoryStore.getState().redo(scene);
     if (next) {
-      update(next, true);
+      updateScene(next);
     }
-  };
+  }, [scene, updateScene]);
 
   const copiedNodeRef = useRef(null);
 
@@ -808,13 +899,17 @@ export default function EditorPage() {
   };
 
   // Keyboard shortcut registrations
-  useShortcut('meta+z', handleUndo, { label: 'Undo change', category: 'Editor' }, [scene]);
-  useShortcut('meta+shift+z', handleRedo, { label: 'Redo change', category: 'Editor' }, [scene]);
+  useShortcut('meta+z', handleUndo, { label: 'Undo change', category: 'Editor', allowInInput: true }, [scene]);
+  useShortcut('meta+shift+z', handleRedo, { label: 'Redo change', category: 'Editor', allowInInput: true }, [scene]);
+  useShortcut('meta+y', handleRedo, { label: 'Redo change', category: 'Editor', allowInInput: true }, [scene]);
   useShortcut('meta+c', handleCopy, { label: 'Copy selected node', category: 'Editor' }, [selectedNodeId, scene]);
   useShortcut('meta+v', handlePaste, { label: 'Paste copied node', category: 'Editor' }, [scene]);
   useShortcut('backspace', handleDeleteSelected, { label: 'Delete selected node', category: 'Editor' }, [selectedNodeId, scene]);
   useShortcut('delete', handleDeleteSelected, { label: 'Delete selected node', category: 'Editor' }, [selectedNodeId, scene]);
-  useShortcut('meta+s', handleSave, { label: 'Save dashboard changes', category: 'Editor' }, [yScene, scene]);
+  useShortcut('meta+s', handleSave, { label: 'Save dashboard changes', category: 'Editor', allowInInput: true }, [yScene, scene]);
+  useShortcut('meta+=', handleZoomIn, { label: 'Zoom In', category: 'Editor' }, []);
+  useShortcut('meta+-', handleZoomOut, { label: 'Zoom Out', category: 'Editor' }, []);
+  useShortcut('meta+0', handleResetZoom, { label: 'Reset Zoom', category: 'Editor' }, []);
 
   const add = (type) => {
     update({ ...scene, nodes: [...scene.nodes, newNode(type)] });
@@ -825,6 +920,8 @@ export default function EditorPage() {
     if (e.button !== 0) return;
     e.preventDefault();
 
+    const startScene = JSON.parse(JSON.stringify(scene));
+
     const node = scene.nodes.find((n) => n.id === nodeId);
     if (!node) return;
 
@@ -833,13 +930,22 @@ export default function EditorPage() {
     const initX = node.x ?? 100;
     const initY = node.y ?? 100;
 
+    let hasDragged = false;
     let rafId = null;
 
     const handleMouseMove = (moveEvent) => {
+      const dist = Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY);
+      if (!hasDragged && dist > 3) {
+        hasDragged = true;
+      }
+
+      if (!hasDragged) return;
+
       if (rafId) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
-        const dx = moveEvent.clientX - startX;
-        const dy = moveEvent.clientY - startY;
+        const currentZoom = zoom || 1;
+        const dx = (moveEvent.clientX - startX) / currentZoom;
+        const dy = (moveEvent.clientY - startY) / currentZoom;
 
         const current = scene;
         update(
@@ -858,7 +964,9 @@ export default function EditorPage() {
       if (rafId) cancelAnimationFrame(rafId);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
-      useHistoryStore.getState().push(scene);
+      if (hasDragged) {
+        useHistoryStore.getState().push(startScene);
+      }
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -935,128 +1043,6 @@ export default function EditorPage() {
                 Freeform
               </span>
             </div>
-          </div>
-
-          {/* Figma-style File Menu Dropdown */}
-          <div className="relative ml-2" ref={fileMenuRef}>
-            <button
-              onClick={() => setFileMenuOpen(!fileMenuOpen)}
-              className="flex items-center gap-1 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 px-2.5 py-1 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 transition cursor-pointer"
-            >
-              <span>File</span>
-              <ChevronDown size={13} className={`transition-transform ${fileMenuOpen ? 'rotate-180' : ''}`} />
-            </button>
-
-            {fileMenuOpen && (
-              <div className="absolute left-0 mt-1.5 w-56 rounded-xl border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0c101d]/95 backdrop-blur-xl p-1.5 shadow-2xl z-50 text-xs font-semibold text-slate-700 dark:text-slate-200 space-y-0.5">
-                {!autosaveEnabled && (
-                  <button
-                    disabled={!draft || save.isPending}
-                    onClick={() => {
-                      setFileMenuOpen(false);
-                      save.mutate(scene, {
-                        onSuccess: () => {
-                          useNotificationStore.getState().add('Dashboard canvas changes saved to database.', 'success');
-                        },
-                      });
-                    }}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left hover:bg-violet-500/10 hover:text-violet-600 dark:hover:bg-violet-500/20 dark:hover:text-violet-300 transition cursor-pointer disabled:opacity-40"
-                  >
-                    <Save size={14} className="text-violet-500" />
-                    <span>Save Canvas</span>
-                  </button>
-                )}
-
-                <button
-                  onClick={() => {
-                    setFileMenuOpen(false);
-                    handleExportPNG();
-                  }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left hover:bg-violet-500/10 hover:text-violet-600 dark:hover:bg-violet-500/20 dark:hover:text-violet-300 transition cursor-pointer"
-                >
-                  <Download size={14} className="text-cyan-500" />
-                  <span>Export PNG Image</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setFileMenuOpen(false);
-                    handleExportJSON();
-                  }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left hover:bg-violet-500/10 hover:text-violet-600 dark:hover:bg-violet-500/20 dark:hover:text-violet-300 transition cursor-pointer"
-                >
-                  <Code2 size={14} className="text-indigo-500" />
-                  <span>Export JSON Blueprint</span>
-                </button>
-
-                <div className="my-1 border-t border-slate-100 dark:border-white/5" />
-
-                <button
-                  onClick={() => {
-                    setFileMenuOpen(false);
-                    setVersionHistoryOpen(true);
-                  }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left hover:bg-violet-500/10 hover:text-violet-600 dark:hover:bg-violet-500/20 dark:hover:text-violet-300 transition cursor-pointer"
-                >
-                  <Clock size={14} className="text-amber-500" />
-                  <span>Version History</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setFileMenuOpen(false);
-                    setGridDropdownOpen(true);
-                  }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left hover:bg-violet-500/10 hover:text-violet-600 dark:hover:bg-violet-500/20 dark:hover:text-violet-300 transition cursor-pointer"
-                >
-                  <Palette size={14} className="text-rose-500" />
-                  <span>Grid Customization</span>
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Center Section: Figma-style Tool Segment Bar */}
-        <div className="hidden md:flex items-center gap-1 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-100/80 dark:bg-white/5 p-1">
-          <button
-            onClick={() => setSelectedNodeId(null)}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-bold bg-white dark:bg-slate-800 text-violet-600 dark:text-violet-400 shadow-xs cursor-pointer"
-            title="Pointer Select (V)"
-          >
-            <MousePointerClick size={13} />
-            <span>Select</span>
-          </button>
-
-          <button
-            onClick={() => setPickerOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-white/10 transition cursor-pointer"
-            title="Add Node (A)"
-          >
-            <Plus size={13} />
-            <span>Add Node</span>
-          </button>
-
-          {/* Preset templates dropdown inside center segment */}
-          <div className="relative flex items-center gap-1 px-2 border-l border-slate-200 dark:border-white/10">
-            <span className="text-[9px] font-extrabold uppercase text-slate-400">Preset:</span>
-            <select
-              onChange={(e) => {
-                if (e.target.value) {
-                  loadPreset(e.target.value);
-                  e.target.value = '';
-                }
-              }}
-              defaultValue=""
-              className="bg-transparent text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
-            >
-              <option value="">Choose Template...</option>
-              <option value="server">Server Monitor</option>
-              <option value="business">Sales Performance</option>
-              <option value="tasks">Sprint Backlog</option>
-              <option value="devhub">Developer Hub</option>
-              <option value="ops">Operations Center</option>
-            </select>
           </div>
         </div>
 
@@ -1149,14 +1135,14 @@ export default function EditorPage() {
                     <div className="space-y-1">
                       <div className="flex justify-between text-[8px] font-extrabold uppercase tracking-widest text-slate-400">
                         <span>Grid Opacity</span>
-                        <span>{Math.round((scene.gridOpacity ?? 0.06) * 100)}%</span>
+                        <span>{Math.round((scene.gridOpacity ?? 0.08) * 100)}%</span>
                       </div>
                       <input
                         type="range"
-                        min="0.01"
-                        max="0.25"
+                        min="0.02"
+                        max="0.50"
                         step="0.01"
-                        value={scene.gridOpacity ?? 0.06}
+                        value={scene.gridOpacity ?? 0.08}
                         onChange={(e) =>
                           update({ ...scene, gridOpacity: parseFloat(e.target.value) })
                         }
@@ -1258,6 +1244,64 @@ export default function EditorPage() {
           >
             <SlidersHorizontal size={15} />
           </button>
+
+          {/* Export Dropdown Menu */}
+          <div className="relative" ref={exportMenuRef}>
+            <button
+              onClick={() => setExportMenuOpen(!exportMenuOpen)}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
+                exportMenuOpen
+                  ? 'border-violet-500 bg-violet-500/10 text-violet-600 dark:text-violet-400'
+                  : 'border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5'
+              }`}
+            >
+              <Download size={14} className="text-cyan-500" />
+              <span>Export</span>
+              <ChevronDown size={13} className={`transition-transform ${exportMenuOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {exportMenuOpen && (
+              <div className="absolute right-0 mt-2 w-52 bg-white/95 dark:bg-[#0e1320]/95 backdrop-blur-md border border-slate-200 dark:border-white/10 shadow-xl rounded-2xl p-1.5 z-50 text-xs font-semibold text-slate-700 dark:text-slate-200 space-y-0.5">
+                <button
+                  onClick={() => {
+                    setExportMenuOpen(false);
+                    handleExportPNG();
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left hover:bg-violet-500/10 hover:text-violet-600 dark:hover:bg-violet-500/20 dark:hover:text-violet-300 transition cursor-pointer"
+                >
+                  <Download size={14} className="text-cyan-500" />
+                  <span>Export PNG Image</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setExportMenuOpen(false);
+                    handleExportJSON();
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left hover:bg-violet-500/10 hover:text-violet-600 dark:hover:bg-violet-500/20 dark:hover:text-violet-300 transition cursor-pointer"
+                >
+                  <Code2 size={14} className="text-indigo-500" />
+                  <span>Export JSON Blueprint</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {!autosaveEnabled && (
+            <button
+              disabled={!draft || save.isPending}
+              onClick={() => {
+                save.mutate(scene, {
+                  onSuccess: () => {
+                    useNotificationStore.getState().add('Dashboard canvas changes saved to database.', 'success');
+                  },
+                });
+              }}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-violet-500/40 bg-violet-500/10 px-3.5 py-1.5 text-xs font-bold text-violet-600 dark:text-violet-300 hover:bg-violet-600 hover:text-white transition cursor-pointer shadow-xs disabled:opacity-50"
+            >
+              <Save size={14} /> {save.isPending ? 'Saving…' : 'Save'}
+            </button>
+          )}
 
           {/* Primary "+ Add Node" Button */}
           <button
@@ -1411,10 +1455,12 @@ export default function EditorPage() {
           >
             {/* The infinite board sheet */}
             <div
-              className="relative select-none transition-all duration-300 min-h-full min-w-full flex flex-col justify-center"
+              className="relative select-none transition-transform duration-150 ease-out min-h-full min-w-full flex flex-col justify-center"
               style={{
                 width: '100%',
                 height: '100%',
+                transform: `scale(${zoom})`,
+                transformOrigin: '50% 50%',
                 ...gridStyleInline,
               }}
             >
@@ -1486,6 +1532,57 @@ export default function EditorPage() {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Floating Canvas Zoom Controls */}
+          <div className="absolute bottom-5 right-5 z-40 flex items-center gap-1.5 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white/90 dark:bg-[#0c101d]/90 backdrop-blur-xl p-1.5 shadow-xl select-none">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleZoomOut();
+              }}
+              disabled={zoom <= 0.25}
+              title="Zoom Out (Pinch / Ctrl -)"
+              className="p-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 rounded-xl transition cursor-pointer disabled:opacity-30"
+            >
+              <Minus size={14} />
+            </button>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleResetZoom();
+              }}
+              title="Reset Zoom to 100%"
+              className="px-2 py-1 text-xs font-mono font-extrabold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10 rounded-xl transition cursor-pointer"
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleZoomIn();
+              }}
+              disabled={zoom >= 2.0}
+              title="Zoom In (Pinch / Ctrl +)"
+              className="p-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 rounded-xl transition cursor-pointer disabled:opacity-30"
+            >
+              <Plus size={14} />
+            </button>
+
+            <div className="w-px h-3.5 bg-slate-200 dark:bg-white/10 mx-0.5" />
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleResetZoom();
+              }}
+              title="Fit to Canvas (100%)"
+              className="p-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 rounded-xl transition cursor-pointer"
+            >
+              <Maximize2 size={14} />
+            </button>
           </div>
         </main>
 
@@ -2254,14 +2351,14 @@ export default function EditorPage() {
                       <div className="space-y-1">
                         <div className="flex justify-between text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
                           <span>Grid Opacity</span>
-                          <span>{Math.round((scene.gridOpacity ?? 0.06) * 100)}%</span>
+                          <span>{Math.round((scene.gridOpacity ?? 0.08) * 100)}%</span>
                         </div>
                         <input
                           type="range"
-                          min="0.01"
-                          max="0.25"
+                          min="0.02"
+                          max="0.50"
                           step="0.01"
-                          value={scene.gridOpacity ?? 0.06}
+                          value={scene.gridOpacity ?? 0.08}
                           onChange={(e) => update({ ...scene, gridOpacity: parseFloat(e.target.value) })}
                           className="w-full h-1 bg-slate-200 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-violet-600"
                         />
