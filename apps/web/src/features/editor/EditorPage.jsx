@@ -58,8 +58,8 @@ const sceneOf = (value) => {
   if (!Array.isArray(candidate.nodes)) return emptyScene;
 
   const parsedNodes = candidate.nodes.map((node, index) => {
-    const x = typeof node.x === 'number' ? node.x : (index % 3) * 400 + 40;
-    const y = typeof node.y === 'number' ? node.y : Math.floor(index / 3) * 280 + 40;
+    const x = typeof node.x === 'number' ? node.x : (index % 2) * 360 + 40;
+    const y = typeof node.y === 'number' ? node.y : Math.floor(index / 2) * 280 + 40;
     return { ...node, x, y };
   });
 
@@ -477,8 +477,8 @@ export default function EditorPage() {
           size: 'medium',
           color: 'violet',
           borderStyle: 'solid',
-          x: 600,
-          y: 40,
+          x: 40,
+          y: 220,
         },
         {
           id: noteId,
@@ -490,7 +490,7 @@ export default function EditorPage() {
           color: 'slate',
           borderStyle: 'dashed',
           x: 40,
-          y: 310,
+          y: 480,
         },
       ];
       newConns = [{ fromId: apiStatusId, toId: latencyId, style: 'pulsing' }];
@@ -520,7 +520,7 @@ export default function EditorPage() {
           size: 'medium',
           color: 'amber',
           borderStyle: 'solid',
-          x: 400,
+          x: 350,
           y: 40,
         },
         {
@@ -531,8 +531,8 @@ export default function EditorPage() {
           size: 'large',
           color: 'indigo',
           borderStyle: 'solid',
-          x: 760,
-          y: 40,
+          x: 40,
+          y: 280,
         },
       ];
       newConns = [{ fromId: salesId, toId: goalId, style: 'glowing' }];
@@ -561,7 +561,7 @@ export default function EditorPage() {
           size: 'medium',
           color: 'cyan',
           borderStyle: 'solid',
-          x: 540,
+          x: 420,
           y: 40,
         },
         {
@@ -572,7 +572,7 @@ export default function EditorPage() {
           size: 'wide',
           color: 'slate',
           x: 40,
-          y: 350,
+          y: 340,
         },
       ];
     } else if (preset === 'ops') {
@@ -601,7 +601,7 @@ export default function EditorPage() {
           size: 'medium',
           color: 'amber',
           borderStyle: 'glow',
-          x: 560,
+          x: 420,
           y: 40,
         },
       ];
@@ -630,7 +630,7 @@ export default function EditorPage() {
           size: 'medium',
           color: 'emerald',
           borderStyle: 'glow',
-          x: 520,
+          x: 420,
           y: 40,
         },
         {
@@ -642,8 +642,8 @@ export default function EditorPage() {
           size: 'small',
           color: 'cyan',
           borderStyle: 'dashed',
-          x: 860,
-          y: 40,
+          x: 420,
+          y: 260,
         },
       ];
     }
