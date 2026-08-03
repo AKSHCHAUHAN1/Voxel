@@ -77,27 +77,29 @@ export function PageLoader() {
       {/* Central Immersive Panel */}
       <div className="relative flex flex-col items-center text-center max-w-sm px-6 space-y-8 z-10">
         {/* Core Ring Scanner + Logo */}
-        <div className="relative flex items-center justify-center w-36 h-36">
+        <div className="relative flex items-center justify-center size-36 shrink-0">
           {/* Outer Cyberpunk Ring Spinner */}
-          <div className="absolute inset-0 rounded-full border-2 border-dashed border-violet-500/40 dark:border-violet-500/30 opacity-70 w-full h-full animate-[rotate-ring_12s_linear_infinite]" />
+          <div className="absolute inset-0 rounded-full border-2 border-dashed border-violet-500/40 dark:border-violet-500/30 opacity-70 animate-[rotate-ring_12s_linear_infinite] pointer-events-none" />
 
           {/* Inner Fast Ring Spinner */}
-          <div className="absolute inset-2 rounded-full border border-violet-500/50 dark:border-violet-400/40 border-t-transparent border-b-transparent w-[calc(100%-16px)] h-[calc(100%-16px)] animate-[rotate-ring_3s_linear_infinite_reverse]" />
+          <div className="absolute inset-3 rounded-full border border-violet-500/60 dark:border-violet-400/50 border-t-transparent border-b-transparent animate-[rotate-ring_3s_linear_infinite_reverse] pointer-events-none" />
 
           {/* Glowing center aura */}
-          <div className="absolute w-20 h-20 bg-violet-500/20 dark:bg-violet-600/10 rounded-full blur-xl animate-pulse" />
+          <div className="absolute size-24 bg-violet-500/20 dark:bg-violet-600/15 rounded-full blur-xl animate-pulse pointer-events-none" />
 
-          {/* Brand Icon */}
-          <img
-            src={appIcon}
-            alt="Voxel Logo"
-            className="w-20 h-20 object-contain relative z-10 animate-bounce block dark:hidden"
-          />
-          <img
-            src={appIconDark}
-            alt="Voxel Logo"
-            className="w-20 h-20 object-contain relative z-10 animate-bounce hidden dark:block"
-          />
+          {/* Perfectly Centered Brand Icon */}
+          <div className="relative z-10 flex items-center justify-center size-20">
+            <img
+              src={appIcon}
+              alt="Voxel Logo"
+              className="size-14 object-contain animate-pulse block dark:hidden"
+            />
+            <img
+              src={appIconDark}
+              alt="Voxel Logo"
+              className="size-14 object-contain animate-pulse hidden dark:block"
+            />
+          </div>
         </div>
 
         {/* Loading Progress & Tip Messages */}

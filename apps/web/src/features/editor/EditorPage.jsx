@@ -1,6 +1,8 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
+import appIcon from '@/assets/app-icon.png';
+import appIconDark from '@/assets/app-icon-dark.png';
 
 import {
   BarChart3,
@@ -3050,7 +3052,36 @@ function NodePicker({ onClose, onAdd }) {
 }
 
 function EditorSkeleton() {
-  return <div className="-m-5 min-h-screen animate-pulse bg-slate-100 dark:bg-slate-950 sm:-m-8" />;
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50 dark:bg-[#070a13] font-sans select-none">
+      <style>{`
+        @keyframes rotate-ring {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
+      <div className="relative flex items-center justify-center size-36 shrink-0">
+        <div className="absolute size-24 bg-violet-500/20 dark:bg-violet-600/15 rounded-full blur-xl animate-pulse pointer-events-none" />
+        <div className="absolute inset-0 rounded-full border-2 border-dashed border-violet-500/40 dark:border-violet-500/30 opacity-70 animate-[rotate-ring_12s_linear_infinite] pointer-events-none" />
+        <div className="absolute inset-3 rounded-full border border-violet-500/60 dark:border-violet-400/50 border-t-transparent border-b-transparent animate-[rotate-ring_3s_linear_infinite_reverse] pointer-events-none" />
+        <div className="relative z-10 flex items-center justify-center size-20">
+          <img
+            src={appIcon}
+            alt="Voxel Logo"
+            className="size-14 object-contain animate-pulse block dark:hidden"
+          />
+          <img
+            src={appIconDark}
+            alt="Voxel Logo"
+            className="size-14 object-contain animate-pulse hidden dark:block"
+          />
+        </div>
+      </div>
+      <p className="mt-5 text-xs font-mono font-bold tracking-[0.2em] text-violet-600 dark:text-violet-400 uppercase animate-pulse">
+        Initializing Canvas Editor...
+      </p>
+    </div>
+  );
 }
 
 function TimerNode({ node, updateNode }) {
