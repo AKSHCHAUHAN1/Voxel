@@ -223,6 +223,65 @@ export default function EditorPage() {
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [leftPanelTab, setLeftPanelTab] = useState('elements');
+
+  const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
+    const saved = localStorage.getItem('voxel_left_panel_width');
+    return saved ? Math.min(480, Math.max(220, parseInt(saved, 10))) : 288;
+  });
+
+  const [rightPanelWidth, setRightPanelWidth] = useState(() => {
+    const saved = localStorage.getItem('voxel_right_panel_width');
+    return saved ? Math.min(520, Math.max(260, parseInt(saved, 10))) : 320;
+  });
+
+  const [isResizingLeft, setIsResizingLeft] = useState(false);
+  const [isResizingRight, setIsResizingRight] = useState(false);
+
+  const handleLeftResizeStart = useCallback((e) => {
+    e.preventDefault();
+    setIsResizingLeft(true);
+    const startX = e.clientX;
+    const startWidth = leftPanelWidth;
+
+    const handlePointerMove = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const newWidth = Math.min(480, Math.max(220, startWidth + deltaX));
+      setLeftPanelWidth(newWidth);
+      localStorage.setItem('voxel_left_panel_width', newWidth.toString());
+    };
+
+    const handlePointerUp = () => {
+      setIsResizingLeft(false);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+  }, [leftPanelWidth]);
+
+  const handleRightResizeStart = useCallback((e) => {
+    e.preventDefault();
+    setIsResizingRight(true);
+    const startX = e.clientX;
+    const startWidth = rightPanelWidth;
+
+    const handlePointerMove = (moveEvent) => {
+      const deltaX = startX - moveEvent.clientX;
+      const newWidth = Math.min(520, Math.max(260, startWidth + deltaX));
+      setRightPanelWidth(newWidth);
+      localStorage.setItem('voxel_right_panel_width', newWidth.toString());
+    };
+
+    const handlePointerUp = () => {
+      setIsResizingRight(false);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+  }, [rightPanelWidth]);
   const exportMenuRef = useRef(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
@@ -1316,10 +1375,25 @@ export default function EditorPage() {
       </header>
 
       {/* --- GRID EDITOR WORKSPACE --- */}
-      <div className="flex flex-1 flex-col lg:flex-row relative overflow-hidden">
+      <div className={`flex flex-1 flex-col lg:flex-row relative overflow-hidden ${isResizingLeft || isResizingRight ? 'select-none cursor-col-resize' : ''}`}>
         {/* --- CANVA/FIGMA LEFT SIDE ASSETS PANEL --- */}
         {leftPanelOpen && (
-          <aside className="w-full lg:w-72 border-r border-slate-200/80 bg-white/95 dark:border-white/10 dark:bg-[#070a14]/95 backdrop-blur-xl flex flex-col z-20 shrink-0 select-none">
+          <aside
+            style={{ width: `${leftPanelWidth}px` }}
+            className="relative border-r border-slate-200/80 bg-white/95 dark:border-white/10 dark:bg-[#070a14]/95 backdrop-blur-xl flex flex-col z-20 shrink-0 select-none"
+          >
+            {/* Left Panel Resizer Bar */}
+            <div
+              onPointerDown={handleLeftResizeStart}
+              onDoubleClick={() => {
+                setLeftPanelWidth(288);
+                localStorage.setItem('voxel_left_panel_width', '288');
+              }}
+              title="Drag cursor to resize left panel (Double click to reset)"
+              className="absolute top-0 bottom-0 -right-1.5 w-3 z-30 cursor-col-resize group flex items-center justify-center hover:bg-violet-500/20 active:bg-violet-500/40 transition-colors"
+            >
+              <div className="w-1 h-8 rounded-full bg-slate-300/80 dark:bg-white/20 group-hover:bg-violet-500 group-hover:h-12 transition-all shadow-xs" />
+            </div>
             {/* Tabs */}
             <div className="flex border-b border-slate-200/80 dark:border-white/10 p-1.5 gap-1 bg-slate-50/50 dark:bg-white/5">
               <button
@@ -1600,7 +1674,22 @@ export default function EditorPage() {
 
         {/* --- FIGMA-STYLE RIGHT PROPERTIES INSPECTOR PANEL --- */}
         {rightPanelOpen && (
-          <aside className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-slate-200/80 bg-white/95 p-4 dark:border-white/10 dark:bg-[#070a14]/95 backdrop-blur-xl flex flex-col justify-between min-h-[400px] lg:min-h-0 relative z-20 shrink-0 select-none">
+          <aside
+            style={{ width: `${rightPanelWidth}px` }}
+            className="border-t lg:border-t-0 lg:border-l border-slate-200/80 bg-white/95 p-4 dark:border-white/10 dark:bg-[#070a14]/95 backdrop-blur-xl flex flex-col justify-between min-h-[400px] lg:min-h-0 relative z-20 shrink-0 select-none"
+          >
+            {/* Right Panel Resizer Bar */}
+            <div
+              onPointerDown={handleRightResizeStart}
+              onDoubleClick={() => {
+                setRightPanelWidth(320);
+                localStorage.setItem('voxel_right_panel_width', '320');
+              }}
+              title="Drag cursor to resize right panel (Double click to reset)"
+              className="absolute top-0 bottom-0 -left-1.5 w-3 z-30 cursor-col-resize group flex items-center justify-center hover:bg-violet-500/20 active:bg-violet-500/40 transition-colors"
+            >
+              <div className="w-1 h-8 rounded-full bg-slate-300/80 dark:bg-white/20 group-hover:bg-violet-500 group-hover:h-12 transition-all shadow-xs" />
+            </div>
             {selectedNodeId ? (
               (() => {
                 const selectedNode = scene.nodes.find((node) => node.id === selectedNodeId);
