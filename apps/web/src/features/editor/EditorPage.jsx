@@ -34,6 +34,7 @@ import {
   FolderOpen,
   Zap,
   Maximize2,
+  Pencil,
 } from 'lucide-react';
 import { workspaceService } from '@/features/workspaces/workspace-service';
 import { useShortcut } from '@/lib/keyboard';
@@ -222,6 +223,9 @@ export default function EditorPage() {
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [leftPanelTab, setLeftPanelTab] = useState('elements');
+
+  const [editingLayerId, setEditingLayerId] = useState(null);
+  const [editingLayerTitle, setEditingLayerTitle] = useState('');
 
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
     const saved = localStorage.getItem('voxel_left_panel_width');
@@ -1344,26 +1348,109 @@ export default function EditorPage() {
 
               {leftPanelTab === 'layers' && (
                 <div className="space-y-2.5">
-                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block">
-                    Nodes in Scene ({scene.nodes.length})
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block">
+                      Scene Layers ({scene.nodes.length})
+                    </span>
+                    <span className="text-[9px] text-slate-400 font-semibold">
+                      Double-click to rename
+                    </span>
+                  </div>
                   <div className="space-y-1">
-                    {scene.nodes.map((n) => (
-                      <button
-                        key={n.id}
-                        onClick={() => setSelectedNodeId(n.id)}
-                        className={`w-full flex items-center justify-between p-2 rounded-lg text-xs font-bold transition cursor-pointer ${
-                          selectedNodeId === n.id
-                            ? 'bg-violet-500/15 text-violet-600 dark:text-violet-300 border border-violet-500/30'
-                            : 'hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-300'
-                        }`}
-                      >
-                        <span className="truncate">{n.title || 'Untitled Node'}</span>
-                        <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-white/10 text-slate-500">
-                          {n.type}
-                        </span>
-                      </button>
-                    ))}
+                    {scene.nodes.map((n) => {
+                      const isEditing = editingLayerId === n.id;
+                      const isSelected = selectedNodeId === n.id;
+
+                      return (
+                        <div
+                          key={n.id}
+                          onClick={() => setSelectedNodeId(n.id)}
+                          className={`w-full flex items-center justify-between p-2 rounded-xl text-xs font-bold transition cursor-pointer group ${
+                            isSelected
+                              ? 'bg-violet-500/15 text-violet-600 dark:text-violet-300 border border-violet-500/30'
+                              : 'hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-300 border border-transparent'
+                          }`}
+                        >
+                          {isEditing ? (
+                            <form
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                if (editingLayerTitle.trim()) {
+                                  updateNode(n.id, { title: editingLayerTitle.trim() });
+                                }
+                                setEditingLayerId(null);
+                              }}
+                              className="flex-1 mr-2"
+                            >
+                              <input
+                                type="text"
+                                autoFocus
+                                value={editingLayerTitle}
+                                onChange={(e) => setEditingLayerTitle(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Escape') setEditingLayerId(null);
+                                }}
+                                onBlur={() => {
+                                  if (editingLayerTitle.trim()) {
+                                    updateNode(n.id, { title: editingLayerTitle.trim() });
+                                  }
+                                  setEditingLayerId(null);
+                                }}
+                                className="w-full rounded-lg border border-violet-500 bg-white dark:bg-slate-900 px-2 py-1 text-xs font-extrabold outline-none text-slate-900 dark:text-white shadow-xs"
+                              />
+                            </form>
+                          ) : (
+                            <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
+                              <span
+                                onDoubleClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingLayerId(n.id);
+                                  setEditingLayerTitle(n.title || '');
+                                }}
+                                className="truncate hover:underline cursor-text"
+                                title="Double-click to rename layer"
+                              >
+                                {n.title || 'Untitled Node'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingLayerId(n.id);
+                                  setEditingLayerTitle(n.title || '');
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-violet-600 dark:hover:text-violet-300 transition-opacity cursor-pointer shrink-0"
+                                title="Rename layer"
+                              >
+                                <Pencil size={12} />
+                              </button>
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-[9px] uppercase font-extrabold px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-white/10 text-slate-500 dark:text-slate-400">
+                              {n.type}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteNode(n.id);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-opacity cursor-pointer"
+                              title="Delete layer"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {scene.nodes.length === 0 && (
+                      <div className="p-4 text-center text-xs text-slate-400 font-medium">
+                        No nodes added to scene yet.
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
