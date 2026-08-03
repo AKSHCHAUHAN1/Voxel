@@ -35,6 +35,7 @@ import {
   Zap,
   Maximize2,
   Pencil,
+  Target,
 } from 'lucide-react';
 import { workspaceService } from '@/features/workspaces/workspace-service';
 import { useShortcut } from '@/lib/keyboard';
@@ -321,6 +322,39 @@ export default function EditorPage() {
   const handleResetZoom = useCallback(() => {
     setZoom(1);
   }, []);
+
+  const handleRepositionCanvas = useCallback(() => {
+    setZoom(1);
+    if (!gridRef.current) return;
+
+    if (scene.nodes.length > 0) {
+      const minX = Math.min(...scene.nodes.map((n) => n.x ?? 0));
+      const maxX = Math.max(...scene.nodes.map((n) => (n.x ?? 0) + 280));
+      const minY = Math.min(...scene.nodes.map((n) => n.y ?? 0));
+      const maxY = Math.max(...scene.nodes.map((n) => (n.y ?? 0) + 180));
+
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+
+      const containerWidth = gridRef.current.clientWidth || 1000;
+      const containerHeight = gridRef.current.clientHeight || 700;
+
+      const targetLeft = Math.max(0, 1200 + centerX - containerWidth / 2);
+      const targetTop = Math.max(0, 1200 + centerY - containerHeight / 2);
+
+      gridRef.current.scrollTo({
+        left: targetLeft,
+        top: targetTop,
+        behavior: 'smooth',
+      });
+    } else {
+      gridRef.current.scrollTo({
+        left: 1200,
+        top: 1200,
+        behavior: 'smooth',
+      });
+    }
+  }, [scene.nodes]);
 
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
@@ -1608,6 +1642,17 @@ export default function EditorPage() {
               className="p-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 rounded-xl transition cursor-pointer"
             >
               <Maximize2 size={14} />
+            </button>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRepositionCanvas();
+              }}
+              title="Reposition View to Nodes (Recenter)"
+              className="p-1.5 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 rounded-xl transition cursor-pointer"
+            >
+              <Target size={14} />
             </button>
           </div>
         </main>
