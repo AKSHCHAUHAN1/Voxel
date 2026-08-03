@@ -1390,10 +1390,8 @@ export default function EditorPage() {
                 localStorage.setItem('voxel_left_panel_width', '288');
               }}
               title="Drag cursor to resize left panel (Double click to reset)"
-              className="absolute top-0 bottom-0 -right-1.5 w-3 z-30 cursor-col-resize group flex items-center justify-center hover:bg-violet-500/20 active:bg-violet-500/40 transition-colors"
-            >
-              <div className="w-1 h-8 rounded-full bg-slate-300/80 dark:bg-white/20 group-hover:bg-violet-500 group-hover:h-12 transition-all shadow-xs" />
-            </div>
+              className="absolute top-0 bottom-0 -right-1.5 w-3 z-30 cursor-col-resize"
+            />
             {/* Tabs */}
             <div className="flex border-b border-slate-200/80 dark:border-white/10 p-1.5 gap-1 bg-slate-50/50 dark:bg-white/5">
               <button
@@ -1686,10 +1684,8 @@ export default function EditorPage() {
                 localStorage.setItem('voxel_right_panel_width', '320');
               }}
               title="Drag cursor to resize right panel (Double click to reset)"
-              className="absolute top-0 bottom-0 -left-1.5 w-3 z-30 cursor-col-resize group flex items-center justify-center hover:bg-violet-500/20 active:bg-violet-500/40 transition-colors"
-            >
-              <div className="w-1 h-8 rounded-full bg-slate-300/80 dark:bg-white/20 group-hover:bg-violet-500 group-hover:h-12 transition-all shadow-xs" />
-            </div>
+              className="absolute top-0 bottom-0 -left-1.5 w-3 z-30 cursor-col-resize"
+            />
             {selectedNodeId ? (
               (() => {
                 const selectedNode = scene.nodes.find((node) => node.id === selectedNodeId);
