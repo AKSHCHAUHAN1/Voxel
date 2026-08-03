@@ -20,7 +20,6 @@ import {
   XCircle,
   Trash2,
   ArrowLeft,
-  Palette,
   Undo2,
   Redo2,
   Image as ImageIcon,
@@ -826,18 +825,7 @@ export default function EditorPage() {
     scene.gridThickness,
   ]);
 
-  const [gridDropdownOpen, setGridDropdownOpen] = useState(false);
-  const dropdownRef = useRef(null);
 
-  useEffect(() => {
-    const handleOutsideClick = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setGridDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, []);
 
 
 
@@ -1130,140 +1118,6 @@ export default function EditorPage() {
             </button>
           </div>
 
-          {/* Grid Settings Dropdown */}
-          <div className="relative" ref={dropdownRef}>
-            <button
-              onClick={() => setGridDropdownOpen(!gridDropdownOpen)}
-              title="Grid Customization"
-              className={`p-1.5 rounded-xl border transition cursor-pointer ${
-                gridDropdownOpen
-                  ? 'border-violet-500 bg-violet-500/10 text-violet-600 dark:text-violet-400'
-                  : 'border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
-              }`}
-            >
-              <Palette size={15} />
-            </button>
-
-            {gridDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-72 bg-white/95 dark:bg-[#0e1320]/95 backdrop-blur-md border border-slate-200 dark:border-white/10 shadow-xl rounded-2xl p-4 z-40 space-y-4">
-                <div className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 border-b border-slate-100 dark:border-white/5 pb-2">
-                  Grid Customization
-                </div>
-
-                {/* Grid Style Toggle */}
-                <div className="space-y-1">
-                  <span className="text-[8px] font-extrabold uppercase tracking-widest text-slate-400">
-                    Pattern Style
-                  </span>
-                  <div className="flex items-center gap-0.5 rounded-xl border border-slate-200/60 p-0.5 dark:border-white/5 bg-slate-50/50 dark:bg-slate-900">
-                    {['dots', 'lines', 'radial', 'blank'].map((style) => (
-                      <button
-                        key={style}
-                        onClick={() => update({ ...scene, gridStyle: style })}
-                        className={`flex-1 rounded-lg py-1.5 text-[9px] font-bold uppercase tracking-wider cursor-pointer transition-all ${
-                          scene.gridStyle === style
-                            ? 'bg-white text-violet-600 shadow-xs dark:bg-slate-800 dark:text-violet-400'
-                            : 'text-slate-400 hover:text-slate-650 dark:hover:text-slate-200'
-                        }`}
-                      >
-                        {style}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {scene.gridStyle !== 'blank' && (
-                  <>
-                    {/* Spacing / Size Slider */}
-                    {scene.gridStyle !== 'radial' && (
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[8px] font-extrabold uppercase tracking-widest text-slate-400">
-                          <span>Grid Spacing</span>
-                          <span>{scene.gridSize ?? 24}px</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="12"
-                          max="64"
-                          value={scene.gridSize ?? 24}
-                          onChange={(e) => update({ ...scene, gridSize: parseInt(e.target.value) })}
-                          className="w-full h-1 bg-slate-200 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-violet-600"
-                        />
-                      </div>
-                    )}
-
-                    {/* Opacity / Strength Slider */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[8px] font-extrabold uppercase tracking-widest text-slate-400">
-                        <span>Grid Opacity</span>
-                        <span>{Math.round((scene.gridOpacity ?? 0.08) * 100)}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0.02"
-                        max="0.50"
-                        step="0.01"
-                        value={scene.gridOpacity ?? 0.08}
-                        onChange={(e) =>
-                          update({ ...scene, gridOpacity: parseFloat(e.target.value) })
-                        }
-                        className="w-full h-1 bg-slate-200 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-violet-600"
-                      />
-                    </div>
-
-                    {/* Thickness Slider */}
-                    {scene.gridStyle !== 'radial' && (
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[8px] font-extrabold uppercase tracking-widest text-slate-400">
-                          <span>Grid Thickness</span>
-                          <span>{scene.gridThickness ?? 1.2}px</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0.5"
-                          max="3.0"
-                          step="0.1"
-                          value={scene.gridThickness ?? 1.2}
-                          onChange={(e) =>
-                            update({ ...scene, gridThickness: parseFloat(e.target.value) })
-                          }
-                          className="w-full h-1 bg-slate-200 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-violet-600"
-                        />
-                      </div>
-                    )}
-
-                    {/* Grid Color Presets */}
-                    <div className="space-y-1">
-                      <span className="text-[8px] font-extrabold uppercase tracking-widest text-slate-400">
-                        Grid Color Preset
-                      </span>
-                      <div className="flex gap-2.5 pt-1.5">
-                        {[
-                          { id: 'slate', color: 'bg-slate-400' },
-                          { id: 'blue', color: 'bg-blue-500' },
-                          { id: 'violet', color: 'bg-violet-500' },
-                          { id: 'rose', color: 'bg-rose-500' },
-                          { id: 'emerald', color: 'bg-emerald-500' },
-                        ].map((preset) => (
-                          <button
-                            key={preset.id}
-                            type="button"
-                            onClick={() => update({ ...scene, gridColorPreset: preset.id })}
-                            className={`size-4.5 rounded-full border border-white/20 transition hover:scale-110 ${preset.color} ${
-                              (scene.gridColorPreset ?? 'violet') === preset.id
-                                ? 'ring-2 ring-violet-500 ring-offset-2 dark:ring-offset-slate-900'
-                                : ''
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-
           {/* Version History Toggle */}
           <button
             onClick={() => {
@@ -1363,14 +1217,6 @@ export default function EditorPage() {
               <Save size={14} /> {save.isPending ? 'Saving…' : 'Save'}
             </button>
           )}
-
-          {/* Primary "+ Add Node" Button */}
-          <button
-            onClick={() => setPickerOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-600 px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-white hover:opacity-95 transition cursor-pointer shadow-md shadow-violet-600/20 active:scale-95"
-          >
-            <Plus size={14} className="stroke-[2.5]" /> Add Node
-          </button>
         </div>
       </header>
 
@@ -1435,11 +1281,20 @@ export default function EditorPage() {
                   </span>
                   <div className="grid grid-cols-1 gap-2">
                     {[
-                      { type: 'metric', label: 'Metric Node', desc: 'Live data input source', icon: <Activity className="text-cyan-500" size={16} /> },
-                      { type: 'logic', label: 'Formula Node', desc: 'Math formula & conditions', icon: <Cpu className="text-violet-500" size={16} /> },
-                      { type: 'display', label: 'Display Card', desc: 'Output KPI & summary', icon: <Zap className="text-amber-500" size={16} /> },
-                      { type: 'note', label: 'Annotation Note', desc: 'Markdown text block', icon: <FileText className="text-emerald-500" size={16} /> },
-                      { type: 'progress', label: 'Progress Gauge', desc: 'Goal completion bar', icon: <BarChart3 className="text-rose-500" size={16} /> },
+                      { type: 'metric', label: 'Metric Node', desc: 'Live numerical data input source', icon: <Activity className="text-cyan-500" size={16} /> },
+                      { type: 'logic', label: 'Formula Node', desc: 'Math calculation & conditions', icon: <Cpu className="text-violet-500" size={16} /> },
+                      { type: 'display', label: 'Display Card', desc: 'Output KPI & summary card', icon: <Zap className="text-amber-500" size={16} /> },
+                      { type: 'chart', label: 'Trend Chart', desc: 'Historical line & bar graph series', icon: <BarChart3 className="text-indigo-500" size={16} /> },
+                      { type: 'progress', label: 'Goal Progress', desc: 'Target completion & velocity bar', icon: <Sparkles className="text-rose-500" size={16} /> },
+                      { type: 'status', label: 'Health Status', desc: 'Operational badge & system state', icon: <CheckCircle className="text-emerald-500" size={16} /> },
+                      { type: 'note', label: 'Annotation Note', desc: 'Markdown documentation block', icon: <FileText className="text-emerald-500" size={16} /> },
+                      { type: 'table', label: 'Data Table', desc: 'Tabular records & multi-row grid', icon: <Table className="text-blue-500" size={16} /> },
+                      { type: 'timer', label: 'Sprint Timer', desc: 'Countdown & interval timer', icon: <Timer className="text-amber-500" size={16} /> },
+                      { type: 'code', label: 'Code Snippet', desc: 'Syntax-highlighted code block', icon: <Code2 className="text-indigo-500" size={16} /> },
+                      { type: 'link', label: 'Reference Link', desc: 'URL link & documentation card', icon: <LinkIcon className="text-cyan-500" size={16} /> },
+                      { type: 'image', label: 'Image Media', desc: 'Graphic & visual showcase', icon: <ImageIcon className="text-fuchsia-500" size={16} /> },
+                      { type: 'embed', label: 'Media Embed', desc: 'Embedded iframe, video or doc', icon: <Layers className="text-violet-500" size={16} /> },
+                      { type: 'divider', label: 'Section Divider', desc: 'Visual separator line on canvas', icon: <Minus className="text-slate-400" size={16} /> },
                     ].map((item) => (
                       <button
                         key={item.type}
