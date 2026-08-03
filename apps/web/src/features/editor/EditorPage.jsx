@@ -1461,23 +1461,25 @@ export default function EditorPage() {
         <main
           onClick={() => setSelectedNodeId(null)}
           className="flex-1 overflow-hidden relative bg-slate-50 dark:bg-[#030509] min-h-[500px] z-10"
+          style={gridStyleInline}
         >
           {/* Scrollable Container */}
           <div
             ref={gridRef}
-            className="w-full h-full overflow-auto relative p-6 no-scrollbars flex-1"
+            className="w-full h-full overflow-auto relative p-6 no-scrollbars flex-1 flex items-center justify-center"
             onPointerMove={handlePointerMove}
             onPointerLeave={handlePointerLeave}
           >
             {/* The infinite board sheet */}
             <div
-              className="relative select-none transition-transform duration-150 ease-out min-h-full min-w-full flex flex-col justify-center"
+              className="relative select-none transition-transform duration-150 ease-out flex flex-col justify-center"
               style={{
-                width: '100%',
-                height: '100%',
+                width: zoom < 1 ? `${(100 / zoom).toFixed(2)}%` : '100%',
+                height: zoom < 1 ? `${(100 / zoom).toFixed(2)}%` : '100%',
+                minWidth: '100%',
+                minHeight: '100%',
                 transform: `scale(${zoom})`,
                 transformOrigin: '50% 50%',
-                ...gridStyleInline,
               }}
             >
               {/* Main SVG connections canvas overlay */}
