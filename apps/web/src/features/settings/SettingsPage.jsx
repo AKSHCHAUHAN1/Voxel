@@ -311,6 +311,27 @@ export default function SettingsPage() {
                     <h2 className="text-lg font-extrabold tracking-tight">Account & Profile</h2>
                   </div>
 
+                  {isGuestUser && (
+                    <div className="mb-6 rounded-2xl border border-amber-200/80 bg-amber-500/10 p-4 dark:border-amber-500/20 text-amber-900 dark:text-amber-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <span className="grid size-9 place-items-center rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 shrink-0 font-extrabold text-xs border border-amber-500/20">
+                          GU
+                        </span>
+                        <div>
+                          <div className="text-xs font-bold">You are operating in Guest Mode (Solo)</div>
+                          <div className="text-[11px] opacity-80 leading-snug">Sign in to sync your profile across devices and unlock team workspace features.</div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/login')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 text-white font-bold text-xs hover:bg-amber-500 shrink-0 cursor-pointer shadow-sm transition"
+                      >
+                        <UserCheck size={14} /> Sign In / Register
+                      </button>
+                    </div>
+                  )}
+
                   <form onSubmit={handleSaveProfile} className="space-y-6">
                     {/* Avatar Customizer */}
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
@@ -783,175 +804,207 @@ export default function SettingsPage() {
                 exit={{ opacity: 0, y: -8 }}
                 className="space-y-6"
               >
-                {/* Change Password Card */}
-                <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 dark:border-white/10 dark:bg-slate-900/60 shadow-sm space-y-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-1.5 h-6 bg-violet-600 rounded-full" />
-                    <h2 className="text-lg font-extrabold tracking-tight">Security Credentials</h2>
-                  </div>
-
-                  <form onSubmit={handleSavePassword} className="space-y-4 max-w-md">
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
-                        Current Password
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={showPass ? 'text' : 'password'}
-                          value={currentPassword}
-                          onChange={(e) => setCurrentPassword(e.target.value)}
-                          placeholder="••••••••••••"
-                          className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 pr-10 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-white/10"
-                        />
+                {isGuestUser ? (
+                  <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 dark:border-white/10 dark:bg-slate-900/60 shadow-sm">
+                    <div className="rounded-2xl border border-violet-200/80 bg-gradient-to-br from-violet-50/60 via-indigo-50/30 to-slate-50/80 p-8 text-center dark:border-violet-500/20 dark:from-violet-950/20 dark:via-indigo-950/10 dark:to-slate-900/40 space-y-5">
+                      <div className="mx-auto grid size-16 place-items-center rounded-2xl bg-violet-600/10 text-violet-600 dark:bg-violet-500/20 dark:text-violet-400 border border-violet-500/20 shadow-xs">
+                        <Shield size={28} />
+                      </div>
+                      <div className="max-w-md mx-auto space-y-2">
+                        <span className="inline-block rounded-full bg-amber-500/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                          Sign-In Required
+                        </span>
+                        <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                          Security & Active Sessions Management
+                        </h3>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                          Password credentials, two-factor authentication (2FA), device session revocation, and security audit logs are managed on signed-in user accounts.
+                        </p>
+                      </div>
+                      <div className="pt-2">
                         <button
                           type="button"
-                          onClick={() => setShowPass(!showPass)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+                          onClick={() => navigate('/login')}
+                          className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-6 py-3 text-xs font-bold text-white shadow-lg shadow-violet-600/25 hover:bg-violet-500 transition-all cursor-pointer hover:scale-105"
                         >
-                          {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                          <UserCheck size={16} /> Sign In / Register Account
                         </button>
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
-                        New Password
-                      </label>
-                      <input
-                        type={showPass ? 'text' : 'password'}
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="••••••••••••"
-                        className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-white/10"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
-                        Confirm New Password
-                      </label>
-                      <input
-                        type={showPass ? 'text' : 'password'}
-                        value={confirmNewPassword}
-                        onChange={(e) => setConfirmNewPassword(e.target.value)}
-                        placeholder="••••••••••••"
-                        className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-white/10"
-                      />
-                    </div>
-
-                    <label className="flex items-center justify-between p-3.5 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5 cursor-pointer mt-3">
-                      <div>
-                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Two-Factor Authentication (2FA)</div>
-                        <div className="text-[11px] text-slate-500">Enforce TOTP authenticator prompt upon device sign in</div>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={twoFactorEnabled}
-                        onChange={(e) => setTwoFactorEnabled(e.target.checked)}
-                        className="size-4 accent-violet-600 cursor-pointer"
-                      />
-                    </label>
-
-                    <button
-                      type="submit"
-                      className="rounded-xl bg-violet-600 px-4.5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-violet-500 cursor-pointer"
-                    >
-                      Update Security Password
-                    </button>
-                  </form>
-                </div>
-
-                {/* Active Sessions */}
-                <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 dark:border-white/10 dark:bg-slate-900/60 shadow-sm space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-1.5 h-6 bg-violet-600 rounded-full" />
-                      <h2 className="text-lg font-extrabold tracking-tight">Active Browser & Device Sessions</h2>
-                    </div>
                   </div>
+                ) : (
+                  <>
+                    {/* Change Password Card */}
+                    <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 dark:border-white/10 dark:bg-slate-900/60 shadow-sm space-y-6">
+                      <div className="flex items-center gap-3">
+                        <div className="w-1.5 h-6 bg-violet-600 rounded-full" />
+                        <h2 className="text-lg font-extrabold tracking-tight">Security Credentials</h2>
+                      </div>
 
-                  <div className="space-y-3">
-                    {sessions.map((session) => (
-                      <div
-                        key={session.id}
-                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5"
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="grid size-10 place-items-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200 shrink-0">
-                            <Laptop size={18} />
-                          </span>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{session.device}</span>
-                              {session.current && (
-                                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-extrabold uppercase text-emerald-600 dark:text-emerald-400">
-                                  Current Device
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[10px] text-slate-400 mt-0.5">
-                              {session.browser} • {session.location} ({session.ip})
-                            </div>
+                      <form onSubmit={handleSavePassword} className="space-y-4 max-w-md">
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
+                            Current Password
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showPass ? 'text' : 'password'}
+                              value={currentPassword}
+                              onChange={(e) => setCurrentPassword(e.target.value)}
+                              placeholder="••••••••••••"
+                              className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 pr-10 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-white/10"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPass(!showPass)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+                            >
+                              {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </button>
                           </div>
                         </div>
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
+                            New Password
+                          </label>
+                          <input
+                            type={showPass ? 'text' : 'password'}
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            placeholder="••••••••••••"
+                            className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-white/10"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
+                            Confirm New Password
+                          </label>
+                          <input
+                            type={showPass ? 'text' : 'password'}
+                            value={confirmNewPassword}
+                            onChange={(e) => setConfirmNewPassword(e.target.value)}
+                            placeholder="••••••••••••"
+                            className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-white/10"
+                          />
+                        </div>
 
-                        {!session.current && (
-                          <button
-                            type="button"
-                            onClick={() => handleRevokeSession(session.id)}
-                            className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-950/30 dark:text-rose-400 cursor-pointer self-start sm:self-auto"
-                          >
-                            Revoke Access
-                          </button>
-                        )}
+                        <label className="flex items-center justify-between p-3.5 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5 cursor-pointer mt-3">
+                          <div>
+                            <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Two-Factor Authentication (2FA)</div>
+                            <div className="text-[11px] text-slate-500">Enforce TOTP authenticator prompt upon device sign in</div>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={twoFactorEnabled}
+                            onChange={(e) => setTwoFactorEnabled(e.target.checked)}
+                            className="size-4 accent-violet-600 cursor-pointer"
+                          />
+                        </label>
+
+                        <button
+                          type="submit"
+                          className="rounded-xl bg-violet-600 px-4.5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-violet-500 cursor-pointer"
+                        >
+                          Update Security Password
+                        </button>
+                      </form>
+                    </div>
+
+                    {/* Active Sessions */}
+                    <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 dark:border-white/10 dark:bg-slate-900/60 shadow-sm space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-1.5 h-6 bg-violet-600 rounded-full" />
+                          <h2 className="text-lg font-extrabold tracking-tight">Active Browser & Device Sessions</h2>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
 
-                {/* Audit Logs */}
-                <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 dark:border-white/10 dark:bg-slate-900/60 shadow-sm space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-1.5 h-6 bg-violet-600 rounded-full" />
-                    <h2 className="text-lg font-extrabold tracking-tight">Recent Security Audit Logs</h2>
-                  </div>
+                      <div className="space-y-3">
+                        {sessions.map((session) => (
+                          <div
+                            key={session.id}
+                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5"
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="grid size-10 place-items-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200 shrink-0">
+                                <Laptop size={18} />
+                              </span>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{session.device}</span>
+                                  {session.current && (
+                                    <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-extrabold uppercase text-emerald-600 dark:text-emerald-400">
+                                      Current Device
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-slate-400 mt-0.5">
+                                  {session.browser} • {session.location} ({session.ip})
+                                </div>
+                              </div>
+                            </div>
 
-                  <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:bg-slate-900/80 dark:text-slate-400 border-b border-slate-200 dark:border-white/10">
-                        <tr>
-                          <th className="px-4 py-3">Event Action</th>
-                          <th className="px-4 py-3">Resource</th>
-                          <th className="px-4 py-3">Actor</th>
-                          <th className="px-4 py-3 text-right">Time</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                        {auditLogs.map((log) => (
-                          <tr key={log.id}>
-                            <td className="px-4 py-3 font-mono text-[11px] text-violet-600 dark:text-violet-300">
-                              {log.action}
-                            </td>
-                            <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-300">
-                              {log.resourceType}: {log.resourceId}
-                            </td>
-                            <td className="px-4 py-3 text-slate-500">
-                              {log.actor?.displayName || log.actor?.email || 'System'}
-                            </td>
-                            <td className="px-4 py-3 text-right text-slate-400 text-[10px]">
-                              {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </td>
-                          </tr>
+                            {!session.current && (
+                              <button
+                                type="button"
+                                onClick={() => handleRevokeSession(session.id)}
+                                className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-950/30 dark:text-rose-400 cursor-pointer self-start sm:self-auto"
+                              >
+                                Revoke Access
+                              </button>
+                            )}
+                          </div>
                         ))}
-                        {auditLogs.length === 0 && !auditPending && (
-                          <tr>
-                            <td colSpan={4} className="px-4 py-6 text-center text-xs text-slate-400">
-                              No security audit logs recorded yet.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                      </div>
+                    </div>
+
+                    {/* Audit Logs */}
+                    <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 dark:border-white/10 dark:bg-slate-900/60 shadow-sm space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-1.5 h-6 bg-violet-600 rounded-full" />
+                        <h2 className="text-lg font-extrabold tracking-tight">Recent Security Audit Logs</h2>
+                      </div>
+
+                      <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:bg-slate-900/80 dark:text-slate-400 border-b border-slate-200 dark:border-white/10">
+                            <tr>
+                              <th className="px-4 py-3">Event Action</th>
+                              <th className="px-4 py-3">Resource</th>
+                              <th className="px-4 py-3">Actor</th>
+                              <th className="px-4 py-3 text-right">Time</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                            {auditLogs.map((log) => (
+                              <tr key={log.id}>
+                                <td className="px-4 py-3 font-mono text-[11px] text-violet-600 dark:text-violet-300">
+                                  {log.action}
+                                </td>
+                                <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-300">
+                                  {log.resourceType}: {log.resourceId}
+                                </td>
+                                <td className="px-4 py-3 text-slate-500">
+                                  {log.actor?.displayName || log.actor?.email || 'System'}
+                                </td>
+                                <td className="px-4 py-3 text-right text-slate-400 text-[10px]">
+                                  {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </td>
+                              </tr>
+                            ))}
+                            {auditLogs.length === 0 && !auditPending && (
+                              <tr>
+                                <td colSpan={4} className="px-4 py-6 text-center text-xs text-slate-400">
+                                  No security audit logs recorded yet.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
+                )}
               </motion.div>
             )}
 
@@ -964,66 +1017,96 @@ export default function SettingsPage() {
                 exit={{ opacity: 0, y: -8 }}
                 className="space-y-6"
               >
-                <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 dark:border-white/10 dark:bg-slate-900/60 shadow-sm space-y-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-1.5 h-6 bg-violet-600 rounded-full" />
-                    <h2 className="text-lg font-extrabold tracking-tight">Notification Channels</h2>
+                {isGuestUser ? (
+                  <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 dark:border-white/10 dark:bg-slate-900/60 shadow-sm">
+                    <div className="rounded-2xl border border-violet-200/80 bg-gradient-to-br from-violet-50/60 via-indigo-50/30 to-slate-50/80 p-8 text-center dark:border-violet-500/20 dark:from-violet-950/20 dark:via-indigo-950/10 dark:to-slate-900/40 space-y-5">
+                      <div className="mx-auto grid size-16 place-items-center rounded-2xl bg-violet-600/10 text-violet-600 dark:bg-violet-500/20 dark:text-violet-400 border border-violet-500/20 shadow-xs">
+                        <Bell size={28} />
+                      </div>
+                      <div className="max-w-md mx-auto space-y-2">
+                        <span className="inline-block rounded-full bg-amber-500/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                          Sign-In Required
+                        </span>
+                        <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                          Notification Preferences Require an Account
+                        </h3>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                          Email summaries, team @mention alerts, and system notification preferences are linked to verified account emails. Sign in to customize your notification channels.
+                        </p>
+                      </div>
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={() => navigate('/login')}
+                          className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-6 py-3 text-xs font-bold text-white shadow-lg shadow-violet-600/25 hover:bg-violet-500 transition-all cursor-pointer hover:scale-105"
+                        >
+                          <UserCheck size={16} /> Sign In to Configure Notifications
+                        </button>
+                      </div>
+                    </div>
                   </div>
+                ) : (
+                  <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 dark:border-white/10 dark:bg-slate-900/60 shadow-sm space-y-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-1.5 h-6 bg-violet-600 rounded-full" />
+                      <h2 className="text-lg font-extrabold tracking-tight">Notification Channels</h2>
+                    </div>
 
-                  <div className="space-y-3">
-                    <label className="flex items-center justify-between p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5 cursor-pointer">
-                      <div>
-                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Email Digest Notifications</div>
-                        <div className="text-[11px] text-slate-500">Receive weekly summaries of workspace canvas updates</div>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={notifEmailDigest}
-                        onChange={(e) => setNotifEmailDigest(e.target.checked)}
-                        className="size-4 accent-violet-600 cursor-pointer"
-                      />
-                    </label>
+                    <div className="space-y-3">
+                      <label className="flex items-center justify-between p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5 cursor-pointer">
+                        <div>
+                          <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Email Digest Notifications</div>
+                          <div className="text-[11px] text-slate-500">Receive weekly summaries of workspace canvas updates</div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={notifEmailDigest}
+                          onChange={(e) => setNotifEmailDigest(e.target.checked)}
+                          className="size-4 accent-violet-600 cursor-pointer"
+                        />
+                      </label>
 
-                    <label className="flex items-center justify-between p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5 cursor-pointer">
-                      <div>
-                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Team Collaboration Mentions</div>
-                        <div className="text-[11px] text-slate-500">Alert when a team peer mentions @you in a card node or comment</div>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={notifMentions}
-                        onChange={(e) => setNotifMentions(e.target.checked)}
-                        className="size-4 accent-violet-600 cursor-pointer"
-                      />
-                    </label>
+                      <label className="flex items-center justify-between p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5 cursor-pointer">
+                        <div>
+                          <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Team Collaboration Mentions</div>
+                          <div className="text-[11px] text-slate-500">Alert when a team peer mentions @you in a card node or comment</div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={notifMentions}
+                          onChange={(e) => setNotifMentions(e.target.checked)}
+                          className="size-4 accent-violet-600 cursor-pointer"
+                        />
+                      </label>
 
-                    <label className="flex items-center justify-between p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5 cursor-pointer">
-                      <div>
-                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Real-time Desktop Alerts</div>
-                        <div className="text-[11px] text-slate-500">Pop up push notifications for live canvas events</div>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={notifDesktop}
-                        onChange={(e) => setNotifDesktop(e.target.checked)}
-                        className="size-4 accent-violet-600 cursor-pointer"
-                      />
-                    </label>
+                      <label className="flex items-center justify-between p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5 cursor-pointer">
+                        <div>
+                          <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Real-time Desktop Alerts</div>
+                          <div className="text-[11px] text-slate-500">Pop up push notifications for live canvas events</div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={notifDesktop}
+                          onChange={(e) => setNotifDesktop(e.target.checked)}
+                          className="size-4 accent-violet-600 cursor-pointer"
+                        />
+                      </label>
 
-                    <label className="flex items-center justify-between p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5 cursor-pointer">
-                      <div>
-                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Platform Feature & Security Updates</div>
-                        <div className="text-[11px] text-slate-500">Get notified about new Voxel features, API versions, and system releases</div>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={notifUpdates}
-                        onChange={(e) => setNotifUpdates(e.target.checked)}
-                        className="size-4 accent-violet-600 cursor-pointer"
-                      />
-                    </label>
+                      <label className="flex items-center justify-between p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5 cursor-pointer">
+                        <div>
+                          <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Platform Feature & Security Updates</div>
+                          <div className="text-[11px] text-slate-500">Get notified about new Voxel features, API versions, and system releases</div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={notifUpdates}
+                          onChange={(e) => setNotifUpdates(e.target.checked)}
+                          className="size-4 accent-violet-600 cursor-pointer"
+                        />
+                      </label>
+                    </div>
                   </div>
-                </div>
+                )}
               </motion.div>
             )}
 
@@ -1036,34 +1119,67 @@ export default function SettingsPage() {
                 exit={{ opacity: 0, y: -8 }}
                 className="space-y-6"
               >
-                <div className="rounded-3xl border border-rose-300/80 bg-rose-500/5 p-6 sm:p-8 dark:border-rose-500/30 dark:bg-rose-950/20 shadow-sm space-y-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-1.5 h-6 bg-rose-600 rounded-full" />
-                    <h2 className="text-lg font-extrabold tracking-tight text-rose-600 dark:text-rose-400">
-                      Danger Zone
-                    </h2>
-                  </div>
+                {isGuestUser ? (
+                  <div className="rounded-3xl border border-rose-300/80 bg-rose-500/5 p-6 sm:p-8 dark:border-rose-500/30 dark:bg-rose-950/20 shadow-sm space-y-6">
+                    <div className="flex items-center gap-3">
+                      <div className="w-1.5 h-6 bg-rose-600 rounded-full" />
+                      <h2 className="text-lg font-extrabold tracking-tight text-rose-600 dark:text-rose-400">
+                        Guest Session Reset
+                      </h2>
+                    </div>
 
-                  <p className="text-xs text-rose-600/80 dark:text-rose-300/80 leading-relaxed">
-                    Actions performed in the danger zone affect team data permanently. Please review carefully before proceeding.
-                  </p>
+                    <p className="text-xs text-rose-600/80 dark:text-rose-300/80 leading-relaxed">
+                      You are currently operating in a guest session. Resetting your guest data clears your local canvas cache and restores default workspace templates.
+                    </p>
 
-                  <div className="space-y-4">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl border border-rose-200 dark:border-rose-500/20 bg-white/80 dark:bg-slate-900/60">
                       <div>
-                        <div className="text-xs font-bold text-slate-900 dark:text-white">Delete Account</div>
-                        <div className="text-[11px] text-slate-500">Permanently delete your account and all associated workspace nodes</div>
+                        <div className="text-xs font-bold text-slate-900 dark:text-white">Reset Local Guest Cache</div>
+                        <div className="text-[11px] text-slate-500">Clears browser storage and restores default guest workspace state</div>
                       </div>
                       <button
                         type="button"
-                        onClick={() => setDeleteModalOpen(true)}
+                        onClick={() => {
+                          localStorage.clear();
+                          addToast('Local guest cache reset successfully.', 'warning');
+                          window.location.reload();
+                        }}
                         className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-rose-500 cursor-pointer shrink-0"
                       >
-                        Delete Account
+                        Reset Guest Data
                       </button>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="rounded-3xl border border-rose-300/80 bg-rose-500/5 p-6 sm:p-8 dark:border-rose-500/30 dark:bg-rose-950/20 shadow-sm space-y-6">
+                    <div className="flex items-center gap-3">
+                      <div className="w-1.5 h-6 bg-rose-600 rounded-full" />
+                      <h2 className="text-lg font-extrabold tracking-tight text-rose-600 dark:text-rose-400">
+                        Danger Zone
+                      </h2>
+                    </div>
+
+                    <p className="text-xs text-rose-600/80 dark:text-rose-300/80 leading-relaxed">
+                      Actions performed in the danger zone affect team data permanently. Please review carefully before proceeding.
+                    </p>
+
+                    <div className="space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl border border-rose-200 dark:border-rose-500/20 bg-white/80 dark:bg-slate-900/60">
+                        <div>
+                          <div className="text-xs font-bold text-slate-900 dark:text-white">Delete Account</div>
+                          <div className="text-[11px] text-slate-500">Permanently delete your account and all associated workspace nodes</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteModalOpen(true)}
+                          className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-rose-500 cursor-pointer shrink-0"
+                        >
+                          Delete Account
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
