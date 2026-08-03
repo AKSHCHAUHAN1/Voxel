@@ -298,6 +298,14 @@ export default function EditorPage() {
     onConfirm: null,
   });
   const gridRef = useRef(null);
+
+  // Initial 360-degree scroll position centering
+  useEffect(() => {
+    if (gridRef.current) {
+      gridRef.current.scrollLeft = 1200;
+      gridRef.current.scrollTop = 1200;
+    }
+  }, [dashboard.data?.id]);
   const { autosaveEnabled, autosaveInterval } = useSettingsStore();
 
   const [zoom, setZoom] = useState(1);
@@ -1005,7 +1013,7 @@ export default function EditorPage() {
           {
             ...current,
             nodes: current.nodes.map((n) =>
-              n.id === nodeId ? { ...n, x: Math.max(0, initX + dx), y: Math.max(0, initY + dy) } : n,
+              n.id === nodeId ? { ...n, x: Math.round(initX + dx), y: Math.round(initY + dy) } : n,
             ),
           },
           true
@@ -1463,21 +1471,21 @@ export default function EditorPage() {
           className="flex-1 overflow-hidden relative bg-slate-50 dark:bg-[#030509] min-h-[500px] z-10"
           style={gridStyleInline}
         >
-          {/* Scrollable Container */}
+          {/* 360-degree Infinite Scrollable Container */}
           <div
             ref={gridRef}
-            className="w-full h-full overflow-auto relative p-6 no-scrollbars flex-1 flex items-center justify-center"
+            className="w-full h-full overflow-auto relative p-[1200px] no-scrollbars flex-1 flex items-center justify-center"
             onPointerMove={handlePointerMove}
             onPointerLeave={handlePointerLeave}
           >
             {/* The infinite board sheet */}
             <div
-              className="relative select-none transition-transform duration-150 ease-out flex flex-col justify-center"
+              className="relative select-none transition-transform duration-150 ease-out flex flex-col justify-center items-center"
               style={{
                 width: zoom < 1 ? `${(100 / zoom).toFixed(2)}%` : '100%',
                 height: zoom < 1 ? `${(100 / zoom).toFixed(2)}%` : '100%',
-                minWidth: '100%',
-                minHeight: '100%',
+                minWidth: '2400px',
+                minHeight: '1800px',
                 transform: `scale(${zoom})`,
                 transformOrigin: '50% 50%',
               }}
