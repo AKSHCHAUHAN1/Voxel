@@ -51,6 +51,7 @@ export function AppShell() {
   const searchRef = useRef(null);
   const searchInputRef = useRef(null);
   const notifRef = useRef(null);
+  const userMenuRef = useRef(null);
 
   const notifications = useNotificationStore((s) => s.notifications);
   const dismiss = useNotificationStore((s) => s.dismiss);
@@ -128,7 +129,7 @@ export function AppShell() {
     allowInInput: true,
   });
 
-  // Close search dropdown and notifications outside click
+  // Close search dropdown, notifications, and user profile menu outside click
   useEffect(() => {
     const handleOutsideClick = (e) => {
       if (searchRef.current && !searchRef.current.contains(e.target)) {
@@ -136,6 +137,9 @@ export function AppShell() {
       }
       if (notifRef.current && !notifRef.current.contains(e.target)) {
         setNotificationsOpen(false);
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleOutsideClick);
@@ -514,7 +518,7 @@ export function AppShell() {
             </button>
 
             {/* Profile Avatar VX dropdown area */}
-            <div className="flex items-center gap-3 relative">
+            <div className="flex items-center gap-3 relative" ref={userMenuRef}>
               <div className="text-right hidden md:block select-none leading-snug">
                 <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
                   {displayName}

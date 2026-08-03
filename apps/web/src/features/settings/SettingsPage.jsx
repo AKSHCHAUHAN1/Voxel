@@ -5,7 +5,6 @@ import {
   Palette,
   Shield,
   Bell,
-  Code2,
   AlertTriangle,
   Check,
   Plus,
@@ -16,9 +15,11 @@ import {
   X,
   Eye,
   EyeOff,
-  RefreshCw,
+  Lock,
+  UserCheck,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useThemeStore } from '@/store/theme-store';
 import { useNotificationStore } from '@/store/notification-store';
@@ -28,6 +29,7 @@ import { authService } from '@/features/auth/auth-service';
 import { workspaceService } from '@/features/workspaces/workspace-service';
 
 export default function SettingsPage() {
+  const navigate = useNavigate();
   const { theme, setTheme } = useThemeStore();
   const addToast = useNotificationStore((s) => s.add);
 
@@ -40,6 +42,8 @@ export default function SettingsPage() {
     queryFn: authService.me,
     retry: false,
   });
+
+  const isGuestUser = !user || user.email === 'guest@voxel.com' || user.googleSubject === 'guest-google-sub';
 
   // Fetch Workspaces
   const { data: workspacesData } = useQuery({
@@ -147,11 +151,6 @@ export default function SettingsPage() {
   const [notifDesktop, setNotifDesktop] = useState(false);
   const [notifUpdates, setNotifUpdates] = useState(true);
 
-  // Developer API State
-  const [apiKey, setApiKey] = useState('vxl_live_948f2a1b6c890e1d2e3f4a5b6c7d8e9f');
-  const [apiKeyCopied, setApiKeyCopied] = useState(false);
-  const [webhookUrl, setWebhookUrl] = useState('http://localhost:3000/webhooks/voxel');
-
   // Danger Zone State
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
@@ -179,23 +178,14 @@ export default function SettingsPage() {
   };
 
   const handleCopyInvite = () => {
+    if (isGuestUser) {
+      addToast('Sign in with an account to invite team members to workspace.', 'warning');
+      return;
+    }
     navigator.clipboard.writeText('https://voxel.app/invite/ws_981273918237');
     setInviteCopied(true);
     setTimeout(() => setInviteCopied(false), 2000);
     addToast('Workspace invite link copied to clipboard.', 'info');
-  };
-
-  const handleCopyApiKey = () => {
-    navigator.clipboard.writeText(apiKey);
-    setApiKeyCopied(true);
-    setTimeout(() => setApiKeyCopied(false), 2000);
-    addToast('API key copied to clipboard.', 'info');
-  };
-
-  const handleRegenerateKey = () => {
-    const nextKey = `vxl_live_${Math.random().toString(36).substring(2)}${Math.random().toString(36).substring(2)}`;
-    setApiKey(nextKey);
-    addToast('New production API key generated.', 'warning');
   };
 
   const handleRevokeSession = (id) => {
@@ -205,6 +195,11 @@ export default function SettingsPage() {
 
   const handleInviteSubmit = (e) => {
     e.preventDefault();
+    if (isGuestUser) {
+      addToast('Sign in with an account to invite team members to workspace.', 'warning');
+      setInviteModalOpen(false);
+      return;
+    }
     if (!inviteName || !inviteEmail) return;
     const initials = inviteName
       .split(' ')
@@ -241,7 +236,6 @@ export default function SettingsPage() {
     { id: 'workspace', label: 'Workspace & Team', icon: Users },
     { id: 'security', label: 'Security & Sessions', icon: Shield },
     { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'developer', label: 'API & Developer SDK', icon: Code2 },
     { id: 'danger', label: 'Danger Zone', icon: AlertTriangle, danger: true },
   ];
 
@@ -657,93 +651,125 @@ export default function SettingsPage() {
                       <div className="w-1.5 h-6 bg-violet-600 rounded-full" />
                       <h2 className="text-lg font-extrabold tracking-tight">Workspace & Member Access</h2>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleCopyInvite}
-                        type="button"
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 px-3.5 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-200 cursor-pointer"
-                      >
-                        <Copy size={14} /> {inviteCopied ? 'Link Copied!' : 'Copy Invite Link'}
-                      </button>
-                      <button
-                        onClick={() => setInviteModalOpen(true)}
-                        type="button"
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-violet-500 cursor-pointer"
-                      >
-                        <Plus size={15} /> Invite Member
-                      </button>
+                    {!isGuestUser && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleCopyInvite}
+                          type="button"
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 px-3.5 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-200 cursor-pointer"
+                        >
+                          <Copy size={14} /> {inviteCopied ? 'Link Copied!' : 'Copy Invite Link'}
+                        </button>
+                        <button
+                          onClick={() => setInviteModalOpen(true)}
+                          type="button"
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-violet-500 cursor-pointer"
+                        >
+                          <Plus size={15} /> Invite Member
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {isGuestUser ? (
+                    <div className="rounded-2xl border border-violet-200/80 bg-gradient-to-br from-violet-50/60 via-indigo-50/30 to-slate-50/80 p-8 text-center dark:border-violet-500/20 dark:from-violet-950/20 dark:via-indigo-950/10 dark:to-slate-900/40 space-y-5">
+                      <div className="mx-auto grid size-16 place-items-center rounded-2xl bg-violet-600/10 text-violet-600 dark:bg-violet-500/20 dark:text-violet-400 border border-violet-500/20 shadow-xs">
+                        <Lock size={28} />
+                      </div>
+                      <div className="max-w-md mx-auto space-y-2">
+                        <span className="inline-block rounded-full bg-amber-500/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                          Sign-In Required
+                        </span>
+                        <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                          Team Collaboration is Reserved for Signed-In Accounts
+                        </h3>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                          Guest users operate in <strong>Solo Mode</strong> to create, edit, export, and share blueprints. Real-time multi-user team collaboration, workspace member management, and invitation controls require signing in with an account.
+                        </p>
+                      </div>
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={() => navigate('/login')}
+                          className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-6 py-3 text-xs font-bold text-white shadow-lg shadow-violet-600/25 hover:bg-violet-500 transition-all cursor-pointer hover:scale-105"
+                        >
+                          <UserCheck size={16} /> Sign In to Unlock Team Access
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      {/* Search Bar */}
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={memberSearch}
+                          onChange={(e) => setMemberSearch(e.target.value)}
+                          placeholder="Search team members by name or email..."
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50/50 dark:bg-white/5 px-4 py-2.5 text-xs outline-none focus:ring-2 focus:ring-violet-500 dark:border-white/10"
+                        />
+                      </div>
 
-                  {/* Search Bar */}
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={memberSearch}
-                      onChange={(e) => setMemberSearch(e.target.value)}
-                      placeholder="Search team members by name or email..."
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50/50 dark:bg-white/5 px-4 py-2.5 text-xs outline-none focus:ring-2 focus:ring-violet-500 dark:border-white/10"
-                    />
-                  </div>
-
-                  {/* Members Table */}
-                  <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:bg-slate-900/80 dark:text-slate-400 border-b border-slate-200 dark:border-white/10">
-                        <tr>
-                          <th className="px-4 py-3.5">Member</th>
-                          <th className="px-4 py-3.5">Workspace Role</th>
-                          <th className="px-4 py-3.5 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                        {filteredMembers.map((member) => (
-                          <tr key={member.id} className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors">
-                            <td className="px-4 py-3.5">
-                              <div className="flex items-center gap-3">
-                                <span className={`grid size-9 place-items-center rounded-xl ${member.color} text-xs font-extrabold text-white shrink-0`}>
-                                  {member.avatar}
-                                </span>
-                                <div>
-                                  <div className="font-bold text-slate-800 dark:text-slate-200">{member.name}</div>
-                                  <div className="text-[10px] text-slate-400">{member.email}</div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3.5">
-                              <span
-                                className={`inline-block rounded-full px-2.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${
-                                  member.role === 'OWNER'
-                                    ? 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200'
-                                    : member.role === 'ADMIN'
-                                      ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-200'
-                                      : member.role === 'EDITOR'
-                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200'
-                                        : 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-400'
-                                }`}
-                              >
-                                {member.role}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3.5 text-right">
-                              {member.role !== 'OWNER' && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setMembers(members.filter((m) => m.id !== member.id));
-                                    addToast(`Removed ${member.name} from workspace`, 'info');
-                                  }}
-                                  className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg transition-colors cursor-pointer"
-                                >
-                                  <Trash2 size={15} />
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                      {/* Members Table */}
+                      <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:bg-slate-900/80 dark:text-slate-400 border-b border-slate-200 dark:border-white/10">
+                            <tr>
+                              <th className="px-4 py-3.5">Member</th>
+                              <th className="px-4 py-3.5">Workspace Role</th>
+                              <th className="px-4 py-3.5 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                            {filteredMembers.map((member) => (
+                              <tr key={member.id} className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors">
+                                <td className="px-4 py-3.5">
+                                  <div className="flex items-center gap-3">
+                                    <span className={`grid size-9 place-items-center rounded-xl ${member.color} text-xs font-extrabold text-white shrink-0`}>
+                                      {member.avatar}
+                                    </span>
+                                    <div>
+                                      <div className="font-bold text-slate-800 dark:text-slate-200">{member.name}</div>
+                                      <div className="text-[10px] text-slate-400">{member.email}</div>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3.5">
+                                  <span
+                                    className={`inline-block rounded-full px-2.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${
+                                      member.role === 'OWNER'
+                                        ? 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200'
+                                        : member.role === 'ADMIN'
+                                          ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-200'
+                                          : member.role === 'EDITOR'
+                                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200'
+                                            : 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-400'
+                                    }`}
+                                  >
+                                    {member.role}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3.5 text-right">
+                                  {member.role !== 'OWNER' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setMembers(members.filter((m) => m.id !== member.id));
+                                        addToast(`Removed ${member.name} from workspace`, 'info');
+                                      }}
+                                      className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg transition-colors cursor-pointer"
+                                    >
+                                      <Trash2 size={15} />
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
                 </div>
               </motion.div>
             )}
@@ -1001,69 +1027,7 @@ export default function SettingsPage() {
               </motion.div>
             )}
 
-            {/* TAB 6: API & Developer SDK */}
-            {activeTab === 'developer' && (
-              <motion.div
-                key="developer"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                className="space-y-6"
-              >
-                <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 dark:border-white/10 dark:bg-slate-900/60 shadow-sm space-y-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-1.5 h-6 bg-violet-600 rounded-full" />
-                    <h2 className="text-lg font-extrabold tracking-tight">API Keys & Webhooks</h2>
-                  </div>
-
-                  {/* API Key */}
-                  <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5 space-y-3">
-                    <div className="flex justify-between items-center">
-                      <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                        Production Secret Key
-                      </label>
-                      <button
-                        type="button"
-                        onClick={handleRegenerateKey}
-                        className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600 hover:text-amber-500 cursor-pointer"
-                      >
-                        <RefreshCw size={12} /> Regenerate Key
-                      </button>
-                    </div>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        readOnly
-                        value={apiKey}
-                        className="w-full font-mono text-xs rounded-xl border border-slate-200 bg-white dark:bg-slate-900 px-3.5 py-2.5 dark:border-white/10"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleCopyApiKey}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-violet-500 cursor-pointer shrink-0"
-                      >
-                        <Copy size={14} /> {apiKeyCopied ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Webhook Endpoint */}
-                  <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5 space-y-3">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                      Webhook Event Endpoint URL
-                    </label>
-                    <input
-                      type="url"
-                      value={webhookUrl}
-                      onChange={(e) => setWebhookUrl(e.target.value)}
-                      className="w-full font-mono text-xs rounded-xl border border-slate-200 bg-white dark:bg-slate-900 px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-violet-500 dark:border-white/10"
-                    />
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            {/* TAB 7: Danger Zone */}
+            {/* TAB 6: Danger Zone */}
             {activeTab === 'danger' && (
               <motion.div
                 key="danger"
