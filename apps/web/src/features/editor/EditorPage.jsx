@@ -323,39 +323,6 @@ export default function EditorPage() {
     setZoom(1);
   }, []);
 
-  const handleRepositionCanvas = useCallback(() => {
-    setZoom(1);
-    if (!gridRef.current) return;
-
-    if (scene.nodes.length > 0) {
-      const minX = Math.min(...scene.nodes.map((n) => n.x ?? 0));
-      const maxX = Math.max(...scene.nodes.map((n) => (n.x ?? 0) + 280));
-      const minY = Math.min(...scene.nodes.map((n) => n.y ?? 0));
-      const maxY = Math.max(...scene.nodes.map((n) => (n.y ?? 0) + 180));
-
-      const centerX = (minX + maxX) / 2;
-      const centerY = (minY + maxY) / 2;
-
-      const containerWidth = gridRef.current.clientWidth || 1000;
-      const containerHeight = gridRef.current.clientHeight || 700;
-
-      const targetLeft = Math.max(0, 1200 + centerX - containerWidth / 2);
-      const targetTop = Math.max(0, 1200 + centerY - containerHeight / 2);
-
-      gridRef.current.scrollTo({
-        left: targetLeft,
-        top: targetTop,
-        behavior: 'smooth',
-      });
-    } else {
-      gridRef.current.scrollTo({
-        left: 1200,
-        top: 1200,
-        behavior: 'smooth',
-      });
-    }
-  }, [scene.nodes]);
-
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
 
@@ -457,6 +424,39 @@ export default function EditorPage() {
     () => sceneOf(yScene || dashboard.data?.scene),
     [dashboard.data?.scene, yScene],
   );
+
+  const handleRepositionCanvas = useCallback(() => {
+    setZoom(1);
+    if (!gridRef.current) return;
+
+    if (scene.nodes && scene.nodes.length > 0) {
+      const minX = Math.min(...scene.nodes.map((n) => n.x ?? 0));
+      const maxX = Math.max(...scene.nodes.map((n) => (n.x ?? 0) + 280));
+      const minY = Math.min(...scene.nodes.map((n) => n.y ?? 0));
+      const maxY = Math.max(...scene.nodes.map((n) => (n.y ?? 0) + 180));
+
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+
+      const containerWidth = gridRef.current.clientWidth || 1000;
+      const containerHeight = gridRef.current.clientHeight || 700;
+
+      const targetLeft = Math.max(0, 1200 + centerX - containerWidth / 2);
+      const targetTop = Math.max(0, 1200 + centerY - containerHeight / 2);
+
+      gridRef.current.scrollTo({
+        left: targetLeft,
+        top: targetTop,
+        behavior: 'smooth',
+      });
+    } else {
+      gridRef.current.scrollTo({
+        left: 1200,
+        top: 1200,
+        behavior: 'smooth',
+      });
+    }
+  }, [scene?.nodes]);
 
   const draft = useMemo(() => {
     if (!dashboard.data?.scene) return false;
