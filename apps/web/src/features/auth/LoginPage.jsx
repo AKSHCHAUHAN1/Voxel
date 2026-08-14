@@ -41,6 +41,7 @@ export function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleModalOpen, setGoogleModalOpen] = useState(false);
 
   const handleMouseMove = (e) => {
     const { clientX, clientY } = e;
@@ -356,9 +357,10 @@ export function LoginPage() {
 
           {/* Social / SSO Buttons */}
           <div className="space-y-2">
-            <a
-              href={authService.loginUrl(email)}
-              className="w-full inline-flex items-center justify-center gap-3 rounded-xl border border-slate-200/90 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 shadow-sm transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+            <button
+              type="button"
+              onClick={() => setGoogleModalOpen(true)}
+              className="w-full inline-flex items-center justify-center gap-3 rounded-xl border border-slate-200/90 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 shadow-sm transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 cursor-pointer"
             >
               <svg className="size-4 shrink-0" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
@@ -367,7 +369,7 @@ export function LoginPage() {
                 <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.58l3.99 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
               </svg>
               <span>Continue with Google</span>
-            </a>
+            </button>
 
             <button
               onClick={handleGuestLogin}
@@ -380,6 +382,288 @@ export function LoginPage() {
           </div>
         </div>
       </motion.section>
+
+      {/* Google OAuth Account Chooser & Permissions Consent Dialog */}
+      <AnimatePresence>
+        {googleModalOpen && (
+          <GoogleOAuthConsentModal
+            defaultEmail={email}
+            onClose={() => setGoogleModalOpen(false)}
+          />
+        )}
+      </AnimatePresence>
     </main>
+  );
+}
+
+// --- GOOGLE OAUTH ACCOUNT CHOOSER & CONSENT MODAL ---
+function GoogleOAuthConsentModal({ defaultEmail, onClose }) {
+  // Steps: 'accounts' | 'consent' | 'connecting'
+  const [step, setStep] = useState('accounts');
+  const [useOther, setUseOther] = useState(false);
+  const [customEmail, setCustomEmail] = useState('');
+  const [customName, setCustomName] = useState('');
+  const [otherError, setOtherError] = useState('');
+
+  const accounts = [
+    {
+      name: 'Aksh Chauhan',
+      email: defaultEmail && defaultEmail.includes('@') ? defaultEmail : 'aksh111828@gmail.com',
+      avatarBg: 'bg-violet-600',
+      initial: 'A',
+    },
+    {
+      name: 'Voxel Workspace',
+      email: 'aksh.voxel@gmail.com',
+      avatarBg: 'bg-indigo-600',
+      initial: 'V',
+    },
+  ];
+
+  const [selectedAccount, setSelectedAccount] = useState(accounts[0]);
+
+  const handleSelectAccount = (acc) => {
+    setSelectedAccount(acc);
+    setStep('consent');
+  };
+
+  const handleProceedCustom = (e) => {
+    e.preventDefault();
+    if (!customEmail.trim() || !customEmail.includes('@')) {
+      setOtherError('Please enter a valid Google email address.');
+      return;
+    }
+    const derivedName = customName.trim() || customEmail.split('@')[0];
+    const acc = {
+      name: derivedName.charAt(0).toUpperCase() + derivedName.slice(1),
+      email: customEmail.trim(),
+      avatarBg: 'bg-emerald-600',
+      initial: derivedName.charAt(0).toUpperCase(),
+    };
+    setSelectedAccount(acc);
+    setStep('consent');
+  };
+
+  const handleAllowPermissions = () => {
+    setStep('connecting');
+    setTimeout(() => {
+      window.location.href = authService.loginUrl(selectedAccount.email, selectedAccount.name);
+    }, 600);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      onMouseDown={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        transition={{ duration: 0.2 }}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="w-full max-w-[430px] rounded-[28px] border border-slate-200/80 bg-white p-7 sm:p-8 shadow-2xl dark:border-white/10 dark:bg-[#1f1f1f] text-slate-800 dark:text-[#e3e3e3] font-sans"
+      >
+        {/* Google Logo Header */}
+        <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-white/5">
+          <div className="flex items-center gap-2.5">
+            <svg className="size-5 shrink-0" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.29v3.15C3.26 21.3 7.31 24 12 24z"/>
+              <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.29C.47 8.21 0 10.05 0 12s.47 3.79 1.29 5.42l3.99-3.15z"/>
+              <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.58l3.99 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+            </svg>
+            <span className="text-sm font-semibold tracking-tight text-slate-700 dark:text-[#c4c7c5]">Sign in with Google</span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 transition cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* STEP 1: Account Selection */}
+        {step === 'accounts' && (
+          <div className="pt-5 space-y-4">
+            <div>
+              <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Choose an account</h2>
+              <p className="text-xs text-slate-500 dark:text-[#9aa0a6] mt-0.5">to continue to <strong className="font-semibold text-slate-700 dark:text-slate-200">Voxel</strong></p>
+            </div>
+
+            <div className="space-y-1.5 pt-2">
+              {accounts.map((acc, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => handleSelectAccount(acc)}
+                  className="w-full flex items-center justify-between p-3 rounded-2xl border border-transparent hover:border-slate-200 dark:hover:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 transition text-left cursor-pointer group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`size-9 rounded-full ${acc.avatarBg} text-white flex items-center justify-center font-bold text-sm shadow-sm`}>
+                      {acc.initial}
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition">
+                        {acc.name}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {acc.email}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-xs text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200">→</span>
+                </button>
+              ))}
+
+              {/* Use another account toggle */}
+              {!useOther ? (
+                <button
+                  type="button"
+                  onClick={() => setUseOther(true)}
+                  className="w-full flex items-center gap-3 p-3 rounded-2xl border border-transparent hover:bg-slate-50 dark:hover:bg-white/5 transition text-left cursor-pointer text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
+                >
+                  <div className="size-9 rounded-full border border-dashed border-slate-300 dark:border-white/20 flex items-center justify-center text-slate-400">
+                    <UserPlus size={15} />
+                  </div>
+                  <span className="text-xs font-semibold">Use another account</span>
+                </button>
+              ) : (
+                <form onSubmit={handleProceedCustom} className="p-3.5 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 space-y-3 mt-2">
+                  <div className="text-xs font-bold text-slate-900 dark:text-white">Enter Google Account Details</div>
+                  <input
+                    type="email"
+                    required
+                    placeholder="Enter your Gmail address"
+                    value={customEmail}
+                    onChange={(e) => {
+                      setCustomEmail(e.target.value);
+                      setOtherError('');
+                    }}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-[#141414] dark:text-white"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Full name (optional)"
+                    value={customName}
+                    onChange={(e) => setCustomName(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-blue-500 dark:border-white/10 dark:bg-[#141414] dark:text-white"
+                  />
+                  {otherError && <p className="text-[11px] text-rose-500 font-semibold">{otherError}</p>}
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setUseOther(false)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:bg-slate-200/60 dark:hover:bg-white/10 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white hover:bg-blue-500 cursor-pointer shadow-sm"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 dark:border-white/5 text-[11px] text-slate-500 dark:text-[#9aa0a6] leading-relaxed">
+              To continue, Google will share your name, email address, language preference, and profile picture with Voxel.
+            </div>
+          </div>
+        )}
+
+        {/* STEP 2: Permissions Consent Screen */}
+        {step === 'consent' && (
+          <div className="pt-5 space-y-4">
+            {/* Account Switcher Header */}
+            <div className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/5">
+              <div className="flex items-center gap-2.5 truncate">
+                <div className={`size-7 rounded-full ${selectedAccount.avatarBg} text-white flex items-center justify-center font-bold text-xs shrink-0`}>
+                  {selectedAccount.initial}
+                </div>
+                <div className="truncate text-left">
+                  <div className="text-xs font-bold text-slate-900 dark:text-white truncate">{selectedAccount.name}</div>
+                  <div className="text-[10px] text-slate-500 truncate">{selectedAccount.email}</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStep('accounts')}
+                className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline shrink-0 ml-2 cursor-pointer"
+              >
+                Switch
+              </button>
+            </div>
+
+            <div>
+              <h2 className="text-lg font-black tracking-tight text-slate-900 dark:text-white">
+                Voxel wants to access your Google Account
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                This will allow <strong className="font-bold text-slate-800 dark:text-slate-200">Voxel</strong> to:
+              </p>
+            </div>
+
+            {/* Scope Permissions List */}
+            <div className="space-y-3 py-1">
+              <div className="flex items-start gap-3 p-3 rounded-2xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100/70 dark:border-blue-900/30">
+                <span className="text-blue-600 dark:text-blue-400 text-sm mt-0.5">✉️</span>
+                <div className="text-xs leading-relaxed text-slate-700 dark:text-slate-200">
+                  <strong>See your primary Google Account email address</strong>
+                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">openid · email</div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-3 rounded-2xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100/70 dark:border-blue-900/30">
+                <span className="text-blue-600 dark:text-blue-400 text-sm mt-0.5">👤</span>
+                <div className="text-xs leading-relaxed text-slate-700 dark:text-slate-200">
+                  <strong>See your personal info, including name and avatar</strong>
+                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">profile</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="text-[11px] text-slate-500 dark:text-[#9aa0a6] leading-relaxed">
+              Make sure you trust Voxel. You may be sharing sensitive info with this site or app. Review Voxel's Privacy Policy and Terms of Service.
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end items-center gap-2 pt-2 border-t border-slate-100 dark:border-white/5">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 cursor-pointer transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAllowPermissions}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#1a73e8] hover:bg-[#1557b0] shadow-md shadow-blue-500/20 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
+              >
+                Allow & Continue
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: Connecting State */}
+        {step === 'connecting' && (
+          <div className="py-10 text-center space-y-4">
+            <div className="mx-auto size-10 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <div className="text-sm font-bold text-slate-800 dark:text-slate-200">
+              Connecting to Google & Granting Permissions...
+            </div>
+            <div className="text-xs text-slate-500">
+              Signing in as {selectedAccount.email}
+            </div>
+          </div>
+        )}
+      </motion.div>
+    </div>
   );
 }

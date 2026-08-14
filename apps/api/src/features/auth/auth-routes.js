@@ -116,12 +116,19 @@ export const registerAuthRoutes = async (app, environment) => {
     // Development / Local Google OAuth fallback
     app.get('/api/v1/auth/google', async (request, reply) => {
       const email = request.query?.email || 'aksh111828@gmail.com';
-      const displayName = request.query?.name || (email.split('@')[0] || 'Google User');
+      const displayName =
+        request.query?.name ||
+        (email.split('@')[0] ? email.split('@')[0].replace(/[._-]/g, ' ') : 'Google User');
+      const formattedName = displayName
+        .split(' ')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+
       const identity = {
         subject: `google-sub-${email.replace(/[^a-zA-Z0-9]/g, '_')}`,
         email,
         emailVerified: true,
-        displayName: displayName.charAt(0).toUpperCase() + displayName.slice(1),
+        displayName: formattedName,
         avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`,
       };
 
