@@ -100,7 +100,6 @@ export function LoginPage() {
       navigate('/workspaces');
     } catch (err) {
       setErrorMsg(err.message || (mode === 'signup' ? 'Failed to create account.' : 'Invalid email or password.'));
-      useNotificationStore.getState().add(err.message || 'Authentication failed', 'warning');
     } finally {
       setLoading(false);
     }
