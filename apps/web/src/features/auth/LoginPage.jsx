@@ -357,7 +357,7 @@ export function LoginPage() {
           {/* Social / SSO Buttons */}
           <div className="space-y-2">
             <a
-              href={authService.loginUrl()}
+              href={authService.loginUrl(email)}
               className="w-full inline-flex items-center justify-center gap-3 rounded-xl border border-slate-200/90 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 shadow-sm transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
             >
               <svg className="size-4 shrink-0" viewBox="0 0 24 24">
