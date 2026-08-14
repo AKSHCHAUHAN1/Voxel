@@ -260,4 +260,70 @@ export class AuthService {
       throw new Error('Invalid access token payload.');
     return { subject: payload.sub, sessionId: payload.sid };
   }
+
+  async deleteAccount(userId) {
+    if (!userId) return;
+
+    // 1. Find all workspaces owned by user
+    const ownedWorkspaces = await this.database.workspace.findMany({
+      where: { ownerId: userId },
+      select: { id: true },
+    });
+    const workspaceIds = ownedWorkspaces.map((w) => w.id);
+
+    // 2. Perform cascade cleanup in transaction
+    await this.database.$transaction([
+      // Delete dashboard versions for owned workspaces and owned dashboards
+      this.database.dashboardVersion.deleteMany({
+        where: {
+          OR: [
+            { dashboard: { workspaceId: { in: workspaceIds } } },
+            { dashboard: { ownerId: userId } },
+          ],
+        },
+      }),
+      // Delete dashboards
+      this.database.dashboard.deleteMany({
+        where: {
+          OR: [
+            { workspaceId: { in: workspaceIds } },
+            { ownerId: userId },
+          ],
+        },
+      }),
+      // Delete workspace memberships
+      this.database.workspaceMember.deleteMany({
+        where: {
+          OR: [
+            { workspaceId: { in: workspaceIds } },
+            { userId },
+          ],
+        },
+      }),
+      // Delete audit events
+      this.database.auditEvent.deleteMany({
+        where: {
+          OR: [
+            { workspaceId: { in: workspaceIds } },
+            { actorId: userId },
+          ],
+        },
+      }),
+      // Delete owned workspaces
+      this.database.workspace.deleteMany({
+        where: { id: { in: workspaceIds } },
+      }),
+      // Delete refresh tokens and sessions
+      this.database.refreshToken.deleteMany({
+        where: { session: { userId } },
+      }),
+      this.database.session.deleteMany({
+        where: { userId },
+      }),
+      // Permanently delete user
+      this.database.user.delete({
+        where: { id: userId },
+      }),
+    ]);
+  }
 }

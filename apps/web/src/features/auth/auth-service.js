@@ -3,6 +3,7 @@ import { request } from '@/lib/http';
 
 export const authService = {
   me: () => request('/api/v1/auth/me'),
+  deleteAccount: () => request('/api/v1/auth/me', { method: 'DELETE' }),
   logout: () => request('/api/v1/auth/logout', { method: 'POST', body: JSON.stringify({}) }),
   loginUrl: (email) =>
     `${runtime.apiBaseUrl}/api/v1/auth/google${email ? `?email=${encodeURIComponent(email)}` : ''}`,

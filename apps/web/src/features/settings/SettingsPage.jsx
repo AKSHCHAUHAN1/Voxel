@@ -18,7 +18,7 @@ import {
   Lock,
   UserCheck,
 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useThemeStore } from '@/store/theme-store';
@@ -30,6 +30,7 @@ import { workspaceService } from '@/features/workspaces/workspace-service';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { theme, setTheme } = useThemeStore();
   const addToast = useNotificationStore((s) => s.add);
 
@@ -154,6 +155,22 @@ export default function SettingsPage() {
   // Danger Zone State
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    try {
+      setIsDeletingAccount(true);
+      await authService.deleteAccount();
+      queryClient.clear();
+      setDeleteModalOpen(false);
+      addToast('Your account and all associated workspace data have been permanently deleted.', 'info');
+      navigate('/login');
+    } catch (err) {
+      addToast(err.message || 'Failed to delete account.', 'error');
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  };
 
   // Handlers
   const handleSaveProfile = (e) => {
@@ -1301,14 +1318,11 @@ export default function SettingsPage() {
               </button>
               <button
                 type="button"
-                disabled={deleteConfirmation !== 'DELETE MY ACCOUNT'}
-                onClick={() => {
-                  setDeleteModalOpen(false);
-                  addToast('Account deletion request queued.', 'warning');
-                }}
-                className="rounded-xl bg-rose-600 px-4.5 py-2.5 text-xs font-bold text-white hover:bg-rose-500 disabled:opacity-40 cursor-pointer"
+                disabled={deleteConfirmation !== 'DELETE MY ACCOUNT' || isDeletingAccount}
+                onClick={handleDeleteAccount}
+                className="rounded-xl bg-rose-600 px-4.5 py-2.5 text-xs font-bold text-white hover:bg-rose-500 disabled:opacity-40 cursor-pointer flex items-center gap-2 transition-all"
               >
-                Permanently Delete
+                {isDeletingAccount ? 'Deleting Account...' : 'Permanently Delete'}
               </button>
             </div>
           </div>

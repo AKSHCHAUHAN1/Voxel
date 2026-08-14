@@ -254,4 +254,14 @@ export const registerAuthRoutes = async (app, environment) => {
       ),
     );
   });
+
+  app.delete('/api/v1/auth/me', async (request, reply) => {
+    const user = await authService.getAuthenticatedUser(request.cookies[ACCESS_COOKIE]);
+    if (!user) throw new AuthenticationError('Authentication is required.');
+
+    await authService.deleteAccount(user.id);
+    reply.clearCookie(ACCESS_COOKIE, { path: '/' });
+    reply.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
+    return reply.send(success({ deleted: true }, createRequestId(request.id)));
+  });
 };
