@@ -303,8 +303,22 @@ export default function EditorPage() {
   // Initial 360-degree scroll position centering
   useEffect(() => {
     if (gridRef.current) {
-      gridRef.current.scrollLeft = 1200;
-      gridRef.current.scrollTop = 1200;
+      const containerWidth = gridRef.current.clientWidth || 1000;
+      const containerHeight = gridRef.current.clientHeight || 700;
+      const nodes = dashboard.data?.scene?.nodes || [];
+      if (nodes.length > 0) {
+        const minX = Math.min(...nodes.map((n) => n.x ?? 0));
+        const maxX = Math.max(...nodes.map((n) => (n.x ?? 0) + 280));
+        const minY = Math.min(...nodes.map((n) => n.y ?? 0));
+        const maxY = Math.max(...nodes.map((n) => (n.y ?? 0) + 180));
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        gridRef.current.scrollLeft = Math.max(0, 1200 + centerX - containerWidth / 2);
+        gridRef.current.scrollTop = Math.max(0, 1200 + centerY - containerHeight / 2);
+      } else {
+        gridRef.current.scrollLeft = Math.max(0, 1200 + 1200 - containerWidth / 2);
+        gridRef.current.scrollTop = Math.max(0, 1200 + 900 - containerHeight / 2);
+      }
     }
   }, [dashboard.data?.id]);
   const { autosaveEnabled, autosaveInterval } = useSettingsStore();
@@ -1505,6 +1519,15 @@ export default function EditorPage() {
           className="flex-1 overflow-hidden relative bg-slate-50 dark:bg-[#030509] min-h-[500px] z-10"
           style={gridStyleInline}
         >
+          {/* Centered Empty State Overlay when no nodes exist */}
+          {!scene.nodes.length && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center p-6 pointer-events-none">
+              <div className="pointer-events-auto max-w-md w-full">
+                <CanvasEmpty onAdd={() => addNode('metric')} />
+              </div>
+            </div>
+          )}
+
           {/* 360-degree Infinite Scrollable Container */}
           <div
             ref={gridRef}
@@ -1576,7 +1599,7 @@ export default function EditorPage() {
 
               {/* Grid Layout Container */}
               <div className="relative z-10 w-full h-full p-12">
-                {scene.nodes.length ? (
+                {scene.nodes.length > 0 && (
                   <NodeGrid
                     nodes={scene.nodes}
                     selectedNodeId={selectedNodeId}
@@ -1587,8 +1610,6 @@ export default function EditorPage() {
                     awarenessStates={awarenessStates}
                     localClientId={awareness?.clientID}
                   />
-                ) : (
-                  <CanvasEmpty onAdd={() => setPickerOpen(true)} />
                 )}
               </div>
             </div>
@@ -2967,21 +2988,21 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
 // --- EMPTY CANVAS STATE ---
 function CanvasEmpty({ onAdd }) {
   return (
-    <div className="grid min-h-[400px] place-items-center rounded-3xl border border-dashed border-violet-300 bg-violet-50/60 p-8 text-center dark:border-violet-500/30 dark:bg-violet-500/5">
-      <div className="max-w-md mx-auto space-y-4">
-        <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-white text-violet-600 shadow-sm dark:bg-slate-900">
-          <Sparkles size={21} className="animate-pulse" />
+    <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-violet-300/80 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl p-8 text-center dark:border-violet-500/30 shadow-2xl shadow-violet-500/10 max-w-md mx-auto transition-all">
+      <div className="space-y-4">
+        <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-500/20">
+          <Sparkles size={22} className="animate-pulse" />
         </span>
-        <h2 className="text-lg font-extrabold tracking-tight">This dashboard has no nodes yet</h2>
-        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300 font-medium">
-          You can load a predefined template from the <strong className="font-extrabold text-violet-600 dark:text-violet-400">Preset</strong> dropdown at the top, or click <strong className="font-extrabold text-violet-600 dark:text-violet-400">+ Add Node</strong> to start designing your visual map from scratch.
+        <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">This dashboard has no nodes yet</h2>
+        <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300 font-medium">
+          Choose an element from the <strong className="font-extrabold text-violet-600 dark:text-violet-400">Elements</strong> panel on the left, load a template from <strong className="font-extrabold text-violet-600 dark:text-violet-400">Presets</strong>, or click below to start designing.
         </p>
         <div className="pt-2">
           <button
             onClick={onAdd}
-            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-600/25 cursor-pointer hover:bg-violet-500 transition-all hover:scale-105"
+            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-2.5 text-xs font-extrabold uppercase tracking-wider text-white shadow-lg shadow-violet-600/25 cursor-pointer hover:opacity-95 transition-all hover:scale-105 active:scale-95"
           >
-            <Plus size={18} className="stroke-[2.5]" /> Add First Node
+            <Plus size={16} className="stroke-[2.5]" /> Add First Node
           </button>
         </div>
       </div>
