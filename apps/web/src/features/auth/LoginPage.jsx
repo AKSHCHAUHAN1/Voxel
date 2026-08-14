@@ -57,6 +57,7 @@ export function LoginPage() {
       setLoading(true);
       setErrorMsg('');
       await authService.guestLogin();
+      useNotificationStore.getState().clearAll();
       useNotificationStore.getState().add('Signed in as Guest User', 'info');
       useNotificationStore.getState().add(`New authentication session created from ${getDeviceOSString()}`, 'warning');
       navigate('/workspaces');
@@ -91,9 +92,11 @@ export function LoginPage() {
       setLoading(true);
       if (mode === 'signup') {
         await authService.signup({ email, password, displayName: displayName.trim() });
+        useNotificationStore.getState().clearAll();
         useNotificationStore.getState().add(`Account created for ${email}. Welcome to Voxel!`, 'success');
       } else {
         await authService.login({ email, password });
+        useNotificationStore.getState().clearAll();
         useNotificationStore.getState().add(`Signed in successfully as ${email}`, 'success');
         useNotificationStore.getState().add(`New authentication session active on ${getDeviceOSString()}`, 'info');
       }

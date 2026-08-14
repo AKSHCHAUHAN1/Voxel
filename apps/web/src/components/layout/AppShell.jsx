@@ -88,6 +88,7 @@ export function AppShell() {
   const isGuestUser = user && (user.email === 'guest@voxel.com' || user.googleSubject === 'guest-google-sub');
 
   const logout = async () => {
+    useNotificationStore.getState().clearAll();
     await authService.logout();
     queryClient.clear();
     navigate('/login');
@@ -101,6 +102,17 @@ export function AppShell() {
       void logout();
     }
   };
+
+  // Clear previous notifications if user ID changes
+  useEffect(() => {
+    if (user?.id) {
+      const activeSessionUser = sessionStorage.getItem('voxel_active_user');
+      if (activeSessionUser && activeSessionUser !== user.id) {
+        useNotificationStore.getState().clearAll();
+      }
+      sessionStorage.setItem('voxel_active_user', user.id);
+    }
+  }, [user?.id]);
 
   // Sync theme with document.documentElement classList
   useEffect(() => {

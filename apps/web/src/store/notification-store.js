@@ -65,8 +65,12 @@ export const useNotificationStore = create((set, _get) => {
 
     clearAll() {
       set(() => {
-        save([]);
-        return { notifications: [] };
+        try {
+          localStorage.removeItem('voxel_notifications');
+        } catch (_e) {
+          // ignore
+        }
+        return { notifications: [], toasts: [] };
       });
     },
   };

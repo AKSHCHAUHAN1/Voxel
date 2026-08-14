@@ -16,6 +16,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { useThemeStore } from '@/store/theme-store';
+import { useNotificationStore } from '@/store/notification-store';
 import { workspaceService } from '@/features/workspaces/workspace-service';
 import { authService } from '@/features/auth/auth-service';
 import { getAllShortcuts, formatCombo } from '@/lib/keyboard';
@@ -110,6 +111,7 @@ export function CommandPalette({ open, onClose, onLogout }) {
         if (onLogout) {
           onLogout();
         } else {
+          useNotificationStore.getState().clearAll();
           await authService.logout();
           navigate('/login');
         }
