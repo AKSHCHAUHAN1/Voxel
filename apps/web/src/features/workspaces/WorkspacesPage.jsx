@@ -225,22 +225,22 @@ function WorkspaceCard({ workspace, onOpen, onContextMenu }) {
     <button
       onClick={onOpen}
       onContextMenu={onContextMenu}
-      className="group rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-lg dark:border-white/10 dark:bg-slate-900 dark:hover:border-violet-400/40"
+      className="group relative rounded-3xl border border-slate-200/90 bg-white/90 p-6 text-left shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-violet-500/50 hover:shadow-xl hover:shadow-violet-500/10 dark:border-white/10 dark:bg-[#0c111e]/90 backdrop-blur-xl cursor-pointer"
     >
       <div className="flex items-start justify-between">
-        <span className="grid size-11 place-items-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200">
-          <LayoutDashboard size={20} />
+        <span className="grid size-12 place-items-center rounded-2xl bg-gradient-to-br from-violet-500/15 to-indigo-500/15 text-violet-600 dark:text-violet-300 border border-violet-500/20 group-hover:scale-105 transition-transform">
+          <LayoutDashboard size={22} />
         </span>
-        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:bg-white/5 dark:text-slate-400">
+        <span className="rounded-full bg-slate-100 dark:bg-white/5 border border-slate-200/60 dark:border-white/10 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
           {workspace.role}
         </span>
       </div>
-      <h2 className="mt-6 text-base font-semibold">{workspace.name}</h2>
-      <p className="mt-2 min-h-10 text-sm leading-5 text-slate-500 dark:text-slate-400">
-        {workspace.description || 'A focused visual space for this team.'}
+      <h2 className="mt-5 text-lg font-bold text-slate-900 dark:text-white tracking-tight">{workspace.name}</h2>
+      <p className="mt-2 min-h-10 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+        {workspace.description || 'A focused visual workspace for collaborative modeling and data telemetry.'}
       </p>
-      <span className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-violet-600 dark:text-violet-300">
-        Open workspace <ArrowRight size={15} className="transition group-hover:translate-x-1" />
+      <span className="mt-4 inline-flex items-center gap-2 text-xs font-bold text-violet-600 dark:text-violet-400 group-hover:text-violet-500">
+        Open workspace <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
       </span>
     </button>
   );
@@ -254,51 +254,51 @@ function EditWorkspaceDialog({ workspace, pending, onClose, onSubmit }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4 backdrop-blur-md"
       onMouseDown={onClose}
     >
       <form
         onSubmit={handleSubmit((data) => onSubmit(data.name, data.description ?? null))}
         onMouseDown={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900"
+        className="w-full max-w-md rounded-3xl border border-slate-200/90 bg-white p-7 shadow-2xl dark:border-white/10 dark:bg-[#0e1322] backdrop-blur-xl"
       >
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">Rename workspace</h2>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Rename workspace</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10"
+            className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 transition cursor-pointer"
           >
             <X size={18} />
           </button>
         </div>
-        <label className="block text-sm font-medium">
+        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
           Name
           <input
             {...register('name')}
             autoFocus
-            className="mt-2 w-full rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 outline-none ring-violet-400 focus:ring-2 dark:border-white/10"
+            className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50/50 dark:bg-white/5 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white outline-none ring-violet-500/40 focus:ring-2 dark:border-white/10 focus:border-violet-500"
           />
         </label>
-        <label className="mt-4 block text-sm font-medium">
+        <label className="mt-4 block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
           Description <span className="font-normal text-slate-400">(optional)</span>
           <textarea
             {...register('description')}
             rows={3}
-            className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 outline-none ring-violet-400 focus:ring-2 dark:border-white/10"
+            className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-slate-50/50 dark:bg-white/5 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white outline-none ring-violet-500/40 focus:ring-2 dark:border-white/10 focus:border-violet-500"
           />
         </label>
-        <div className="mt-6 flex justify-end gap-2">
+        <div className="mt-6 flex justify-end gap-2.5">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300"
+            className="rounded-xl px-4 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition cursor-pointer"
           >
             Cancel
           </button>
           <button
             disabled={pending}
-            className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+            className="rounded-xl bg-violet-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-violet-500 shadow-md shadow-violet-600/20 disabled:opacity-60 transition cursor-pointer"
           >
             {pending ? 'Saving…' : 'Save Changes'}
           </button>
@@ -310,18 +310,17 @@ function EditWorkspaceDialog({ workspace, pending, onClose, onSubmit }) {
 
 function EmptyState({ onCreate }) {
   return (
-    <div className="col-span-full rounded-2xl border border-dashed border-violet-300 bg-violet-50/70 p-12 text-center dark:border-violet-500/40 dark:bg-violet-500/5">
-      <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-white text-violet-600 shadow-sm dark:bg-slate-900">
-        <Sparkles size={21} />
+    <div className="col-span-full rounded-3xl border border-dashed border-violet-300/80 bg-violet-50/50 p-12 text-center dark:border-violet-500/30 dark:bg-violet-500/5 backdrop-blur-sm">
+      <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-white text-violet-600 shadow-md dark:bg-slate-900 border border-violet-100 dark:border-violet-500/20">
+        <Sparkles size={24} />
       </span>
-      <h2 className="mt-4 text-lg font-semibold">Your first workspace starts here</h2>
-      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
-        Create a secure home for visual systems, shared context, and the decisions that move your
-        work forward.
+      <h2 className="mt-4 text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">Your first workspace starts here</h2>
+      <p className="mx-auto mt-2 max-w-md text-xs leading-relaxed text-slate-500 dark:text-slate-400 font-medium">
+        Create a secure visual home for systems architecture, live metric telemetry, and collaborative team dashboards.
       </p>
       <button
         onClick={onCreate}
-        className="mt-5 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white"
+        className="mt-6 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-violet-500 shadow-lg shadow-violet-600/25 transition cursor-pointer hover:scale-105 active:scale-95"
       >
         <FolderPlus size={16} /> Create workspace
       </button>

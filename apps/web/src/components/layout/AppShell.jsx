@@ -327,20 +327,20 @@ export function AppShell() {
             : 'lg:pl-64 transition-all duration-300'
         }
       >
-        <header className="sticky top-0 z-40 flex h-20 items-center justify-between border-b border-slate-200 bg-slate-50/70 px-5 backdrop-blur-md dark:border-white/10 dark:bg-slate-950/70 sm:px-8">
+        <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-slate-200/80 bg-white/80 px-5 backdrop-blur-xl dark:border-white/10 dark:bg-[#060913]/80 sm:px-8 transition-colors">
           <Link
             to="/workspaces"
-            className="flex items-center justify-center size-9 rounded-xl bg-violet-600 text-white lg:hidden overflow-hidden"
+            className="flex items-center justify-center size-9 rounded-xl bg-violet-600 text-white lg:hidden overflow-hidden shadow-sm"
           >
             <img src={appIcon} alt="Voxel" className="w-6 h-6 object-contain block dark:hidden" />
             <img src={appIconDark} alt="Voxel" className="w-6 h-6 object-contain hidden dark:block" />
           </Link>
 
-          {/* Inline Dropdown Search Bar */}
-          <div className="relative w-full max-w-md" ref={searchRef}>
+          {/* Inline Dropdown Search Bar with ⌘K Badge */}
+          <div className="relative w-full max-w-md hidden sm:block" ref={searchRef}>
             <Search
-              size={18}
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500"
+              size={16}
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500"
             />
             <input
               ref={searchInputRef}
@@ -352,11 +352,16 @@ export function AppShell() {
                 setSearchDropdownOpen(true);
               }}
               onFocus={() => setSearchDropdownOpen(true)}
-              className="w-full bg-slate-100 dark:bg-white/5 border-none rounded-full pl-12 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-violet-500/40 focus:bg-white dark:focus:bg-slate-900 transition-all text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none"
+              className="w-full bg-slate-100/80 dark:bg-white/5 border border-transparent dark:border-white/5 rounded-xl pl-10 pr-12 py-2 text-xs focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/40 focus:bg-white dark:focus:bg-slate-900 transition-all text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none"
             />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+              <kbd className="px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 font-mono text-[9px] font-bold text-slate-400">
+                ⌘K
+              </kbd>
+            </div>
 
             {searchDropdownOpen && (
-              <div className="absolute top-full left-0 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl dark:border-white/10 dark:bg-slate-900 z-50 overflow-hidden max-h-80 overflow-y-auto">
+              <div className="absolute top-full left-0 mt-2 w-full rounded-2xl border border-slate-200/90 bg-white/95 p-3 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#0c111e]/95 z-50 overflow-hidden max-h-80 overflow-y-auto">
                 <p className="text-[10px] font-bold text-slate-400 px-3 py-1 uppercase tracking-wider">
                   Workspaces
                 </p>
@@ -367,11 +372,11 @@ export function AppShell() {
                       navigate(`/workspaces/${ws.id}/dashboards`);
                       setSearchDropdownOpen(false);
                     }}
-                    className="flex w-full items-center gap-3 px-3 py-2 rounded-xl text-left text-xs hover:bg-violet-50 dark:hover:bg-violet-500/10 transition"
+                    className="flex w-full items-center gap-3 px-3 py-2 rounded-xl text-left text-xs hover:bg-violet-50 dark:hover:bg-violet-500/10 transition cursor-pointer"
                   >
                     <Boxes size={15} className="text-violet-500" />
                     <div>
-                      <div className="font-semibold">{ws.name}</div>
+                      <div className="font-semibold text-slate-900 dark:text-white">{ws.name}</div>
                       <div className="text-[10px] text-slate-400">
                         {ws.description || 'View dashboards'}
                       </div>
@@ -393,11 +398,11 @@ export function AppShell() {
                       navigate(`/workspaces/${d.workspaceId}/dashboards/${d.id}`);
                       setSearchDropdownOpen(false);
                     }}
-                    className="flex w-full items-center gap-3 px-3 py-2 rounded-xl text-left text-xs hover:bg-violet-50 dark:hover:bg-violet-500/10 transition"
+                    className="flex w-full items-center gap-3 px-3 py-2 rounded-xl text-left text-xs hover:bg-violet-50 dark:hover:bg-violet-500/10 transition cursor-pointer"
                   >
                     <PanelsTopLeft size={15} className="text-violet-500" />
                     <div>
-                      <div className="font-semibold">{d.name}</div>
+                      <div className="font-semibold text-slate-900 dark:text-white">{d.name}</div>
                       <div className="text-[10px] text-slate-400">
                         {d.workspaceName}
                       </div>
@@ -423,10 +428,10 @@ export function AppShell() {
                       navigate(opt.path);
                       setSearchDropdownOpen(false);
                     }}
-                    className="flex w-full items-center gap-3 px-3 py-2 rounded-xl text-left text-xs hover:bg-violet-50 dark:hover:bg-violet-500/10 transition"
+                    className="flex w-full items-center gap-3 px-3 py-2 rounded-xl text-left text-xs hover:bg-violet-50 dark:hover:bg-violet-500/10 transition cursor-pointer"
                   >
                     <Settings size={15} className="text-slate-400" />
-                    <span className="font-semibold">{opt.label}</span>
+                    <span className="font-semibold text-slate-700 dark:text-slate-200">{opt.label}</span>
                   </button>
                 ))}
               </div>
@@ -434,14 +439,14 @@ export function AppShell() {
           </div>
 
           {/* Right side Controls matching Header.jsx */}
-          <div className="flex items-center gap-4 flex-shrink-0">
+          <div className="flex items-center gap-3 flex-shrink-0">
             {/* Command Shortcut Cheatsheet Button */}
             <button
               aria-label="Open command palette"
-              onClick={() => setCommandOpen(true)}
-              className="grid size-11 rounded-xl place-items-center text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all duration-300"
+              onClick={() => setCommandPaletteOpen(true)}
+              className="grid size-10 rounded-xl place-items-center text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all duration-200 cursor-pointer"
             >
-              <CommandIcon size={20} />
+              <CommandIcon size={18} />
             </button>
 
             {/* Notifications Button */}
@@ -449,46 +454,46 @@ export function AppShell() {
               <button
                 aria-label="Notifications"
                 onClick={() => setNotificationsOpen(!notificationsOpen)}
-                className="relative grid size-11 rounded-xl place-items-center text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all duration-300"
+                className="relative grid size-10 rounded-xl place-items-center text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all duration-200 cursor-pointer"
               >
-                <Bell size={20} />
+                <Bell size={18} />
                 {unreadCount > 0 && (
-                  <span className="absolute top-2.5 right-2.5 size-2 rounded-full bg-rose-500 animate-pulse" />
+                  <span className="absolute top-2 right-2 size-2 rounded-full bg-rose-500 animate-pulse" />
                 )}
               </button>
 
               {notificationsOpen && (
-                <div className="absolute right-0 top-14 w-80 rounded-2xl border border-slate-200 bg-white p-0 shadow-dramatic dark:border-white/10 dark:bg-slate-900 z-50 origin-top animate-scale-in">
+                <div className="absolute right-0 top-12 w-80 rounded-2xl border border-slate-200/90 bg-white/95 p-0 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#0c111e]/95 z-50 origin-top animate-scale-in">
                   <div className="p-4 border-b border-slate-100 dark:border-white/5 flex items-center justify-between">
                     <h3 className="font-extrabold text-sm text-slate-950 dark:text-white tracking-tight">
                       Notifications
                     </h3>
-                     {notifications.length > 0 && (
+                    {notifications.length > 0 && (
                       <button
                         onClick={() => clearAll()}
-                        className="uppercase font-bold text-slate-400 dark:text-slate-500 hover:text-rose-500 transition-colors"
+                        className="uppercase font-bold text-slate-400 dark:text-slate-500 hover:text-rose-500 transition-colors cursor-pointer"
                         style={{ fontSize: '8px', letterSpacing: '0.15em' }}
                       >
                         CLEAR ALL
                       </button>
                     )}
                   </div>
-                  <div className="max-h-80 overflow-y-auto">
-                    {notifications.map((notif, i) => (
+                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-white/5">
+                    {notifications.map((notif) => (
                       <div
                         key={notif.id}
-                        className="relative group p-4 flex items-start gap-3.5 bg-white dark:bg-slate-900 hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                        className="relative group p-3.5 flex items-start gap-3 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
                       >
                         <div
                           className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${notif.read ? 'bg-slate-200 dark:bg-slate-800' : 'bg-violet-600 dark:bg-violet-400 shadow-[0_0_8px_rgba(124,58,237,0.5)] animate-pulse'}`}
                         />
                         <div className="flex-1 min-w-0 pr-6">
                           <p
-                            className={`text-xs text-slate-900 dark:text-slate-100 leading-snug font-semibold`}
+                            className="text-xs text-slate-900 dark:text-slate-100 leading-snug font-semibold"
                           >
                             {notif.text}
                           </p>
-                          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 font-bold">
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 font-medium">
                             {notif.time}
                           </p>
                         </div>
@@ -497,14 +502,11 @@ export function AppShell() {
                             e.stopPropagation();
                             dismiss(notif.id);
                           }}
-                          className="absolute right-4 top-4 text-slate-400 hover:text-rose-500 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-all hover:bg-rose-50 dark:hover:bg-rose-500/10 shrink-0"
+                          className="absolute right-3 top-3 text-slate-400 hover:text-rose-500 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-all hover:bg-rose-50 dark:hover:bg-rose-500/10 shrink-0 cursor-pointer"
                           title="Dismiss"
                         >
                           <X size={12} />
                         </button>
-                        {i < notifications.length - 1 && (
-                          <div className="h-px w-full absolute bottom-0 left-0 bg-gradient-to-r from-transparent via-slate-100 dark:via-white/5 to-transparent opacity-60 z-0" />
-                        )}
                       </div>
                     ))}
                     {notifications.length === 0 && (
@@ -524,52 +526,50 @@ export function AppShell() {
             <button
               aria-label="Toggle theme"
               onClick={handleThemeToggle}
-              className="grid size-11 rounded-xl place-items-center text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all duration-300"
+              className="grid size-10 rounded-xl place-items-center text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all duration-200 cursor-pointer"
             >
-              {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+              {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
             </button>
 
-            {/* Profile Avatar VX dropdown area */}
-            <div className="flex items-center gap-3 relative" ref={userMenuRef}>
-              <div className="text-right hidden md:block select-none leading-snug">
+            {/* Profile Avatar dropdown */}
+            <div className="flex items-center gap-2.5 relative" ref={userMenuRef}>
+              <div className="text-right hidden md:block select-none leading-tight">
                 <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
                   {displayName}
                 </p>
-                {isGoogleLogin && (
-                  <p className="text-[9px] text-slate-400 uppercase tracking-wider font-semibold opacity-70">
-                    Verified User
-                  </p>
-                )}
+                <p className="text-[9px] text-slate-400 uppercase tracking-wider font-semibold opacity-70">
+                  {isGoogleLogin ? 'Verified Member' : 'Guest Member'}
+                </p>
               </div>
 
               <button
                 onClick={() => setMenuOpen(!menuOpen)}
-                className="flex items-center gap-1.5 rounded-full p-1 border border-slate-200/60 dark:border-white/10 bg-slate-50 dark:bg-white/5 hover:scale-105 transition-all duration-300"
+                className="flex items-center gap-1.5 rounded-full p-0.5 border border-slate-200/60 dark:border-white/10 bg-slate-50 dark:bg-white/5 hover:scale-105 transition-all duration-200 cursor-pointer"
               >
-                <span className="grid size-8 place-items-center rounded-full bg-violet-600 text-xs font-bold text-white shadow-md">
+                <span className="grid size-8 place-items-center rounded-full bg-gradient-to-br from-violet-600 to-indigo-600 text-xs font-bold text-white shadow-md">
                   {avatarInitials}
                 </span>
-                <ChevronDown size={14} className="text-slate-400" />
+                <ChevronDown size={12} className="text-slate-400 mr-1" />
               </button>
 
               {menuOpen && (
-                <div className="absolute right-0 top-12 w-48 rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-white/10 dark:bg-slate-900 z-50">
+                <div className="absolute right-0 top-11 w-52 rounded-2xl border border-slate-200/90 bg-white/95 p-1.5 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#0c111e]/95 z-50 animate-scale-in">
                   <div className="px-3 py-2 border-b border-slate-100 dark:border-white/5">
-                    <div className="text-xs font-semibold">{displayName}</div>
-                    <div className="text-[10px] text-slate-400">{email}</div>
+                    <div className="text-xs font-bold text-slate-900 dark:text-white truncate">{displayName}</div>
+                    <div className="text-[10px] text-slate-400 truncate">{email}</div>
                   </div>
                   <Link
                     to="/settings"
                     onClick={() => setMenuOpen(false)}
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/5"
+                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/5 transition"
                   >
-                    <User size={15} /> My Settings
+                    <User size={14} /> My Settings
                   </Link>
                   <button
                     onClick={handleLogoutClick}
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 cursor-pointer"
+                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 cursor-pointer transition"
                   >
-                    <LogOut size={15} /> Sign out
+                    <LogOut size={14} /> Sign out
                   </button>
                 </div>
               )}

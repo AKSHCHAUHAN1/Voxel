@@ -185,8 +185,41 @@ html.dark .shimmer-text {
   background-clip: text;
 }
 
+/* Custom Utilities & Glow Effects */
+.no-scrollbars::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbars {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.gradient-glow-violet {
+  background: radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.15), transparent 70%);
+}
+
+.gradient-glow-indigo {
+  background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.15), transparent 70%);
+}
+
+.glow-border {
+  position: relative;
+}
+.glow-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(to bottom right, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
 /* --- NOTHING OS POWER RIPPLE VIEW TRANSITIONS --- */
-::view-transition-old(root),
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;

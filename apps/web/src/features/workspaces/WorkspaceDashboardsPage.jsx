@@ -377,7 +377,11 @@ Sync Nodes: Active
         </div>
       </div>
       {dashboards.isPending && (
-        <div className="mt-8 h-48 animate-pulse rounded-2xl bg-slate-200 dark:bg-white/5" />
+        <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-48 animate-pulse rounded-3xl bg-slate-200/70 dark:bg-white/5" />
+          ))}
+        </div>
       )}
       {dashboards.data && (
         <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -386,34 +390,39 @@ Sync Nodes: Active
               key={dashboard.id}
               onContextMenu={(e) => handleRightClick(e, dashboard)}
               onClick={() => navigate(`/workspaces/${workspaceId}/dashboards/${dashboard.id}`)}
-              className="group rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm hover:border-violet-300 hover:shadow-lg dark:border-white/10 dark:bg-slate-900 cursor-pointer transition hover:-translate-y-0.5"
+              className="group relative rounded-3xl border border-slate-200/90 bg-white/90 p-6 text-left shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-violet-500/50 hover:shadow-xl hover:shadow-violet-500/10 dark:border-white/10 dark:bg-[#0c111e]/90 backdrop-blur-xl cursor-pointer"
             >
               <div className="flex items-start justify-between">
-                <span className="grid size-11 place-items-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200">
-                  <LayoutDashboard size={20} />
+                <span className="grid size-12 place-items-center rounded-2xl bg-gradient-to-br from-violet-500/15 to-indigo-500/15 text-violet-600 dark:text-violet-300 border border-violet-500/20 group-hover:scale-105 transition-transform">
+                  <LayoutDashboard size={22} />
+                </span>
+                <span className="rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/30 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                  Active Canvas
                 </span>
               </div>
-              <h2 className="mt-6 text-base font-semibold">{dashboard.name}</h2>
-              <p className="mt-2 min-h-10 text-sm leading-5 text-slate-500 dark:text-slate-400">
-                {dashboard.description || 'A visual canvas ready for your system.'}
+              <h2 className="mt-5 text-lg font-bold text-slate-900 dark:text-white tracking-tight">{dashboard.name}</h2>
+              <p className="mt-2 min-h-10 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                {dashboard.description || 'A visual system for metrics, pipeline logic, and live telemetry.'}
               </p>
-              <span className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-violet-600 dark:text-violet-300">
-                Open canvas{' '}
-                <ArrowRight size={15} className="transition group-hover:translate-x-1" />
+              <span className="mt-4 inline-flex items-center gap-2 text-xs font-bold text-violet-600 dark:text-violet-400 group-hover:text-violet-500">
+                Open canvas <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
               </span>
             </div>
           ))}
           {dashboards.data.length === 0 && (
-            <div className="col-span-full rounded-2xl border border-dashed border-violet-300 bg-violet-50/60 p-12 text-center dark:border-violet-500/30 dark:bg-violet-500/5">
-              <h2 className="text-lg font-semibold">Create the first canvas</h2>
-              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                A dashboard gives your workspace a visual system for shared thinking and operations.
+            <div className="col-span-full rounded-3xl border border-dashed border-violet-300/80 bg-violet-50/50 p-12 text-center dark:border-violet-500/30 dark:bg-violet-500/5 backdrop-blur-sm">
+              <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-white text-violet-600 shadow-md dark:bg-slate-900 border border-violet-100 dark:border-violet-500/20">
+                <LayoutDashboard size={24} />
+              </span>
+              <h2 className="mt-4 text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">Create the first canvas</h2>
+              <p className="mx-auto mt-2 max-w-md text-xs leading-relaxed text-slate-500 dark:text-slate-400 font-medium">
+                A dashboard gives your workspace a visual system for live metrics, formulas, node pipelines, and team operations.
               </p>
               <button
                 onClick={() => setDialogOpen(true)}
-                className="mt-5 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-500"
+                className="mt-6 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-violet-500 shadow-lg shadow-violet-600/25 transition cursor-pointer hover:scale-105 active:scale-95"
               >
-                New dashboard
+                <Plus size={16} /> New dashboard
               </button>
             </div>
           )}
