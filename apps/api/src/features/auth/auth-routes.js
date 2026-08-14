@@ -58,89 +58,53 @@ const applySessionCookies = (reply, tokens, environment) => {
 export const registerAuthRoutes = async (app, environment) => {
   const authService = new AuthService(prisma, environment);
 
-  // Google OAuth 2.0 PKCE Flow (Production) with Seamless Dev Fallback
-  const isRealGoogleOAuthConfigured =
-    environment.GOOGLE_CLIENT_ID &&
-    !environment.GOOGLE_CLIENT_ID.startsWith('mock') &&
-    environment.GOOGLE_CLIENT_SECRET &&
-    !environment.GOOGLE_CLIENT_SECRET.startsWith('mock');
-
-  if (isRealGoogleOAuthConfigured) {
-    await app.register(oauthPlugin, {
-      name: 'googleOAuth2',
-      scope: ['openid', 'profile', 'email'],
-      credentials: {
-        client: { id: environment.GOOGLE_CLIENT_ID, secret: environment.GOOGLE_CLIENT_SECRET },
-        auth: {
-          tokenHost: 'https://oauth2.googleapis.com',
-          tokenPath: '/token',
-          authorizeHost: 'https://accounts.google.com',
-          authorizePath: '/o/oauth2/v2/auth',
-        },
+  // Official Google OAuth 2.0 PKCE Flow (accounts.google.com)
+  await app.register(oauthPlugin, {
+    name: 'googleOAuth2',
+    scope: ['openid', 'profile', 'email'],
+    credentials: {
+      client: { id: environment.GOOGLE_CLIENT_ID, secret: environment.GOOGLE_CLIENT_SECRET },
+      auth: {
+        tokenHost: 'https://oauth2.googleapis.com',
+        tokenPath: '/token',
+        authorizeHost: 'https://accounts.google.com',
+        authorizePath: '/o/oauth2/v2/auth',
       },
-      startRedirectPath: '/api/v1/auth/google',
-      callbackUri: `${environment.VOXEL_PUBLIC_APP_URL}/api/v1/auth/google/callback`,
-      pkce: 'S256',
-    });
+    },
+    startRedirectPath: '/api/v1/auth/google',
+    callbackUri: `${environment.VOXEL_PUBLIC_APP_URL}/api/v1/auth/google/callback`,
+    pkce: 'S256',
+  });
 
-    app.get('/api/v1/auth/google/callback', async (request, reply) => {
-      try {
-        const oauthClient = app.oauth2GoogleOAuth2;
-        if (!oauthClient) throw new Error('Google OAuth is not registered.');
-        const { token } = await oauthClient.getAccessTokenFromAuthorizationCodeFlow(request, reply);
-        const response = await fetch(GOOGLE_USER_INFO_URL, {
-          headers: { Authorization: `Bearer ${token.access_token}` },
-        });
-        if (!response.ok) throw new AuthenticationError('Google identity could not be verified.');
-        const rawIdentity = await response.json();
-        const parsed = googleIdentitySchema.parse(rawIdentity);
-        const identity = {
-          subject: parsed.sub,
-          email: parsed.email,
-          emailVerified: parsed.email_verified,
-          displayName: parsed.name,
-          ...(parsed.picture ? { avatarUrl: parsed.picture } : {}),
-        };
-        const tokens = await authService.createSession(identity, {
-          ip: request.ip,
-          ...(request.headers['user-agent'] ? { userAgent: request.headers['user-agent'] } : {}),
-        });
-        applySessionCookies(reply, tokens, environment);
-        return reply.redirect(`${environment.VOXEL_PUBLIC_APP_URL}/workspaces`);
-      } catch (error) {
-        request.log.error(error, 'Google OAuth callback error');
-        return reply.redirect(`${environment.VOXEL_PUBLIC_APP_URL}/login?error=google_oauth_failed`);
-      }
-    });
-  } else {
-    // Development / Local Google OAuth fallback
-    app.get('/api/v1/auth/google', async (request, reply) => {
-      const email = request.query?.email || 'aksh111828@gmail.com';
-      const displayName =
-        request.query?.name ||
-        (email.split('@')[0] ? email.split('@')[0].replace(/[._-]/g, ' ') : 'Google User');
-      const formattedName = displayName
-        .split(' ')
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' ');
-
+  app.get('/api/v1/auth/google/callback', async (request, reply) => {
+    try {
+      const oauthClient = app.oauth2GoogleOAuth2;
+      if (!oauthClient) throw new Error('Google OAuth is not registered.');
+      const { token } = await oauthClient.getAccessTokenFromAuthorizationCodeFlow(request, reply);
+      const response = await fetch(GOOGLE_USER_INFO_URL, {
+        headers: { Authorization: `Bearer ${token.access_token}` },
+      });
+      if (!response.ok) throw new AuthenticationError('Google identity could not be verified.');
+      const rawIdentity = await response.json();
+      const parsed = googleIdentitySchema.parse(rawIdentity);
       const identity = {
-        subject: `google-sub-${email.replace(/[^a-zA-Z0-9]/g, '_')}`,
-        email,
-        emailVerified: true,
-        displayName: formattedName,
-        avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`,
+        subject: parsed.sub,
+        email: parsed.email,
+        emailVerified: parsed.email_verified,
+        displayName: parsed.name,
+        ...(parsed.picture ? { avatarUrl: parsed.picture } : {}),
       };
-
       const tokens = await authService.createSession(identity, {
         ip: request.ip,
         ...(request.headers['user-agent'] ? { userAgent: request.headers['user-agent'] } : {}),
       });
-
       applySessionCookies(reply, tokens, environment);
       return reply.redirect(`${environment.VOXEL_PUBLIC_APP_URL}/workspaces`);
-    });
-  }
+    } catch (error) {
+      request.log.error(error, 'Google OAuth callback error');
+      return reply.redirect(`${environment.VOXEL_PUBLIC_APP_URL}/login?error=google_oauth_failed`);
+    }
+  });
 
   app.post('/api/v1/auth/signup', async (request, reply) => {
     const input = signupSchema.parse(request.body);
