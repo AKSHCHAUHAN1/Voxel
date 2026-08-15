@@ -347,25 +347,36 @@ export default function EditorPage() {
           }
         };
 
+        const getNodeHeight = (type) => {
+          switch (type) {
+            case 'image': return 240;
+            case 'chart': return 220;
+            case 'table': return 260;
+            case 'code': return 220;
+            case 'metric': return 160;
+            default: return 180;
+          }
+        };
+
         const minX = Math.min(...nodes.map((n) => n.x ?? 40));
         const maxX = Math.max(...nodes.map((n) => (n.x ?? 40) + getNodeWidth(n.size)));
         const minY = Math.min(...nodes.map((n) => n.y ?? 40));
-        const maxY = Math.max(...nodes.map((n) => (n.y ?? 40) + 180));
+        const maxY = Math.max(...nodes.map((n) => (n.y ?? 40) + getNodeHeight(n.type)));
 
         // 1200px container padding + 48px inner grid padding
         const centerX = 1200 + 48 + (minX + maxX) / 2;
         const centerY = 1200 + 48 + (minY + maxY) / 2;
 
         return {
-          left: Math.max(0, centerX - containerWidth / 2),
-          top: Math.max(0, centerY - containerHeight / 2),
+          left: Math.max(0, Math.round(centerX - containerWidth / 2)),
+          top: Math.max(0, Math.round(centerY - containerHeight / 2)),
         };
       } else {
         const centerX = 1200 + 48 + 400;
         const centerY = 1200 + 48 + 300;
         return {
-          left: Math.max(0, centerX - containerWidth / 2),
-          top: Math.max(0, centerY - containerHeight / 2),
+          left: Math.max(0, Math.round(centerX - containerWidth / 2)),
+          top: Math.max(0, Math.round(centerY - containerHeight / 2)),
         };
       }
     };
@@ -386,7 +397,7 @@ export default function EditorPage() {
           behavior: 'smooth',
         });
       }
-    }, 50);
+    }, 60);
   }, [scene?.nodes]);
 
   // Initial 360-degree scroll position centering
@@ -405,17 +416,29 @@ export default function EditorPage() {
             default: return 280;
           }
         };
+        const getNodeHeight = (type) => {
+          switch (type) {
+            case 'image': return 240;
+            case 'chart': return 220;
+            case 'table': return 260;
+            case 'code': return 220;
+            case 'metric': return 160;
+            default: return 180;
+          }
+        };
         const minX = Math.min(...nodes.map((n) => n.x ?? 40));
         const maxX = Math.max(...nodes.map((n) => (n.x ?? 40) + getNodeWidth(n.size)));
         const minY = Math.min(...nodes.map((n) => n.y ?? 40));
-        const maxY = Math.max(...nodes.map((n) => (n.y ?? 40) + 180));
+        const maxY = Math.max(...nodes.map((n) => (n.y ?? 40) + getNodeHeight(n.type)));
         const centerX = 1200 + 48 + (minX + maxX) / 2;
         const centerY = 1200 + 48 + (minY + maxY) / 2;
-        container.scrollLeft = Math.max(0, centerX - containerWidth / 2);
-        container.scrollTop = Math.max(0, centerY - containerHeight / 2);
+        container.scrollLeft = Math.max(0, Math.round(centerX - containerWidth / 2));
+        container.scrollTop = Math.max(0, Math.round(centerY - containerHeight / 2));
       } else {
-        container.scrollLeft = Math.max(0, 1200 + 1200 - containerWidth / 2);
-        container.scrollTop = Math.max(0, 1200 + 900 - containerHeight / 2);
+        const centerX = 1200 + 48 + 400;
+        const centerY = 1200 + 48 + 300;
+        container.scrollLeft = Math.max(0, Math.round(centerX - containerWidth / 2));
+        container.scrollTop = Math.max(0, Math.round(centerY - containerHeight / 2));
       }
     }
   }, [dashboard.data?.id]);
@@ -1663,14 +1686,14 @@ export default function EditorPage() {
           >
             {/* The infinite board sheet */}
             <div
-              className="relative select-none transition-transform duration-150 ease-out flex flex-col justify-center items-center"
+              className="relative select-none transition-transform duration-150 ease-out"
               style={{
                 width: zoom < 1 ? `${(100 / zoom).toFixed(2)}%` : '100%',
                 height: zoom < 1 ? `${(100 / zoom).toFixed(2)}%` : '100%',
                 minWidth: '2400px',
                 minHeight: '1800px',
                 transform: `scale(${zoom})`,
-                transformOrigin: '50% 50%',
+                transformOrigin: '0 0',
               }}
             >
               {/* Main SVG connections canvas overlay */}
