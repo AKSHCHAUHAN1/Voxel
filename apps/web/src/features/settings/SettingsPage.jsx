@@ -54,6 +54,24 @@ const LANGUAGES = [
   'Thai (ไทย)',
 ];
 
+const JOB_ROLES = [
+  'Product Engineer',
+  'Software Engineer / Developer',
+  'Frontend Engineer',
+  'Backend Engineer',
+  'Full Stack Developer',
+  'DevOps / SRE / Platform Engineer',
+  'Data Scientist / AI / ML Engineer',
+  'Product Designer / UI/UX',
+  'Product Manager',
+  'Engineering Manager / Tech Lead',
+  'Founder / Executive / CTO',
+  'Solutions Architect',
+  'Business / Operations Analyst',
+  'Student / Researcher',
+  'Other',
+];
+
 const TIMEZONES = [
   { id: 'Pacific/Honolulu', offset: -600, label: 'Hawaii (Honolulu)' },
   { id: 'America/Anchorage', offset: -540, label: 'Alaska (Anchorage)' },
@@ -141,6 +159,8 @@ export default function SettingsPage() {
   const [displayName, setDisplayName] = useState(user?.displayName || 'User');
   const [email, setEmail] = useState(user?.email || 'user@voxel.com');
   const [jobTitle, setJobTitle] = useState('Product Engineer');
+  const [isCustomRole, setIsCustomRole] = useState(false);
+  const [customRoleInput, setCustomRoleInput] = useState('');
   const [timezone, setTimezone] = useState('America/Los_Angeles');
   const [language, setLanguage] = useState('English (US)');
   const [bio, setBio] = useState('Designing interactive canvas workspaces and visual telemetry systems.');
@@ -504,12 +524,41 @@ export default function SettingsPage() {
                         <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
                           Job Title / Role
                         </label>
-                        <input
-                          type="text"
-                          value={jobTitle}
-                          onChange={(e) => setJobTitle(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-white/10"
-                        />
+                        <select
+                          value={isCustomRole ? 'Other' : (JOB_ROLES.includes(jobTitle) ? jobTitle : 'Other')}
+                          onChange={(e) => {
+                            if (e.target.value === 'Other') {
+                              setIsCustomRole(true);
+                              setJobTitle(customRoleInput || '');
+                            } else {
+                              setIsCustomRole(false);
+                              setJobTitle(e.target.value);
+                            }
+                          }}
+                          className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-white/10 dark:bg-slate-900"
+                        >
+                          {JOB_ROLES.map((role) => (
+                            <option key={role} value={role}>
+                              {role}
+                            </option>
+                          ))}
+                        </select>
+
+                        {isCustomRole && (
+                          <div className="mt-2">
+                            <input
+                              type="text"
+                              value={customRoleInput}
+                              placeholder="Enter your custom role or title..."
+                              autoFocus
+                              onChange={(e) => {
+                                setCustomRoleInput(e.target.value);
+                                setJobTitle(e.target.value);
+                              }}
+                              className="w-full rounded-xl border border-violet-400/80 bg-violet-50/40 dark:bg-violet-950/30 px-3.5 py-2 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-violet-500/30 dark:text-white"
+                            />
+                          </div>
+                        )}
                       </div>
 
                       <div>
