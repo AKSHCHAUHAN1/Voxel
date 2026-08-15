@@ -77,7 +77,7 @@ const sceneOf = (value) => {
 };
 
 // Node Defaults builder
-const newNode = (type) => {
+const newNode = (type, x = 40, y = 40) => {
   const defaults = {
     note: {
       title: 'Untitled Note',
@@ -174,6 +174,8 @@ const newNode = (type) => {
   return {
     id: crypto.randomUUID(),
     type,
+    x,
+    y,
     title: defaults[type].title || 'Untitled Node',
     content: defaults[type].content || '',
     size: defaults[type].size || 'medium',
@@ -1138,7 +1140,86 @@ export default function EditorPage() {
   useShortcut('meta+0', handleResetZoom, { label: 'Reset Zoom', category: 'Editor' }, []);
 
   const add = (type) => {
-    update({ ...scene, nodes: [...scene.nodes, newNode(type)] });
+    const existingNodes = scene.nodes || [];
+
+    // Node width & height approximations for collision detection
+    const getW = (size) => ({ small: 220, large: 340, wide: 440 }[size] ?? 280);
+    const getH = (t) => ({ image: 240, chart: 220, table: 260, code: 220, metric: 160 }[t] ?? 180);
+
+    const incomingSize = {
+      note: 'wide', metric: 'medium', progress: 'medium', chart: 'medium',
+      status: 'small', logic: 'medium', image: 'medium', embed: 'wide',
+      table: 'wide', timer: 'medium', link: 'medium', divider: 'wide', code: 'wide',
+    }[type] ?? 'medium';
+    const newW = getW(incomingSize);
+    const newH = getH(type);
+    const gap = 20; // gap between cards
+
+    /**
+     * Tests whether a candidate rect (cx, cy, cw, ch) overlaps any existing node.
+     */
+    const overlaps = (cx, cy, cw, ch) => {
+      return existingNodes.some((n) => {
+        const nx = n.x ?? 40;
+        const ny = n.y ?? 40;
+        const nw = getW(n.size);
+        const nh = getH(n.type);
+        // AABB overlap check with gap buffer
+        return (
+          cx < nx + nw + gap &&
+          cx + cw + gap > nx &&
+          cy < ny + nh + gap &&
+          cy + ch + gap > ny
+        );
+      });
+    };
+
+    /**
+     * Find a clear position using a spiral scan over a virtual grid.
+     * Start from top-left of the node cluster and scan rightward then downward.
+     */
+    const findFreePosition = () => {
+      if (existingNodes.length === 0) return { x: 40, y: 40 };
+
+      // Bounding box of all existing nodes
+      const minX = Math.min(...existingNodes.map((n) => n.x ?? 40));
+      const minY = Math.min(...existingNodes.map((n) => n.y ?? 40));
+      const maxX = Math.max(...existingNodes.map((n) => (n.x ?? 40) + getW(n.size)));
+      const maxY = Math.max(...existingNodes.map((n) => (n.y ?? 40) + getH(n.type)));
+
+      const colW = newW + gap;
+      const rowH = newH + gap;
+
+      // First: try placing to the right of the last node cluster
+      const candidateRight = { x: maxX + gap, y: minY };
+      if (!overlaps(candidateRight.x, candidateRight.y, newW, newH)) return candidateRight;
+
+      // Second: try placing below the cluster
+      const candidateBelow = { x: minX, y: maxY + gap };
+      if (!overlaps(candidateBelow.x, candidateBelow.y, newW, newH)) return candidateBelow;
+
+      // Spiral grid scan: scan in expanding rows/columns starting from top-left
+      const startX = Math.max(40, minX);
+      const startY = Math.max(40, minY);
+      const cols = 12;
+      const rows = 12;
+
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const cx = startX + col * colW;
+          const cy = startY + row * rowH;
+          if (!overlaps(cx, cy, newW, newH)) {
+            return { x: cx, y: cy };
+          }
+        }
+      }
+
+      // Fallback: place below and to the right of everything
+      return { x: maxX + gap, y: maxY + gap };
+    };
+
+    const { x, y } = findFreePosition();
+    update({ ...scene, nodes: [...scene.nodes, newNode(type, x, y)] });
     setPickerOpen(false);
   };
 
