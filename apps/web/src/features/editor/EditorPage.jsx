@@ -622,25 +622,35 @@ export default function EditorPage() {
       const maxX = Math.max(...existingNodes.map((n) => (n.x ?? 40) + getW(n.size ?? 'medium')));
       const maxY = Math.max(...existingNodes.map((n) => (n.y ?? 40) + getH(n.type)));
 
-      // 1) Try right of cluster
-      if (!overlaps(maxX + gap, minY)) return { x: maxX + gap, y: minY };
-      // 2) Try below cluster
-      if (!overlaps(minX, maxY + gap)) return { x: minX, y: maxY + gap };
+      // Cluster center – used to sort candidates by proximity so nodes fill 2D space
+      const clusterCX = (minX + maxX) / 2;
+      const clusterCY = (minY + maxY) / 2;
 
-      // 3) Grid scan from top-left
-      const startX = Math.max(40, minX);
-      const startY = Math.max(40, minY);
       const colW = newW + gap;
       const rowH = newH + gap;
-      for (let row = 0; row < 12; row++) {
-        for (let col = 0; col < 12; col++) {
-          const cx = startX + col * colW;
-          const cy = startY + row * rowH;
-          if (!overlaps(cx, cy)) return { x: cx, y: cy };
+
+      // Build a wide 2D grid of candidate positions around the cluster.
+      // Rows go from -5 (above) to +8 (below); cols from -3 (left) to +10 (right).
+      // Each candidate's slot origin is aligned to the cluster top-left.
+      const candidates = [];
+      for (let row = -5; row <= 8; row++) {
+        for (let col = -3; col <= 10; col++) {
+          const cx = Math.max(40, minX + col * colW);
+          const cy = Math.max(40, minY + row * rowH);
+          // Distance of the candidate's center from the cluster center
+          const dist = Math.hypot((cx + newW / 2) - clusterCX, (cy + newH / 2) - clusterCY);
+          candidates.push({ x: cx, y: cy, dist });
         }
       }
 
-      // 4) Absolute fallback
+      // Sort by distance so the nearest free slot wins — fills all directions evenly
+      candidates.sort((a, b) => a.dist - b.dist);
+
+      for (const { x, y } of candidates) {
+        if (!overlaps(x, y)) return { x, y };
+      }
+
+      // Hard fallback: place beyond the bottom-right edge
       return { x: maxX + gap, y: maxY + gap };
     };
 
@@ -1233,40 +1243,33 @@ export default function EditorPage() {
     const findFreePosition = () => {
       if (existingNodes.length === 0) return { x: 40, y: 40 };
 
-      // Bounding box of all existing nodes
       const minX = Math.min(...existingNodes.map((n) => n.x ?? 40));
       const minY = Math.min(...existingNodes.map((n) => n.y ?? 40));
       const maxX = Math.max(...existingNodes.map((n) => (n.x ?? 40) + getW(n.size)));
       const maxY = Math.max(...existingNodes.map((n) => (n.y ?? 40) + getH(n.type)));
 
+      const clusterCX = (minX + maxX) / 2;
+      const clusterCY = (minY + maxY) / 2;
+
       const colW = newW + gap;
       const rowH = newH + gap;
 
-      // First: try placing to the right of the last node cluster
-      const candidateRight = { x: maxX + gap, y: minY };
-      if (!overlaps(candidateRight.x, candidateRight.y, newW, newH)) return candidateRight;
-
-      // Second: try placing below the cluster
-      const candidateBelow = { x: minX, y: maxY + gap };
-      if (!overlaps(candidateBelow.x, candidateBelow.y, newW, newH)) return candidateBelow;
-
-      // Spiral grid scan: scan in expanding rows/columns starting from top-left
-      const startX = Math.max(40, minX);
-      const startY = Math.max(40, minY);
-      const cols = 12;
-      const rows = 12;
-
-      for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-          const cx = startX + col * colW;
-          const cy = startY + row * rowH;
-          if (!overlaps(cx, cy, newW, newH)) {
-            return { x: cx, y: cy };
-          }
+      const candidates = [];
+      for (let row = -5; row <= 8; row++) {
+        for (let col = -3; col <= 10; col++) {
+          const cx = Math.max(40, minX + col * colW);
+          const cy = Math.max(40, minY + row * rowH);
+          const dist = Math.hypot((cx + newW / 2) - clusterCX, (cy + newH / 2) - clusterCY);
+          candidates.push({ x: cx, y: cy, dist });
         }
       }
 
-      // Fallback: place below and to the right of everything
+      candidates.sort((a, b) => a.dist - b.dist);
+
+      for (const { x, y } of candidates) {
+        if (!overlaps(x, y, newW, newH)) return { x, y };
+      }
+
       return { x: maxX + gap, y: maxY + gap };
     };
 
