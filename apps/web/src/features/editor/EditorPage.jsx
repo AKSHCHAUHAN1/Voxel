@@ -289,7 +289,24 @@ export default function EditorPage() {
   const exportMenuRef = useRef(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
-  const [selectedNodeId, setSelectedNodeId] = useState(null);
+  const [selectedNodeIds, setSelectedNodeIds] = useState([]);
+  const selectedNodeId = selectedNodeIds.length === 1 ? selectedNodeIds[0] : null;
+  const setSelectedNodeId = useCallback((id) => {
+    if (!id) setSelectedNodeIds([]);
+    else if (Array.isArray(id)) setSelectedNodeIds(id);
+    else setSelectedNodeIds([id]);
+  }, []);
+
+  const handleSelectNode = useCallback((id, e) => {
+    if (e && (e.metaKey || e.ctrlKey || e.shiftKey)) {
+      setSelectedNodeIds((prev) =>
+        prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      );
+    } else {
+      setSelectedNodeIds([id]);
+    }
+  }, []);
+
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
     title: '',
@@ -981,46 +998,70 @@ export default function EditorPage() {
     }
   }, [scene, updateScene]);
 
-  const copiedNodeRef = useRef(null);
+  const copiedNodesRef = useRef([]);
 
   const handleCopy = () => {
-    if (!selectedNodeId) return;
-    const selected = scene.nodes.find((n) => n.id === selectedNodeId);
-    if (selected) {
-      copiedNodeRef.current = selected;
-      localStorage.setItem('voxel_copied_node', JSON.stringify(selected));
+    if (selectedNodeIds.length === 0) return;
+    const selected = scene.nodes.filter((n) => selectedNodeIds.includes(n.id));
+    if (selected.length > 0) {
+      copiedNodesRef.current = selected;
+      localStorage.setItem('voxel_copied_nodes', JSON.stringify(selected));
+      useNotificationStore.getState().add(`Copied ${selected.length} ${selected.length === 1 ? 'node' : 'nodes'}.`, 'info');
     }
   };
 
   const handlePaste = () => {
-    let raw = copiedNodeRef.current;
-    if (!raw) {
+    let rawList = copiedNodesRef.current;
+    if (!rawList || rawList.length === 0) {
       try {
-        const stored = localStorage.getItem('voxel_copied_node');
-        if (stored) raw = JSON.parse(stored);
+        const stored = localStorage.getItem('voxel_copied_nodes') || localStorage.getItem('voxel_copied_node');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          rawList = Array.isArray(parsed) ? parsed : [parsed];
+        }
       } catch (_err) {
         // ignore
       }
     }
-    if (!raw) return;
-    const pasted = {
+    if (!rawList || rawList.length === 0) return;
+    const newNodes = rawList.map((raw) => ({
       ...raw,
       id: crypto.randomUUID(),
-      x: (raw.x ?? 100) + 25,
-      y: (raw.y ?? 100) + 25,
-    };
+      x: (raw.x ?? 100) + 30,
+      y: (raw.y ?? 100) + 30,
+    }));
     update({
       ...scene,
-      nodes: [...scene.nodes, pasted],
+      nodes: [...scene.nodes, ...newNodes],
     });
-    setSelectedNodeId(pasted.id);
+    setSelectedNodeIds(newNodes.map((n) => n.id));
+    useNotificationStore.getState().add(`Pasted ${newNodes.length} ${newNodes.length === 1 ? 'node' : 'nodes'}.`, 'info');
   };
 
-  const handleDeleteSelected = () => {
-    if (selectedNodeId) {
-      deleteNode(selectedNodeId);
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedNodeIds.length === 0) return;
+    const idsToDelete = [...selectedNodeIds];
+    const idSet = new Set(idsToDelete);
+    const nextNodes = scene.nodes.filter((n) => !idSet.has(n.id));
+    const nextConnections = scene.connections.filter(
+      (c) => !idSet.has(c.fromId) && !idSet.has(c.toId)
+    );
+    update({
+      ...scene,
+      nodes: nextNodes,
+      connections: nextConnections,
+    });
+    setSelectedNodeIds([]);
+    useNotificationStore.getState().add(`Deleted ${idsToDelete.length} ${idsToDelete.length === 1 ? 'node' : 'nodes'}.`, 'info');
+  }, [selectedNodeIds, scene, update]);
+
+  const handleSelectAll = useCallback((e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (scene.nodes && scene.nodes.length > 0) {
+      setSelectedNodeIds(scene.nodes.map((n) => n.id));
+      useNotificationStore.getState().add(`Selected all ${scene.nodes.length} nodes.`, 'info');
     }
-  };
+  }, [scene?.nodes]);
 
   const handleSave = () => {
     if (yScene) {
@@ -1049,10 +1090,11 @@ export default function EditorPage() {
   useShortcut('meta+z', handleUndo, { label: 'Undo change', category: 'Editor', allowInInput: true }, [scene]);
   useShortcut('meta+shift+z', handleRedo, { label: 'Redo change', category: 'Editor', allowInInput: true }, [scene]);
   useShortcut('meta+y', handleRedo, { label: 'Redo change', category: 'Editor', allowInInput: true }, [scene]);
-  useShortcut('meta+c', handleCopy, { label: 'Copy selected node', category: 'Editor' }, [selectedNodeId, scene]);
-  useShortcut('meta+v', handlePaste, { label: 'Paste copied node', category: 'Editor' }, [scene]);
-  useShortcut('backspace', handleDeleteSelected, { label: 'Delete selected node', category: 'Editor' }, [selectedNodeId, scene]);
-  useShortcut('delete', handleDeleteSelected, { label: 'Delete selected node', category: 'Editor' }, [selectedNodeId, scene]);
+  useShortcut('meta+a', handleSelectAll, { label: 'Select all nodes', category: 'Editor' }, [scene?.nodes]);
+  useShortcut('meta+c', handleCopy, { label: 'Copy selected node(s)', category: 'Editor' }, [selectedNodeIds, scene]);
+  useShortcut('meta+v', handlePaste, { label: 'Paste copied node(s)', category: 'Editor' }, [scene]);
+  useShortcut('backspace', handleDeleteSelected, { label: 'Delete selected node(s)', category: 'Editor' }, [selectedNodeIds, scene]);
+  useShortcut('delete', handleDeleteSelected, { label: 'Delete selected node(s)', category: 'Editor' }, [selectedNodeIds, scene]);
   useShortcut('meta+s', handleSave, { label: 'Save dashboard changes', category: 'Editor', allowInInput: true }, [yScene, scene]);
   useShortcut('meta+=', handleZoomIn, { label: 'Zoom In', category: 'Editor' }, []);
   useShortcut('meta+-', handleZoomOut, { label: 'Zoom Out', category: 'Editor' }, []);
@@ -1069,13 +1111,22 @@ export default function EditorPage() {
 
     const startScene = JSON.parse(JSON.stringify(scene));
 
-    const node = scene.nodes.find((n) => n.id === nodeId);
-    if (!node) return;
+    const draggedNode = scene.nodes.find((n) => n.id === nodeId);
+    if (!draggedNode) return;
+
+    // If dragging a node that is among selected nodes, drag all selected nodes together
+    const isMultiDrag = selectedNodeIds.includes(nodeId) && selectedNodeIds.length > 1;
+    const dragNodeIds = isMultiDrag ? selectedNodeIds : [nodeId];
+
+    const initialPositions = {};
+    scene.nodes.forEach((n) => {
+      if (dragNodeIds.includes(n.id)) {
+        initialPositions[n.id] = { x: n.x ?? 100, y: n.y ?? 100 };
+      }
+    });
 
     const startX = e.clientX;
     const startY = e.clientY;
-    const initX = node.x ?? 100;
-    const initY = node.y ?? 100;
 
     let hasDragged = false;
     let rafId = null;
@@ -1098,9 +1149,16 @@ export default function EditorPage() {
         update(
           {
             ...current,
-            nodes: current.nodes.map((n) =>
-              n.id === nodeId ? { ...n, x: Math.round(initX + dx), y: Math.round(initY + dy) } : n,
-            ),
+            nodes: current.nodes.map((n) => {
+              if (initialPositions[n.id]) {
+                return {
+                  ...n,
+                  x: Math.round(initialPositions[n.id].x + dx),
+                  y: Math.round(initialPositions[n.id].y + dy),
+                };
+              }
+              return n;
+            }),
           },
           true
         );
@@ -1446,19 +1504,49 @@ export default function EditorPage() {
                     <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block">
                       Scene Layers ({scene.nodes.length})
                     </span>
-                    <span className="text-[9px] text-slate-400 font-semibold">
-                      Double-click to rename
-                    </span>
+                    <button
+                      type="button"
+                      onClick={handleSelectAll}
+                      className="text-[9px] text-violet-500 dark:text-violet-400 font-extrabold hover:underline cursor-pointer"
+                      title="Select all nodes (⌘A)"
+                    >
+                      Select All (⌘A)
+                    </button>
                   </div>
+
+                  {selectedNodeIds.length > 0 && (
+                    <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-violet-500/10 border border-violet-500/20 text-xs font-bold text-violet-600 dark:text-violet-300 animate-fade-in">
+                      <span>{selectedNodeIds.length} {selectedNodeIds.length === 1 ? 'layer' : 'layers'} selected</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedNodeIds([])}
+                          className="text-[10px] px-1.5 py-0.5 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"
+                          title="Deselect all"
+                        >
+                          Clear
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleDeleteSelected}
+                          className="p-1 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition cursor-pointer"
+                          title="Delete selected layers (⌫)"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-1">
                     {scene.nodes.map((n) => {
                       const isEditing = editingLayerId === n.id;
-                      const isSelected = selectedNodeId === n.id;
+                      const isSelected = selectedNodeIds.includes(n.id);
 
                       return (
                         <div
                           key={n.id}
-                          onClick={() => setSelectedNodeId(n.id)}
+                          onClick={(e) => handleSelectNode(n.id, e)}
                           className={`w-full flex items-center justify-between p-2 rounded-xl text-xs font-bold transition cursor-pointer group ${
                             isSelected
                               ? 'bg-violet-500/15 text-violet-600 dark:text-violet-300 border border-violet-500/30'
@@ -1553,7 +1641,7 @@ export default function EditorPage() {
         )}
 
         <main
-          onClick={() => setSelectedNodeId(null)}
+          onClick={() => setSelectedNodeIds([])}
           className="flex-1 overflow-hidden relative bg-slate-50 dark:bg-[#030509] min-h-[500px] z-10"
           style={gridStyleInline}
         >
@@ -1640,8 +1728,9 @@ export default function EditorPage() {
                 {scene.nodes.length > 0 && (
                   <NodeGrid
                     nodes={scene.nodes}
+                    selectedNodeIds={selectedNodeIds}
                     selectedNodeId={selectedNodeId}
-                    onSelectNode={setSelectedNodeId}
+                    onSelectNode={handleSelectNode}
                     resolveNodeValue={resolveNodeValue}
                     onDragStart={handleDragStart}
                     updateNode={updateNode}
@@ -1742,7 +1831,128 @@ export default function EditorPage() {
               title="Drag cursor to resize right panel (Double click to reset)"
               className="absolute top-0 bottom-0 -left-1.5 w-3 z-30 cursor-col-resize"
             />
-            {selectedNodeId ? (
+            {selectedNodeIds.length > 1 ? (
+              <div className="flex flex-col justify-between h-full">
+                <div className="space-y-5 overflow-y-auto max-h-[calc(100vh-180px)] pb-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-white/5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 rounded px-1.5 py-0.5 uppercase tracking-wide">
+                        Multi-Select
+                      </span>
+                      <h3 className="font-semibold text-sm">{selectedNodeIds.length} Nodes</h3>
+                    </div>
+                    <button
+                      onClick={() => setSelectedNodeIds([])}
+                      className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 cursor-pointer"
+                      title="Deselect all"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    {/* Quick Selection Stats */}
+                    <div className="p-3 rounded-xl bg-violet-500/5 border border-violet-500/15 flex items-center justify-between text-xs">
+                      <span className="font-bold text-violet-600 dark:text-violet-300">
+                        {selectedNodeIds.length} of {scene.nodes.length} nodes selected
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleSelectAll}
+                        className="text-[10px] font-extrabold text-violet-600 dark:text-violet-400 hover:underline cursor-pointer"
+                      >
+                        Select All (⌘A)
+                      </button>
+                    </div>
+
+                    {/* Bulk Color Palette */}
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">
+                        Batch Color Palette
+                      </label>
+                      <div className="flex gap-2 flex-wrap">
+                        {[
+                          { id: 'slate', color: 'bg-slate-700' },
+                          { id: 'rose', color: 'bg-rose-500' },
+                          { id: 'emerald', color: 'bg-emerald-500' },
+                          { id: 'cyan', color: 'bg-cyan-500' },
+                          { id: 'amber', color: 'bg-amber-500' },
+                          { id: 'purple', color: 'bg-purple-500' },
+                          { id: 'blue', color: 'bg-blue-500' },
+                          { id: 'orange', color: 'bg-orange-500' },
+                        ].map(({ id, color }) => (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => {
+                              selectedNodeIds.forEach((nodeId) => updateNode(nodeId, { color: id }));
+                              useNotificationStore.getState().add(`Applied ${id} color to ${selectedNodeIds.length} nodes.`, 'info');
+                            }}
+                            className={`size-6 rounded-full border border-white/20 transition hover:scale-110 cursor-pointer ${color}`}
+                            title={`Set color to ${id}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Bulk Border Style */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+                        Batch Border Style
+                      </label>
+                      <select
+                        defaultValue=""
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            selectedNodeIds.forEach((nodeId) => updateNode(nodeId, { borderStyle: e.target.value }));
+                            useNotificationStore.getState().add(`Applied ${e.target.value} border to ${selectedNodeIds.length} nodes.`, 'info');
+                          }
+                        }}
+                        className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900"
+                      >
+                        <option value="" disabled>Apply Border Style to All...</option>
+                        <option value="solid">Solid Line</option>
+                        <option value="dashed">Dashed Border</option>
+                        <option value="glow">Neon Glow</option>
+                      </select>
+                    </div>
+
+                    {/* Selected Nodes List */}
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1.5">
+                        Selected Nodes
+                      </label>
+                      <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                        {scene.nodes
+                          .filter((n) => selectedNodeIds.includes(n.id))
+                          .map((n) => (
+                            <div
+                              key={n.id}
+                              className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200/50 dark:border-white/5 text-xs font-bold"
+                            >
+                              <span className="truncate mr-2">{n.title || 'Untitled Node'}</span>
+                              <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-white/10 text-slate-500 shrink-0">
+                                {n.type}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Batch Delete Action */}
+                <div className="border-t border-slate-100 pt-4 dark:border-white/5 mt-5 lg:mt-0">
+                  <button
+                    type="button"
+                    onClick={handleDeleteSelected}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-500 cursor-pointer shadow-lg shadow-rose-600/10 transition"
+                  >
+                    <Trash2 size={16} /> Delete {selectedNodeIds.length} Nodes (⌫)
+                  </button>
+                </div>
+              </div>
+            ) : selectedNodeId ? (
               (() => {
                 const selectedNode = scene.nodes.find((node) => node.id === selectedNodeId);
                 if (!selectedNode) return null;
@@ -2601,7 +2811,7 @@ export default function EditorPage() {
 }
 
 // --- FREEFORM GRID SETUP ---
-function NodeGrid({ nodes, selectedNodeId, onSelectNode, resolveNodeValue, onDragStart, updateNode, awarenessStates, localClientId }) {
+function NodeGrid({ nodes, selectedNodeIds = [], selectedNodeId, onSelectNode, resolveNodeValue, onDragStart, updateNode, awarenessStates, localClientId }) {
   const remoteSelections = useMemo(() => {
     if (!awarenessStates) return {};
     const selections = {};
@@ -2620,9 +2830,9 @@ function NodeGrid({ nodes, selectedNodeId, onSelectNode, resolveNodeValue, onDra
         <CanvasNodeCard
           key={node.id}
           node={node}
-          isSelected={node.id === selectedNodeId}
+          isSelected={selectedNodeIds.length > 0 ? selectedNodeIds.includes(node.id) : node.id === selectedNodeId}
           remoteSelectedBy={remoteSelections[node.id] || []}
-          onSelect={() => onSelectNode(node.id)}
+          onSelect={(e) => onSelectNode(node.id, e)}
           resolveNodeValue={resolveNodeValue}
           onDragStart={onDragStart}
           updateNode={updateNode}
@@ -2703,7 +2913,7 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
       }}
       onClick={(e) => {
         e.stopPropagation();
-        onSelect();
+        onSelect(e);
       }}
       onMouseDown={(e) => {
         // Allow dragging from anywhere on the card unless clicking interactive controls
