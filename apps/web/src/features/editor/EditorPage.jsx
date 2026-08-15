@@ -336,7 +336,45 @@ export default function EditorPage() {
 
   const handleResetZoom = useCallback(() => {
     setZoom(1);
-  }, []);
+    if (!gridRef.current) return;
+    const container = gridRef.current;
+    const containerWidth = container.clientWidth || 1000;
+    const containerHeight = container.clientHeight || 700;
+    const nodes = scene?.nodes || [];
+
+    const getNodeWidth = (size) => {
+      switch (size) {
+        case 'small': return 220;
+        case 'large': return 340;
+        case 'wide': return 440;
+        default: return 280;
+      }
+    };
+
+    if (nodes.length > 0) {
+      const minX = Math.min(...nodes.map((n) => n.x ?? 40));
+      const maxX = Math.max(...nodes.map((n) => (n.x ?? 40) + getNodeWidth(n.size)));
+      const minY = Math.min(...nodes.map((n) => n.y ?? 40));
+      const maxY = Math.max(...nodes.map((n) => (n.y ?? 40) + 180));
+
+      const centerX = 1200 + 48 + (minX + maxX) / 2;
+      const centerY = 1200 + 48 + (minY + maxY) / 2;
+
+      container.scrollTo({
+        left: Math.max(0, centerX - containerWidth / 2),
+        top: Math.max(0, centerY - containerHeight / 2),
+        behavior: 'smooth',
+      });
+    } else {
+      const centerX = 1200 + 48 + 400;
+      const centerY = 1200 + 48 + 300;
+      container.scrollTo({
+        left: Math.max(0, centerX - containerWidth / 2),
+        top: Math.max(0, centerY - containerHeight / 2),
+        behavior: 'smooth',
+      });
+    }
+  }, [scene?.nodes]);
 
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
@@ -441,73 +479,65 @@ export default function EditorPage() {
   );
 
   const handleRepositionCanvas = useCallback(() => {
+    setZoom(1);
     if (!gridRef.current) return;
     const container = gridRef.current;
     const containerWidth = container.clientWidth || 1000;
     const containerHeight = container.clientHeight || 700;
 
-    const nodeCards = container.querySelectorAll('[id^="node-card-"]');
+    const nodes = scene?.nodes || [];
 
-    if (nodeCards.length > 0) {
-      const containerRect = container.getBoundingClientRect();
-      const currentScrollLeft = container.scrollLeft;
-      const currentScrollTop = container.scrollTop;
+    const calculateTarget = () => {
+      if (nodes.length > 0) {
+        const getNodeWidth = (size) => {
+          switch (size) {
+            case 'small': return 220;
+            case 'large': return 340;
+            case 'wide': return 440;
+            default: return 280;
+          }
+        };
 
-      let minLeft = Infinity;
-      let maxRight = -Infinity;
-      let minTop = Infinity;
-      let maxBottom = -Infinity;
+        const minX = Math.min(...nodes.map((n) => n.x ?? 40));
+        const maxX = Math.max(...nodes.map((n) => (n.x ?? 40) + getNodeWidth(n.size)));
+        const minY = Math.min(...nodes.map((n) => n.y ?? 40));
+        const maxY = Math.max(...nodes.map((n) => (n.y ?? 40) + 180));
 
-      nodeCards.forEach((el) => {
-        const rect = el.getBoundingClientRect();
-        const elLeft = rect.left - containerRect.left + currentScrollLeft;
-        const elRight = rect.right - containerRect.left + currentScrollLeft;
-        const elTop = rect.top - containerRect.top + currentScrollTop;
-        const elBottom = rect.bottom - containerRect.top + currentScrollTop;
+        // 1200px container padding + 48px inner grid padding
+        const centerX = 1200 + 48 + (minX + maxX) / 2;
+        const centerY = 1200 + 48 + (minY + maxY) / 2;
 
-        minLeft = Math.min(minLeft, elLeft);
-        maxRight = Math.max(maxRight, elRight);
-        minTop = Math.min(minTop, elTop);
-        maxBottom = Math.max(maxBottom, elBottom);
-      });
+        return {
+          left: Math.max(0, centerX - containerWidth / 2),
+          top: Math.max(0, centerY - containerHeight / 2),
+        };
+      } else {
+        const centerX = 1200 + 48 + 400;
+        const centerY = 1200 + 48 + 300;
+        return {
+          left: Math.max(0, centerX - containerWidth / 2),
+          top: Math.max(0, centerY - containerHeight / 2),
+        };
+      }
+    };
 
-      const centerX = (minLeft + maxRight) / 2;
-      const centerY = (minTop + maxBottom) / 2;
+    const target = calculateTarget();
 
-      const targetLeft = Math.max(0, centerX - containerWidth / 2);
-      const targetTop = Math.max(0, centerY - containerHeight / 2);
+    container.scrollTo({
+      left: target.left,
+      top: target.top,
+      behavior: 'smooth',
+    });
 
-      container.scrollTo({
-        left: targetLeft,
-        top: targetTop,
-        behavior: 'smooth',
-      });
-    } else if (scene?.nodes && scene.nodes.length > 0) {
-      const minX = Math.min(...scene.nodes.map((n) => n.x ?? 40));
-      const maxX = Math.max(...scene.nodes.map((n) => (n.x ?? 40) + (n.size === 'wide' ? 440 : n.size === 'large' ? 340 : n.size === 'small' ? 220 : 280)));
-      const minY = Math.min(...scene.nodes.map((n) => n.y ?? 40));
-      const maxY = Math.max(...scene.nodes.map((n) => (n.y ?? 40) + 180));
-
-      const centerX = 1200 + 48 + (minX + maxX) / 2;
-      const centerY = 1200 + 48 + (minY + maxY) / 2;
-
-      const targetLeft = Math.max(0, centerX - containerWidth / 2);
-      const targetTop = Math.max(0, centerY - containerHeight / 2);
-
-      container.scrollTo({
-        left: targetLeft,
-        top: targetTop,
-        behavior: 'smooth',
-      });
-    } else {
-      const centerX = 1200 + 1200;
-      const centerY = 1200 + 900;
-      container.scrollTo({
-        left: Math.max(0, centerX - containerWidth / 2),
-        top: Math.max(0, centerY - containerHeight / 2),
-        behavior: 'smooth',
-      });
-    }
+    setTimeout(() => {
+      if (gridRef.current) {
+        gridRef.current.scrollTo({
+          left: target.left,
+          top: target.top,
+          behavior: 'smooth',
+        });
+      }
+    }, 50);
   }, [scene?.nodes]);
 
   const draft = useMemo(() => {
