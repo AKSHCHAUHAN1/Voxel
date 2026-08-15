@@ -583,47 +583,99 @@ export default function EditorPage() {
   });
 
   const addNode = (type) => {
-    const newNodeId = crypto.randomUUID();
+    const existingNodes = scene.nodes || [];
+
+    // Node size/height approximations for collision detection (must match CanvasNodeCard widthOf/getH)
+    const getW = (size) => ({ small: 220, large: 340, wide: 440 }[size] ?? 280);
+    const getH = (t) => ({ image: 240, chart: 220, table: 260, code: 220, metric: 160, timer: 160, status: 160, link: 160 }[t] ?? 180);
+
+    const incomingSize = {
+      note: 'wide', metric: 'medium', progress: 'medium', chart: 'medium',
+      status: 'small', logic: 'medium', image: 'medium', embed: 'wide',
+      table: 'wide', timer: 'medium', link: 'medium', divider: 'wide', code: 'wide',
+      display: 'medium',
+    }[type] ?? 'medium';
+
+    const newW = getW(incomingSize);
+    const newH = getH(type);
+    const gap = 20;
+
+    const overlaps = (cx, cy) =>
+      existingNodes.some((n) => {
+        const nx = n.x ?? 40;
+        const ny = n.y ?? 40;
+        const nw = getW(n.size ?? 'medium');
+        const nh = getH(n.type);
+        return (
+          cx < nx + nw + gap &&
+          cx + newW + gap > nx &&
+          cy < ny + nh + gap &&
+          cy + newH + gap > ny
+        );
+      });
+
+    const findFreePosition = () => {
+      if (existingNodes.length === 0) return { x: 40, y: 40 };
+
+      const minX = Math.min(...existingNodes.map((n) => n.x ?? 40));
+      const minY = Math.min(...existingNodes.map((n) => n.y ?? 40));
+      const maxX = Math.max(...existingNodes.map((n) => (n.x ?? 40) + getW(n.size ?? 'medium')));
+      const maxY = Math.max(...existingNodes.map((n) => (n.y ?? 40) + getH(n.type)));
+
+      // 1) Try right of cluster
+      if (!overlaps(maxX + gap, minY)) return { x: maxX + gap, y: minY };
+      // 2) Try below cluster
+      if (!overlaps(minX, maxY + gap)) return { x: minX, y: maxY + gap };
+
+      // 3) Grid scan from top-left
+      const startX = Math.max(40, minX);
+      const startY = Math.max(40, minY);
+      const colW = newW + gap;
+      const rowH = newH + gap;
+      for (let row = 0; row < 12; row++) {
+        for (let col = 0; col < 12; col++) {
+          const cx = startX + col * colW;
+          const cy = startY + row * rowH;
+          if (!overlaps(cx, cy)) return { x: cx, y: cy };
+        }
+      }
+
+      // 4) Absolute fallback
+      return { x: maxX + gap, y: maxY + gap };
+    };
+
+    const { x, y } = findFreePosition();
+
     const defaultTitle =
-      type === 'metric'
-        ? 'New Metric'
-        : type === 'logic'
-          ? 'Formula Logic'
-          : type === 'display'
-            ? 'Output Display'
-            : type === 'note'
-              ? 'Canvas Note'
-              : type === 'progress'
-                ? 'Goal Progress'
-                : 'New Node';
+      type === 'metric' ? 'New Metric' :
+      type === 'logic'  ? 'Formula Logic' :
+      type === 'display' ? 'Output Display' :
+      type === 'note'   ? 'Canvas Note' :
+      type === 'progress' ? 'Goal Progress' : 'New Node';
 
     const defaultContent =
-      type === 'metric'
-        ? '100'
-        : type === 'note'
-          ? 'Add your project notes or documentation here.'
-          : type === 'progress'
-            ? '50'
-            : '0';
+      type === 'metric'   ? '100' :
+      type === 'note'     ? 'Add your project notes or documentation here.' :
+      type === 'progress' ? '50' : '0';
 
-    const newNode = {
+    const newNodeId = crypto.randomUUID();
+    const newNodeObj = {
       id: newNodeId,
       type,
       title: defaultTitle,
       content: defaultContent,
-      size: 'medium',
-      x: 120 + Math.floor(Math.random() * 80),
-      y: 120 + Math.floor(Math.random() * 80),
-      isBold: true,
-      colorPreset: 'violet',
+      size: incomingSize,
+      x,
+      y,
+      borderStyle: 'solid',
+      fontSize: 'regular',
+      color: 'slate',
     };
 
-    update({
-      ...scene,
-      nodes: [...scene.nodes, newNode],
-    });
+    update({ ...scene, nodes: [...scene.nodes, newNodeObj] });
     setSelectedNodeId(newNodeId);
   };
+
 
   const loadPreset = (presetKey) => {
     if (!presetKey) return;
