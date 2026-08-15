@@ -303,21 +303,22 @@ export default function EditorPage() {
   // Initial 360-degree scroll position centering
   useEffect(() => {
     if (gridRef.current) {
-      const containerWidth = gridRef.current.clientWidth || 1000;
-      const containerHeight = gridRef.current.clientHeight || 700;
+      const container = gridRef.current;
+      const containerWidth = container.clientWidth || 1000;
+      const containerHeight = container.clientHeight || 700;
       const nodes = dashboard.data?.scene?.nodes || [];
       if (nodes.length > 0) {
-        const minX = Math.min(...nodes.map((n) => n.x ?? 0));
-        const maxX = Math.max(...nodes.map((n) => (n.x ?? 0) + 280));
-        const minY = Math.min(...nodes.map((n) => n.y ?? 0));
-        const maxY = Math.max(...nodes.map((n) => (n.y ?? 0) + 180));
-        const centerX = (minX + maxX) / 2;
-        const centerY = (minY + maxY) / 2;
-        gridRef.current.scrollLeft = Math.max(0, 1200 + centerX - containerWidth / 2);
-        gridRef.current.scrollTop = Math.max(0, 1200 + centerY - containerHeight / 2);
+        const minX = Math.min(...nodes.map((n) => n.x ?? 40));
+        const maxX = Math.max(...nodes.map((n) => (n.x ?? 40) + (n.size === 'wide' ? 440 : n.size === 'large' ? 340 : n.size === 'small' ? 220 : 280)));
+        const minY = Math.min(...nodes.map((n) => n.y ?? 40));
+        const maxY = Math.max(...nodes.map((n) => (n.y ?? 40) + 180));
+        const centerX = 1200 + 48 + (minX + maxX) / 2;
+        const centerY = 1200 + 48 + (minY + maxY) / 2;
+        container.scrollLeft = Math.max(0, centerX - containerWidth / 2);
+        container.scrollTop = Math.max(0, centerY - containerHeight / 2);
       } else {
-        gridRef.current.scrollLeft = Math.max(0, 1200 + 1200 - containerWidth / 2);
-        gridRef.current.scrollTop = Math.max(0, 1200 + 900 - containerHeight / 2);
+        container.scrollLeft = Math.max(0, 1200 + 1200 - containerWidth / 2);
+        container.scrollTop = Math.max(0, 1200 + 900 - containerHeight / 2);
       }
     }
   }, [dashboard.data?.id]);
@@ -440,33 +441,70 @@ export default function EditorPage() {
   );
 
   const handleRepositionCanvas = useCallback(() => {
-    setZoom(1);
     if (!gridRef.current) return;
+    const container = gridRef.current;
+    const containerWidth = container.clientWidth || 1000;
+    const containerHeight = container.clientHeight || 700;
 
-    if (scene.nodes && scene.nodes.length > 0) {
-      const minX = Math.min(...scene.nodes.map((n) => n.x ?? 0));
-      const maxX = Math.max(...scene.nodes.map((n) => (n.x ?? 0) + 280));
-      const minY = Math.min(...scene.nodes.map((n) => n.y ?? 0));
-      const maxY = Math.max(...scene.nodes.map((n) => (n.y ?? 0) + 180));
+    const nodeCards = container.querySelectorAll('[id^="node-card-"]');
 
-      const centerX = (minX + maxX) / 2;
-      const centerY = (minY + maxY) / 2;
+    if (nodeCards.length > 0) {
+      const containerRect = container.getBoundingClientRect();
+      const currentScrollLeft = container.scrollLeft;
+      const currentScrollTop = container.scrollTop;
 
-      const containerWidth = gridRef.current.clientWidth || 1000;
-      const containerHeight = gridRef.current.clientHeight || 700;
+      let minLeft = Infinity;
+      let maxRight = -Infinity;
+      let minTop = Infinity;
+      let maxBottom = -Infinity;
 
-      const targetLeft = Math.max(0, 1200 + centerX - containerWidth / 2);
-      const targetTop = Math.max(0, 1200 + centerY - containerHeight / 2);
+      nodeCards.forEach((el) => {
+        const rect = el.getBoundingClientRect();
+        const elLeft = rect.left - containerRect.left + currentScrollLeft;
+        const elRight = rect.right - containerRect.left + currentScrollLeft;
+        const elTop = rect.top - containerRect.top + currentScrollTop;
+        const elBottom = rect.bottom - containerRect.top + currentScrollTop;
 
-      gridRef.current.scrollTo({
+        minLeft = Math.min(minLeft, elLeft);
+        maxRight = Math.max(maxRight, elRight);
+        minTop = Math.min(minTop, elTop);
+        maxBottom = Math.max(maxBottom, elBottom);
+      });
+
+      const centerX = (minLeft + maxRight) / 2;
+      const centerY = (minTop + maxBottom) / 2;
+
+      const targetLeft = Math.max(0, centerX - containerWidth / 2);
+      const targetTop = Math.max(0, centerY - containerHeight / 2);
+
+      container.scrollTo({
+        left: targetLeft,
+        top: targetTop,
+        behavior: 'smooth',
+      });
+    } else if (scene?.nodes && scene.nodes.length > 0) {
+      const minX = Math.min(...scene.nodes.map((n) => n.x ?? 40));
+      const maxX = Math.max(...scene.nodes.map((n) => (n.x ?? 40) + (n.size === 'wide' ? 440 : n.size === 'large' ? 340 : n.size === 'small' ? 220 : 280)));
+      const minY = Math.min(...scene.nodes.map((n) => n.y ?? 40));
+      const maxY = Math.max(...scene.nodes.map((n) => (n.y ?? 40) + 180));
+
+      const centerX = 1200 + 48 + (minX + maxX) / 2;
+      const centerY = 1200 + 48 + (minY + maxY) / 2;
+
+      const targetLeft = Math.max(0, centerX - containerWidth / 2);
+      const targetTop = Math.max(0, centerY - containerHeight / 2);
+
+      container.scrollTo({
         left: targetLeft,
         top: targetTop,
         behavior: 'smooth',
       });
     } else {
-      gridRef.current.scrollTo({
-        left: 1200,
-        top: 1200,
+      const centerX = 1200 + 1200;
+      const centerY = 1200 + 900;
+      container.scrollTo({
+        left: Math.max(0, centerX - containerWidth / 2),
+        top: Math.max(0, centerY - containerHeight / 2),
         behavior: 'smooth',
       });
     }
@@ -1531,7 +1569,7 @@ export default function EditorPage() {
           {/* 360-degree Infinite Scrollable Container */}
           <div
             ref={gridRef}
-            className="w-full h-full overflow-auto relative p-[1200px] no-scrollbars flex-1 flex items-center justify-center"
+            className="w-full h-full overflow-auto relative p-[1200px] no-scrollbars flex-1"
             onPointerMove={handlePointerMove}
             onPointerLeave={handlePointerLeave}
           >
