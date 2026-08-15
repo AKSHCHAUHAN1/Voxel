@@ -30,6 +30,7 @@ import { CommandPalette } from '@/components/command/CommandPalette';
 import { CustomConfirmModal } from '@/components/feedback/CustomConfirmModal';
 import { attachGlobalShortcuts, detachGlobalShortcuts, useShortcut } from '@/lib/keyboard';
 import { useNotificationStore } from '@/store/notification-store';
+import { useSettingsStore } from '@/store/settings-store';
 
 export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -71,6 +72,7 @@ export function AppShell() {
   const isGoogleLogin = user && user.email !== 'guest@voxel.com';
   const displayName = user?.displayName || 'Guest User';
   const email = user?.email || 'guest@voxel.com';
+  const avatarColor = useSettingsStore((s) => s.avatarColor || 'bg-violet-600');
   const avatarInitials =
     displayName
       .split(' ')
@@ -286,7 +288,7 @@ export function AppShell() {
           >
             <div className="bg-slate-100 dark:bg-white/5 rounded-xl p-3">
               <div className="flex items-center gap-3">
-                <span className="grid size-9 place-items-center rounded-full bg-violet-600 text-xs font-bold text-white shrink-0">
+                <span className={`grid size-9 place-items-center rounded-full ${avatarColor} text-xs font-bold text-white shrink-0 shadow-sm transition-colors`}>
                   {avatarInitials}
                 </span>
                 <div className="min-w-0 whitespace-nowrap overflow-hidden">
@@ -303,7 +305,7 @@ export function AppShell() {
           <div
             className={`overflow-hidden transition-all duration-300 ${collapsed ? 'max-h-16 opacity-100' : 'max-h-0 opacity-0'}`}
           >
-            <span className="w-12 h-12 mx-auto rounded-xl bg-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
+            <span className={`w-12 h-12 mx-auto rounded-xl ${avatarColor} flex items-center justify-center text-white font-bold text-sm shadow-md transition-colors`}>
               {avatarInitials}
             </span>
           </div>
@@ -546,7 +548,7 @@ export function AppShell() {
                 onClick={() => setMenuOpen(!menuOpen)}
                 className="flex items-center gap-1.5 rounded-full p-0.5 border border-slate-200/60 dark:border-white/10 bg-slate-50 dark:bg-white/5 hover:scale-105 transition-all duration-200 cursor-pointer"
               >
-                <span className="grid size-8 place-items-center rounded-full bg-gradient-to-br from-violet-600 to-indigo-600 text-xs font-bold text-white shadow-md">
+                <span className={`grid size-8 place-items-center rounded-full ${avatarColor} text-xs font-bold text-white shadow-md transition-colors`}>
                   {avatarInitials}
                 </span>
                 <ChevronDown size={12} className="text-slate-400 mr-1" />

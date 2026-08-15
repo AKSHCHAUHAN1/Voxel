@@ -6,6 +6,8 @@ export const useSettingsStore = create(
     (set) => ({
       autosaveEnabled: true,
       autosaveInterval: 'realtime', // 'realtime' | '5s' | '30s' | 'off'
+      avatarColor: 'bg-violet-600',
+      setAvatarColor: (color) => set({ avatarColor: color }),
       setAutosaveEnabled: (enabled) => set({ autosaveEnabled: enabled }),
       setAutosaveInterval: (interval) =>
         set({

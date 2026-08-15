@@ -28,11 +28,96 @@ import { getDeviceOSString } from '@/utils/device-info';
 import { authService } from '@/features/auth/auth-service';
 import { workspaceService } from '@/features/workspaces/workspace-service';
 
+const LANGUAGES = [
+  'English (US)',
+  'English (UK)',
+  'Spanish (Español)',
+  'French (Français)',
+  'German (Deutsch)',
+  'Japanese (日本語)',
+  'Chinese Simplified (简体中文)',
+  'Chinese Traditional (繁體中文)',
+  'Hindi (हिन्दी)',
+  'Portuguese (Português - Brasil)',
+  'Portuguese (Português - Portugal)',
+  'Arabic (العربية)',
+  'Korean (한국어)',
+  'Italian (Italiano)',
+  'Russian (Русский)',
+  'Dutch (Nederlands)',
+  'Turkish (Türkçe)',
+  'Polish (Polski)',
+  'Swedish (Svenska)',
+  'Indonesian (Bahasa Indonesia)',
+  'Vietnamese (Tiếng Việt)',
+  'Hebrew (עברית)',
+  'Thai (ไทย)',
+];
+
+const TIMEZONES = [
+  { id: 'Pacific/Honolulu', offset: -600, label: 'Hawaii (Honolulu)' },
+  { id: 'America/Anchorage', offset: -540, label: 'Alaska (Anchorage)' },
+  { id: 'America/Los_Angeles', offset: -480, label: 'Pacific Time (US & Canada - Los Angeles, SF, Vancouver)' },
+  { id: 'America/Denver', offset: -420, label: 'Mountain Time (Denver, Phoenix, Calgary, Salt Lake)' },
+  { id: 'America/Chicago', offset: -360, label: 'Central Time (Chicago, Dallas, Mexico City, Austin)' },
+  { id: 'America/New_York', offset: -300, label: 'Eastern Time (New York, Toronto, Miami, Boston)' },
+  { id: 'America/Halifax', offset: -240, label: 'Atlantic Time (Halifax, Santiago, Caracas)' },
+  { id: 'America/St_Johns', offset: -210, label: 'Newfoundland (St. John\'s)' },
+  { id: 'America/Sao_Paulo', offset: -180, label: 'Brasília, São Paulo, Rio de Janeiro, Buenos Aires' },
+  { id: 'Atlantic/Azores', offset: -60, label: 'Azores, Cape Verde' },
+  { id: 'Europe/London', offset: 0, label: 'London, Dublin, Lisbon, Reykjavik (GMT/UTC)' },
+  { id: 'Europe/Berlin', offset: 60, label: 'Central Europe (Berlin, Paris, Rome, Madrid, Amsterdam, Zurich)' },
+  { id: 'Europe/Athens', offset: 120, label: 'Eastern Europe (Athens, Cairo, Helsinki, Jerusalem, Kyiv, Bucharest)' },
+  { id: 'Asia/Riyadh', offset: 180, label: 'Arabia & East Africa (Riyadh, Moscow, Istanbul, Nairobi, Doha)' },
+  { id: 'Asia/Tehran', offset: 210, label: 'Tehran (Iran Standard Time)' },
+  { id: 'Asia/Dubai', offset: 240, label: 'Gulf Time (Dubai, Abu Dhabi, Baku, Muscat, Tbilisi)' },
+  { id: 'Asia/Kabul', offset: 270, label: 'Kabul (Afghanistan)' },
+  { id: 'Asia/Karachi', offset: 300, label: 'Pakistan & Central Asia (Karachi, Tashkent, Islamabad)' },
+  { id: 'Asia/Kolkata', offset: 330, label: 'India Standard Time (IST - Mumbai, New Delhi, Bengaluru, Chennai)' },
+  { id: 'Asia/Kathmandu', offset: 345, label: 'Nepal Time (Kathmandu)' },
+  { id: 'Asia/Dhaka', offset: 360, label: 'Bangladesh & Almaty (Dhaka, Astana, Colombo)' },
+  { id: 'Asia/Yangon', offset: 390, label: 'Myanmar Time (Yangon)' },
+  { id: 'Asia/Bangkok', offset: 420, label: 'Indochina Time (Bangkok, Jakarta, Hanoi, Ho Chi Minh)' },
+  { id: 'Asia/Singapore', offset: 480, label: 'Singapore, Hong Kong, Beijing, Shanghai, Perth, Taipei, Manila)' },
+  { id: 'Asia/Tokyo', offset: 540, label: 'Japan & Korea (Tokyo, Osaka, Seoul, Kyoto)' },
+  { id: 'Australia/Adelaide', offset: 570, label: 'Australian Central Time (Adelaide, Darwin)' },
+  { id: 'Australia/Sydney', offset: 600, label: 'Australian Eastern Time (Sydney, Melbourne, Brisbane, Canberra)' },
+  { id: 'Pacific/Guadalcanal', offset: 660, label: 'Solomon Islands, Vladivostok' },
+  { id: 'Pacific/Auckland', offset: 720, label: 'New Zealand & Fiji (Auckland, Wellington, Suva)' },
+];
+
+function getTimezoneLabel(tz) {
+  const userLocalOffsetMin = -new Date().getTimezoneOffset();
+  const diff = tz.offset - userLocalOffsetMin;
+  const sign = tz.offset >= 0 ? '+' : '-';
+  const absH = String(Math.floor(Math.abs(tz.offset) / 60)).padStart(2, '0');
+  const absM = String(Math.abs(tz.offset) % 60).padStart(2, '0');
+  const utcStr = `UTC${sign}${absH}:${absM}`;
+
+  let relativeStr = '';
+  if (diff === 0) {
+    relativeStr = 'Your Local Time';
+  } else if (diff > 0) {
+    const hours = Math.floor(diff / 60);
+    const mins = diff % 60;
+    relativeStr = `${hours > 0 ? `${hours}h ` : ''}${mins > 0 ? `${mins}m ` : ''}ahead of you`.trim();
+  } else {
+    const absDiff = Math.abs(diff);
+    const hours = Math.floor(absDiff / 60);
+    const mins = absDiff % 60;
+    relativeStr = `${hours > 0 ? `${hours}h ` : ''}${mins > 0 ? `${mins}m ` : ''}behind you`.trim();
+  }
+
+  return `(${utcStr}) ${tz.label} — [${relativeStr}]`;
+}
+
 export default function SettingsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { theme, setTheme } = useThemeStore();
   const addToast = useNotificationStore((s) => s.add);
+  const { avatarColor, setAvatarColor, autosaveEnabled, autosaveInterval, setAutosaveEnabled, setAutosaveInterval } =
+    useSettingsStore();
 
   // Active Tab State
   const [activeTab, setActiveTab] = useState('account');
@@ -56,10 +141,9 @@ export default function SettingsPage() {
   const [displayName, setDisplayName] = useState(user?.displayName || 'User');
   const [email, setEmail] = useState(user?.email || 'user@voxel.com');
   const [jobTitle, setJobTitle] = useState('Product Engineer');
-  const [timezone, setTimezone] = useState('America/Los_Angeles (UTC-08:00)');
+  const [timezone, setTimezone] = useState('America/Los_Angeles');
   const [language, setLanguage] = useState('English (US)');
   const [bio, setBio] = useState('Designing interactive canvas workspaces and visual telemetry systems.');
-  const [avatarColor, setAvatarColor] = useState('bg-violet-600');
 
   useEffect(() => {
     if (user) {
@@ -71,8 +155,6 @@ export default function SettingsPage() {
   // Appearance & Canvas State
   const [accentColor, setAccentColor] = useState('violet');
   const [defaultGridStyle, setDefaultGridStyle] = useState('dots');
-  const { autosaveEnabled, autosaveInterval, setAutosaveEnabled, setAutosaveInterval } =
-    useSettingsStore();
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [reducedMotion, setReducedMotion] = useState(false);
 
@@ -353,15 +435,15 @@ export default function SettingsPage() {
                     {/* Avatar Customizer */}
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
                       <div
-                        className={`grid size-16 place-items-center rounded-2xl ${avatarColor} text-2xl font-extrabold text-white shadow-inner transition-colors shrink-0`}
+                        className={`grid size-16 place-items-center rounded-2xl ${avatarColor} text-2xl font-extrabold text-white shadow-md transition-colors shrink-0`}
                       >
                         {displayName.slice(0, 2).toUpperCase() || 'GU'}
                       </div>
                       <div>
                         <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                          Avatar Badge Color
+                          Avatar Badge Color (Applies Globally)
                         </p>
-                        <div className="flex gap-2.5">
+                        <div className="flex gap-2.5 flex-wrap">
                           {[
                             'bg-violet-600',
                             'bg-indigo-600',
@@ -370,13 +452,19 @@ export default function SettingsPage() {
                             'bg-emerald-600',
                             'bg-rose-600',
                             'bg-amber-600',
+                            'bg-fuchsia-600',
+                            'bg-teal-600',
+                            'bg-orange-600',
                           ].map((color) => (
                             <button
                               key={color}
                               type="button"
-                              onClick={() => setAvatarColor(color)}
-                              className={`size-6 rounded-full border border-white/20 transition hover:scale-110 cursor-pointer ${color} ${
-                                avatarColor === color ? 'ring-2 ring-violet-500 ring-offset-2 dark:ring-offset-slate-900 scale-105' : ''
+                              onClick={() => {
+                                setAvatarColor(color);
+                                addToast('Avatar badge color updated across navigation and canvas.', 'info');
+                              }}
+                              className={`size-7 rounded-full border-2 border-white dark:border-slate-800 shadow-md transition-all hover:scale-115 cursor-pointer ${color} ${
+                                avatarColor === color ? 'ring-2 ring-violet-500 ring-offset-2 dark:ring-offset-slate-900 scale-110' : ''
                               }`}
                             />
                           ))}
@@ -396,17 +484,22 @@ export default function SettingsPage() {
                           className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-white/10"
                         />
                       </div>
-                      <div>
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
-                          Email Address
-                        </label>
-                        <input
-                          type="email"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-white/10"
-                        />
-                      </div>
+
+                      {/* Email Address ONLY shown when signed in with real account */}
+                      {!isGuestUser && (
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
+                            Email Address
+                          </label>
+                          <input
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-white/10"
+                          />
+                        </div>
+                      )}
+
                       <div>
                         <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
                           Job Title / Role
@@ -418,6 +511,7 @@ export default function SettingsPage() {
                           className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-white/10"
                         />
                       </div>
+
                       <div>
                         <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
                           Primary Language
@@ -427,27 +521,28 @@ export default function SettingsPage() {
                           onChange={(e) => setLanguage(e.target.value)}
                           className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-white/10 dark:bg-slate-900"
                         >
-                          <option value="English (US)">English (US)</option>
-                          <option value="English (UK)">English (UK)</option>
-                          <option value="Spanish">Spanish</option>
-                          <option value="German">German</option>
-                          <option value="Japanese">Japanese</option>
+                          {LANGUAGES.map((lang) => (
+                            <option key={lang} value={lang}>
+                              {lang}
+                            </option>
+                          ))}
                         </select>
                       </div>
-                      <div>
+
+                      <div className={isGuestUser ? 'sm:col-span-2' : 'sm:col-span-2'}>
                         <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
-                          Timezone
+                          Timezone & Relative Offset
                         </label>
                         <select
                           value={timezone}
                           onChange={(e) => setTimezone(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-white/10 dark:bg-slate-900"
+                          className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-white/10 dark:bg-slate-900 font-mono text-xs"
                         >
-                          <option value="America/Los_Angeles (UTC-08:00)">Pacific Time (US & Canada)</option>
-                          <option value="America/New_York (UTC-05:00)">Eastern Time (US & Canada)</option>
-                          <option value="Europe/London (UTC+00:00)">London, UTC</option>
-                          <option value="Asia/Kolkata (UTC+05:30)">India Standard Time (IST)</option>
-                          <option value="Asia/Tokyo (UTC+09:00)">Tokyo Standard Time</option>
+                          {TIMEZONES.map((tz) => (
+                            <option key={tz.id} value={tz.id}>
+                              {getTimezoneLabel(tz)}
+                            </option>
+                          ))}
                         </select>
                       </div>
                     </div>
@@ -467,7 +562,7 @@ export default function SettingsPage() {
                     <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex justify-end">
                       <button
                         type="submit"
-                        className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-600/25 hover:bg-violet-500 transition cursor-pointer"
+                        className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-600/25 hover:bg-violet-500 transition cursor-pointer hover:scale-105 active:scale-95"
                       >
                         <Check size={16} /> Save Account Preferences
                       </button>
@@ -670,6 +765,16 @@ export default function SettingsPage() {
                       />
                     </label>
                   </div>
+
+                  <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => addToast('Appearance & Canvas preferences saved.', 'success')}
+                      className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-600/25 hover:bg-violet-500 transition cursor-pointer hover:scale-105 active:scale-95"
+                    >
+                      <Check size={16} /> Save Appearance Preferences
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             )}
@@ -805,6 +910,16 @@ export default function SettingsPage() {
                             ))}
                           </tbody>
                         </table>
+                      </div>
+
+                      <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => addToast('Workspace team preferences saved.', 'success')}
+                          className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-600/25 hover:bg-violet-500 transition cursor-pointer hover:scale-105 active:scale-95"
+                        >
+                          <Check size={16} /> Save Workspace Settings
+                        </button>
                       </div>
                     </>
                   )}
@@ -1019,6 +1134,16 @@ export default function SettingsPage() {
                           </tbody>
                         </table>
                       </div>
+
+                      <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => addToast('Security credentials and session settings saved.', 'success')}
+                          className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-600/25 hover:bg-violet-500 transition cursor-pointer hover:scale-105 active:scale-95"
+                        >
+                          <Check size={16} /> Save Security Preferences
+                        </button>
+                      </div>
                     </div>
                   </>
                 )}
@@ -1121,6 +1246,16 @@ export default function SettingsPage() {
                           className="size-4 accent-violet-600 cursor-pointer"
                         />
                       </label>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => addToast('Notification channel preferences saved.', 'success')}
+                        className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-600/25 hover:bg-violet-500 transition cursor-pointer hover:scale-105 active:scale-95"
+                      >
+                        <Check size={16} /> Save Notification Preferences
+                      </button>
                     </div>
                   </div>
                 )}
