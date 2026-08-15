@@ -328,16 +328,32 @@ export default function EditorPage() {
   );
 
   const handleRepositionCanvas = useCallback(() => {
-    setZoom(1);
     if (!gridRef.current) return;
     const container = gridRef.current;
-    const containerWidth = container.clientWidth || 1000;
-    const containerHeight = container.clientHeight || 700;
+
+    // First reset zoom to 1 so we measure at 1:1 scale
+    setZoom(1);
 
     const nodes = scene?.nodes || [];
 
-    const calculateTarget = () => {
-      if (nodes.length > 0) {
+    // Run after zoom state update has been painted
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const boardSheet = container.firstElementChild;
+        if (!boardSheet) return;
+
+        // boardOriginX/Y = how many pixels of scroll are needed to reach the (0,0) of the board sheet.
+        // This equals the container's left/top padding because the board sheet starts right after it.
+        // We measure it live via offsetLeft/offsetTop of the board sheet.
+        const boardOriginScrollLeft = boardSheet.offsetLeft;
+        const boardOriginScrollTop = boardSheet.offsetTop;
+
+        // Nodes are positioned inside a p-12 (48px) wrapper inside the board sheet
+        const innerPad = 48;
+
+        const containerW = container.clientWidth;
+        const containerH = container.clientHeight;
+
         const getNodeWidth = (size) => {
           switch (size) {
             case 'small': return 220;
@@ -358,90 +374,88 @@ export default function EditorPage() {
           }
         };
 
-        const minX = Math.min(...nodes.map((n) => n.x ?? 40));
-        const maxX = Math.max(...nodes.map((n) => (n.x ?? 40) + getNodeWidth(n.size)));
-        const minY = Math.min(...nodes.map((n) => n.y ?? 40));
-        const maxY = Math.max(...nodes.map((n) => (n.y ?? 40) + getNodeHeight(n.type)));
+        let targetScrollLeft, targetScrollTop;
 
-        // 1200px container padding + 48px inner grid padding
-        const centerX = 1200 + 48 + (minX + maxX) / 2;
-        const centerY = 1200 + 48 + (minY + maxY) / 2;
+        if (nodes.length > 0) {
+          const minX = Math.min(...nodes.map((n) => n.x ?? 40));
+          const maxX = Math.max(...nodes.map((n) => (n.x ?? 40) + getNodeWidth(n.size)));
+          const minY = Math.min(...nodes.map((n) => n.y ?? 40));
+          const maxY = Math.max(...nodes.map((n) => (n.y ?? 40) + getNodeHeight(n.type)));
 
-        return {
-          left: Math.max(0, Math.round(centerX - containerWidth / 2)),
-          top: Math.max(0, Math.round(centerY - containerHeight / 2)),
-        };
-      } else {
-        const centerX = 1200 + 48 + 400;
-        const centerY = 1200 + 48 + 300;
-        return {
-          left: Math.max(0, Math.round(centerX - containerWidth / 2)),
-          top: Math.max(0, Math.round(centerY - containerHeight / 2)),
-        };
-      }
-    };
+          // Center of the node bounding box in board-local coords
+          const nodesCenterX = innerPad + (minX + maxX) / 2;
+          const nodesCenterY = innerPad + (minY + maxY) / 2;
 
-    const target = calculateTarget();
+          // Scroll to put that center in the middle of the viewport
+          targetScrollLeft = Math.max(0, Math.round(boardOriginScrollLeft + nodesCenterX - containerW / 2));
+          targetScrollTop  = Math.max(0, Math.round(boardOriginScrollTop  + nodesCenterY - containerH / 2));
+        } else {
+          // No nodes – center the board sheet origin + 400/300 default offset
+          targetScrollLeft = Math.max(0, Math.round(boardOriginScrollLeft + innerPad + 400 - containerW / 2));
+          targetScrollTop  = Math.max(0, Math.round(boardOriginScrollTop  + innerPad + 300 - containerH / 2));
+        }
 
-    container.scrollTo({
-      left: target.left,
-      top: target.top,
-      behavior: 'smooth',
-    });
-
-    setTimeout(() => {
-      if (gridRef.current) {
-        gridRef.current.scrollTo({
-          left: target.left,
-          top: target.top,
+        container.scrollTo({
+          left: targetScrollLeft,
+          top: targetScrollTop,
           behavior: 'smooth',
         });
-      }
-    }, 60);
+      });
+    });
   }, [scene?.nodes]);
 
   // Initial 360-degree scroll position centering
   useEffect(() => {
-    if (gridRef.current) {
-      const container = gridRef.current;
-      const containerWidth = container.clientWidth || 1000;
-      const containerHeight = container.clientHeight || 700;
+    const container = gridRef.current;
+    if (!container) return;
+    // Defer until the DOM has painted so offsetLeft/offsetTop are reliable
+    requestAnimationFrame(() => {
+      const boardSheet = container.firstElementChild;
+      if (!boardSheet) return;
+
+      const boardOriginScrollLeft = boardSheet.offsetLeft;
+      const boardOriginScrollTop = boardSheet.offsetTop;
+      const innerPad = 48;
+      const containerW = container.clientWidth;
+      const containerH = container.clientHeight;
       const nodes = dashboard.data?.scene?.nodes || [];
+
+      const getNodeWidth = (size) => {
+        switch (size) {
+          case 'small': return 220;
+          case 'large': return 340;
+          case 'wide': return 440;
+          default: return 280;
+        }
+      };
+
+      const getNodeHeight = (type) => {
+        switch (type) {
+          case 'image': return 240;
+          case 'chart': return 220;
+          case 'table': return 260;
+          case 'code': return 220;
+          case 'metric': return 160;
+          default: return 180;
+        }
+      };
+
       if (nodes.length > 0) {
-        const getNodeWidth = (size) => {
-          switch (size) {
-            case 'small': return 220;
-            case 'large': return 340;
-            case 'wide': return 440;
-            default: return 280;
-          }
-        };
-        const getNodeHeight = (type) => {
-          switch (type) {
-            case 'image': return 240;
-            case 'chart': return 220;
-            case 'table': return 260;
-            case 'code': return 220;
-            case 'metric': return 160;
-            default: return 180;
-          }
-        };
         const minX = Math.min(...nodes.map((n) => n.x ?? 40));
         const maxX = Math.max(...nodes.map((n) => (n.x ?? 40) + getNodeWidth(n.size)));
         const minY = Math.min(...nodes.map((n) => n.y ?? 40));
         const maxY = Math.max(...nodes.map((n) => (n.y ?? 40) + getNodeHeight(n.type)));
-        const centerX = 1200 + 48 + (minX + maxX) / 2;
-        const centerY = 1200 + 48 + (minY + maxY) / 2;
-        container.scrollLeft = Math.max(0, Math.round(centerX - containerWidth / 2));
-        container.scrollTop = Math.max(0, Math.round(centerY - containerHeight / 2));
+        const nodesCenterX = innerPad + (minX + maxX) / 2;
+        const nodesCenterY = innerPad + (minY + maxY) / 2;
+        container.scrollLeft = Math.max(0, Math.round(boardOriginScrollLeft + nodesCenterX - containerW / 2));
+        container.scrollTop  = Math.max(0, Math.round(boardOriginScrollTop  + nodesCenterY - containerH / 2));
       } else {
-        const centerX = 1200 + 48 + 400;
-        const centerY = 1200 + 48 + 300;
-        container.scrollLeft = Math.max(0, Math.round(centerX - containerWidth / 2));
-        container.scrollTop = Math.max(0, Math.round(centerY - containerHeight / 2));
+        container.scrollLeft = Math.max(0, Math.round(boardOriginScrollLeft + innerPad + 400 - containerW / 2));
+        container.scrollTop  = Math.max(0, Math.round(boardOriginScrollTop  + innerPad + 300 - containerH / 2));
       }
-    }
+    });
   }, [dashboard.data?.id]);
+
   const { autosaveEnabled, autosaveInterval } = useSettingsStore();
 
   const [zoom, setZoom] = useState(1);
