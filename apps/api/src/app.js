@@ -11,6 +11,8 @@ import { createRequestId } from '@voxel/contracts';
 import { prisma } from './database/prisma.js';
 import { registerAuthRoutes } from './features/auth/auth-routes.js';
 import { registerWorkspaceRoutes } from './features/workspaces/workspace-routes.js';
+import { registerNotificationRoutes } from './features/notifications/notification-routes.js';
+import { registerFileRoutes } from './features/files/file-routes.js';
 import { failure, success } from './lib/api-response.js';
 
 const toRequestId = (value) => createRequestId(value);
@@ -51,6 +53,7 @@ export const buildApp = async (environment) => {
     max: 100,
     timeWindow: '1 minute',
   });
+  app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer', bodyLimit: 10 * 1024 * 1024 }, (_request, body, done) => done(null, body));
 
   await app.register(swagger, {
     openapi: {
@@ -126,6 +129,8 @@ export const buildApp = async (environment) => {
   );
 
   await registerAuthRoutes(app, environment);
+  await registerNotificationRoutes(app, environment);
+  await registerFileRoutes(app, environment);
   await registerWorkspaceRoutes(app, environment);
   app.addHook('onClose', async () => prisma.$disconnect());
 

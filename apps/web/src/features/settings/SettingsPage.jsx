@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   User,
   Users,
@@ -17,13 +17,16 @@ import {
   EyeOff,
   Lock,
   UserCheck,
+  Upload,
+  Loader2,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useThemeStore } from '@/store/theme-store';
 import { useNotificationStore } from '@/store/notification-store';
 import { useSettingsStore } from '@/store/settings-store';
+import { useHistoryStore } from '@/store/history-store';
 import { getDeviceOSString } from '@/utils/device-info';
 import { authService } from '@/features/auth/auth-service';
 import { workspaceService } from '@/features/workspaces/workspace-service';
@@ -129,12 +132,25 @@ function getTimezoneLabel(tz) {
   return `(${utcStr}) ${tz.label} — [${relativeStr}]`;
 }
 
+function getSessionDevice(userAgent) {
+  if (!userAgent) return 'Unknown device';
+  if (/iPhone|iPad|iPod/i.test(userAgent)) return 'iOS device';
+  if (/Android/i.test(userAgent)) return 'Android device';
+  if (/Windows/i.test(userAgent)) return 'Windows device';
+  if (/Macintosh|Mac OS X/i.test(userAgent)) return 'Mac';
+  if (/Linux/i.test(userAgent)) return 'Linux device';
+  return 'Web device';
+}
+
 export default function SettingsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { theme, setTheme } = useThemeStore();
   const addToast = useNotificationStore((s) => s.add);
-  const { avatarColor, setAvatarColor, autosaveEnabled, autosaveInterval, setAutosaveEnabled, setAutosaveInterval } =
+  const { avatarColor, setAvatarColor, autosaveEnabled, autosaveInterval, setAutosaveEnabled, setAutosaveInterval,
+    accentColor, setAccentColor, defaultGridStyle, setDefaultGridStyle, snapToGrid, setSnapToGrid,
+    reducedMotion, setReducedMotion } =
     useSettingsStore();
 
   // Active Tab State
@@ -154,53 +170,94 @@ export default function SettingsPage() {
     queryKey: ['workspaces'],
     queryFn: workspaceService.list,
   });
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState('');
+  const activeWorkspace = workspacesData?.find((workspace) => workspace.id === selectedWorkspaceId) || workspacesData?.[0];
+  const activeWorkspaceId = activeWorkspace?.id;
+  const canManageMembers = ['OWNER', 'ADMIN'].includes(activeWorkspace?.role);
+  const { data: memberData, isPending: membersPending } = useQuery({
+    queryKey: ['workspaces', activeWorkspaceId, 'members'],
+    queryFn: () => workspaceService.members(activeWorkspaceId),
+    enabled: Boolean(activeWorkspaceId) && !isGuestUser,
+  });
+  const { data: inviteData, isPending: invitesPending } = useQuery({
+    queryKey: ['workspaces', activeWorkspaceId, 'invites'],
+    queryFn: () => workspaceService.invites(activeWorkspaceId),
+    enabled: Boolean(activeWorkspaceId) && canManageMembers && !isGuestUser,
+  });
+  const { data: sessionData, isPending: sessionsPending } = useQuery({
+    queryKey: ['auth', 'sessions'],
+    queryFn: authService.sessions,
+    enabled: Boolean(user) && !isGuestUser,
+  });
 
   // Account & Profile State
   const [displayName, setDisplayName] = useState(user?.displayName || 'User');
-  const [email, setEmail] = useState(user?.email || 'user@voxel.com');
+  const email = user?.email || '';
   const [jobTitle, setJobTitle] = useState('Product Engineer');
   const [isCustomRole, setIsCustomRole] = useState(false);
   const [customRoleInput, setCustomRoleInput] = useState('');
   const [timezone, setTimezone] = useState('America/Los_Angeles');
   const [language, setLanguage] = useState('English (US)');
   const [bio, setBio] = useState('Designing interactive canvas workspaces and visual telemetry systems.');
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
+  const avatarInputRef = useRef(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   useEffect(() => {
     if (user) {
       setDisplayName(user.displayName || 'User');
-      setEmail(user.email || 'user@voxel.com');
+      setJobTitle(user.jobTitle || '');
+      setTimezone(user.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+      setLanguage(user.locale === 'en' ? 'English (US)' : user.locale || 'English (US)');
+      setBio(user.bio || '');
     }
   }, [user]);
 
   // Appearance & Canvas State
-  const [accentColor, setAccentColor] = useState('violet');
-  const [defaultGridStyle, setDefaultGridStyle] = useState('dots');
-  const [snapToGrid, setSnapToGrid] = useState(true);
-  const [reducedMotion, setReducedMotion] = useState(false);
+  useEffect(() => {
+    const preferences = user?.preferences;
+    if (!preferences) return;
+    if (preferences.theme) setTheme(preferences.theme);
+    if (preferences.accentColor) setAccentColor(preferences.accentColor);
+    if (preferences.defaultGridStyle) setDefaultGridStyle(preferences.defaultGridStyle === 'mesh' ? 'radial' : preferences.defaultGridStyle);
+    if (typeof preferences.snapToGrid === 'boolean') setSnapToGrid(preferences.snapToGrid);
+    if (typeof preferences.reducedMotion === 'boolean') setReducedMotion(preferences.reducedMotion);
+    if (preferences.autosaveInterval) setAutosaveInterval(preferences.autosaveInterval);
+    if (typeof preferences.autosaveEnabled === 'boolean') setAutosaveEnabled(preferences.autosaveEnabled);
+    const notifications = preferences.notifications || {};
+    if (typeof notifications.emailDigest === 'boolean') setNotifEmailDigest(notifications.emailDigest);
+    if (typeof notifications.mentions === 'boolean') setNotifMentions(notifications.mentions);
+    if (typeof notifications.desktop === 'boolean') setNotifDesktop(notifications.desktop);
+    if (typeof notifications.productUpdates === 'boolean') setNotifUpdates(notifications.productUpdates);
+  }, [user, setTheme, setAutosaveEnabled, setAutosaveInterval, setAccentColor, setDefaultGridStyle, setSnapToGrid, setReducedMotion]);
 
   // Workspace & Team State
-  const [members, setMembers] = useState([]);
-  useEffect(() => {
-    if (user) {
-      setMembers([
-        {
-          id: user.id || 'usr-1',
-          name: user.displayName || 'Authenticated User',
-          email: user.email || 'user@voxel.com',
-          role: 'OWNER',
-          avatar: (user.displayName || 'US').substring(0, 2).toUpperCase(),
-          color: 'bg-violet-600',
-        },
-      ]);
-    }
-  }, [user]);
+  const members = (memberData || []).map((member) => ({
+    id: member.id,
+    userId: member.userId,
+    name: member.user.displayName,
+    email: member.user.email,
+    role: member.role,
+    avatar: (member.user.displayName || member.user.email || 'VM').slice(0, 2).toUpperCase(),
+    color: member.role === 'OWNER' ? 'bg-violet-600' : 'bg-indigo-600',
+  }));
 
   const [memberSearch, setMemberSearch] = useState('');
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
-  const [inviteName, setInviteName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('EDITOR');
   const [inviteCopied, setInviteCopied] = useState(false);
+  const [inviteUrl, setInviteUrl] = useState('');
+
+  useEffect(() => {
+    const state = location.state;
+    if (!state?.settingsTab && !state?.workspaceId && !state?.openInvite && !state?.memberSearch) return;
+    if (state.settingsTab) setActiveTab(state.settingsTab);
+    if (state.workspaceId) setSelectedWorkspaceId(state.workspaceId);
+    if (state.memberSearch) setMemberSearch(state.memberSearch);
+    if (state.openInvite) setInviteModalOpen(true);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.key, location.pathname, location.state, navigate]);
 
   // Dynamic Browser & OS detection for active session
   const currentBrowser = useMemo(() => {
@@ -216,37 +273,32 @@ export default function SettingsPage() {
     return getDeviceOSString();
   }, []);
 
-  // Security & Active Sessions State
-  const [sessions, setSessions] = useState([]);
-  useEffect(() => {
-    setSessions([
-      {
-        id: 'session-active',
-        device: currentOS,
-        browser: currentBrowser,
-        location: 'Active Session',
-        ip: '127.0.0.1 (Current)',
-        lastActive: 'Active now',
-        current: true,
-      },
-    ]);
-  }, [currentBrowser, currentOS]);
+  // Security & Active Sessions
+  const sessions = (sessionData || []).map((session) => ({
+    ...session,
+    device: session.current ? currentOS : getSessionDevice(session.userAgent),
+    browser: session.userAgent?.includes('Firefox') ? 'Firefox'
+      : session.userAgent?.includes('Edg') ? 'Edge'
+        : session.userAgent?.includes('Chrome') ? 'Chrome'
+          : session.userAgent?.includes('Safari') ? 'Safari' : currentBrowser,
+    location: session.ipAddress ? 'Recent sign-in' : 'Location unavailable',
+    ip: session.ipAddress || 'IP unavailable',
+    lastActive: new Date(session.lastSeenAt).toLocaleString(),
+  }));
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
 
-  // Fetch Real Audit Logs from API
-  const activeWorkspaceId = workspacesData?.[0]?.id;
+  // Fetch workspace audit logs
   const { data: auditEventsData, isPending: auditPending } = useQuery({
     queryKey: ['audit-events', activeWorkspaceId],
     queryFn: () => workspaceService.auditEvents(activeWorkspaceId),
     enabled: Boolean(activeWorkspaceId),
   });
 
-  const auditLogs = auditEventsData?.data || [];
+  const auditLogs = auditEventsData || [];
 
   // Notifications State
   const [notifEmailDigest, setNotifEmailDigest] = useState(true);
@@ -258,6 +310,26 @@ export default function SettingsPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [isResettingGuest, setIsResettingGuest] = useState(false);
+
+  const handleResetGuest = async () => {
+    setIsResettingGuest(true);
+    try {
+      await authService.logout();
+      queryClient.clear();
+      useHistoryStore.getState().clear();
+      useNotificationStore.getState().clearAll();
+      localStorage.removeItem('voxel_copied_nodes');
+      localStorage.removeItem('voxel_copied_node');
+      sessionStorage.removeItem('voxel_active_user');
+      addToast('Guest workspace data was cleared. Sign in again to start a fresh guest session.', 'success');
+      navigate('/login');
+    } catch (error) {
+      addToast(error.message || 'Guest workspace data could not be cleared.', 'error');
+    } finally {
+      setIsResettingGuest(false);
+    }
+  };
 
   const handleDeleteAccount = async () => {
     try {
@@ -275,25 +347,90 @@ export default function SettingsPage() {
   };
 
   // Handlers
-  const handleSaveProfile = (e) => {
+  const handleSaveProfile = async (e) => {
     e.preventDefault();
-    addToast('Profile preferences updated successfully.', 'success');
+    try {
+      const updated = await authService.updateProfile({
+        displayName,
+        jobTitle: jobTitle || null,
+        timezone,
+        locale: language,
+        bio: bio || null,
+      });
+      queryClient.setQueryData(['auth', 'me'], (previous) => ({ ...previous, ...updated }));
+      addToast('Profile saved to your account.', 'success');
+    } catch (error) {
+      addToast(error.message || 'Profile could not be saved.', 'error');
+    }
   };
 
-  const handleSavePassword = (e) => {
+  const handleAvatarUpload = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setAvatarUploading(true);
+    try {
+      const result = await authService.uploadAvatar(file);
+      queryClient.setQueryData(['auth', 'me'], (previous) => ({ ...previous, avatarUrl: result.avatarUrl }));
+      addToast('Profile photo updated.', 'success');
+    } catch (error) {
+      addToast(error.message || 'Profile photo could not be uploaded.', 'error');
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const handleSavePreferences = async (e, includeNotifications = false) => {
+    e?.preventDefault?.();
+    const preferences = {
+      theme,
+      accentColor,
+      defaultGridStyle,
+      snapToGrid,
+      reducedMotion,
+      autosaveEnabled,
+      autosaveInterval,
+      ...(includeNotifications ? {
+        notifications: {
+          emailDigest: notifEmailDigest,
+          mentions: notifMentions,
+          desktop: notifDesktop,
+          productUpdates: notifUpdates,
+        },
+      } : {}),
+    };
+    setIsSavingPreferences(true);
+    try {
+      const savedPreferences = await authService.updatePreferences(preferences);
+      queryClient.setQueryData(['auth', 'me'], (previous) => ({ ...previous, preferences: savedPreferences }));
+      addToast('Your preferences are saved to your account.', 'success');
+    } catch (error) {
+      addToast(error.message || 'Preferences could not be saved.', 'error');
+    } finally {
+      setIsSavingPreferences(false);
+    }
+  };
+
+  const handleSavePassword = async (e) => {
     e.preventDefault();
-    if (newPassword.length < 6) {
-      addToast('New password must be at least 6 characters.', 'warning');
+    if (newPassword.length < 12) {
+      addToast('Use at least 12 characters for your new password.', 'warning');
       return;
     }
     if (newPassword !== confirmNewPassword) {
       addToast('New passwords do not match.', 'warning');
       return;
     }
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmNewPassword('');
-    addToast('Security password updated successfully.', 'success');
+    try {
+      await authService.updatePassword({ currentPassword, newPassword });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      await queryClient.invalidateQueries({ queryKey: ['auth', 'sessions'] });
+      addToast('Password updated. Other active sessions were signed out.', 'success');
+    } catch (error) {
+      addToast(error.message || 'Password could not be updated.', 'error');
+    }
   };
 
   const handleCopyInvite = () => {
@@ -301,51 +438,96 @@ export default function SettingsPage() {
       addToast('Sign in with an account to invite team members to workspace.', 'warning');
       return;
     }
-    navigator.clipboard.writeText('https://voxel.app/invite/ws_981273918237');
+    if (!inviteUrl) {
+      addToast('Create an invitation first to generate a secure, recipient-specific link.', 'warning');
+      return;
+    }
+    navigator.clipboard.writeText(inviteUrl);
     setInviteCopied(true);
     setTimeout(() => setInviteCopied(false), 2000);
     addToast('Workspace invite link copied to clipboard.', 'info');
   };
 
-  const handleRevokeSession = (id) => {
-    setSessions(sessions.filter((s) => s.id !== id));
-    addToast('Session revoked successfully.', 'info');
+  const handleRevokeSession = async (id) => {
+    try {
+      await authService.revokeSession(id);
+      await queryClient.invalidateQueries({ queryKey: ['auth', 'sessions'] });
+      addToast('Session revoked.', 'info');
+    } catch (error) {
+      addToast(error.message || 'Session could not be revoked.', 'error');
+    }
   };
 
-  const handleInviteSubmit = (e) => {
+  const handleInviteSubmit = async (e) => {
     e.preventDefault();
-    if (isGuestUser) {
-      addToast('Sign in with an account to invite team members to workspace.', 'warning');
-      setInviteModalOpen(false);
+    if (!activeWorkspaceId || !canManageMembers) {
+      addToast('You need workspace admin access to invite a member.', 'warning');
       return;
     }
-    if (!inviteName || !inviteEmail) return;
-    const initials = inviteName
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .substring(0, 2)
-      .toUpperCase();
-    const newMember = {
-      id: Math.random().toString(),
-      name: inviteName,
-      email: inviteEmail,
-      role: inviteRole,
-      avatar: initials || 'MB',
-      color: 'bg-violet-600',
-    };
-    setMembers([...members, newMember]);
-    setInviteName('');
-    setInviteEmail('');
-    setInviteModalOpen(false);
-    addToast(`Invitation sent to ${inviteEmail}`, 'success');
+    if (!inviteEmail.trim()) return;
+    try {
+      const result = await workspaceService.createInvite(activeWorkspaceId, {
+        email: inviteEmail.trim(),
+        role: inviteRole,
+      });
+      setInviteUrl(result.inviteUrl);
+      await navigator.clipboard.writeText(result.inviteUrl).catch(() => {});
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 2500);
+      setInviteEmail('');
+      setInviteModalOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ['workspaces', activeWorkspaceId, 'invites'] });
+      addToast(`Invitation link created for ${result.email} and copied to clipboard.`, 'success');
+    } catch (error) {
+      addToast(error.message || 'Invitation could not be created.', 'error');
+    }
+  };
+
+  const handleRemoveMember = async (member) => {
+    try {
+      await workspaceService.removeMember(activeWorkspaceId, member.id);
+      await queryClient.invalidateQueries({ queryKey: ['workspaces', activeWorkspaceId, 'members'] });
+      addToast(`${member.name} was removed from the workspace.`, 'info');
+    } catch (error) {
+      addToast(error.message || 'Member could not be removed.', 'error');
+    }
+  };
+
+  const handleChangeRole = async (member, role) => {
+    try {
+      await workspaceService.updateMember(activeWorkspaceId, member.id, { role });
+      await queryClient.invalidateQueries({ queryKey: ['workspaces', activeWorkspaceId, 'members'] });
+      addToast(`${member.name}'s role was updated.`, 'success');
+    } catch (error) {
+      addToast(error.message || 'Member role could not be updated.', 'error');
+    }
+  };
+
+  const handleRevokeInvite = async (invite) => {
+    try {
+      await workspaceService.revokeInvite(activeWorkspaceId, invite.id);
+      await queryClient.invalidateQueries({ queryKey: ['workspaces', activeWorkspaceId, 'invites'] });
+      addToast(`Invitation for ${invite.email} was revoked.`, 'info');
+    } catch (error) {
+      addToast(error.message || 'Invitation could not be revoked.', 'error');
+    }
+  };
+
+  const handleLogoutAll = async () => {
+    try {
+      await authService.logoutAll();
+      queryClient.clear();
+      navigate('/login');
+    } catch (error) {
+      addToast(error.message || 'Sessions could not be revoked.', 'error');
+    }
   };
 
   const filteredMembers = useMemo(() => {
     return members.filter(
-      (m) =>
-        m.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
-        m.email.toLowerCase().includes(memberSearch.toLowerCase())
+        (m) =>
+        (m.name || '').toLowerCase().includes(memberSearch.toLowerCase()) ||
+        (m.email || '').toLowerCase().includes(memberSearch.toLowerCase())
     );
   }, [members, memberSearch]);
 
@@ -377,7 +559,7 @@ export default function SettingsPage() {
             Platform Settings
           </h1>
           <p className="mt-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 max-w-2xl">
-            Configure your personal identity, theme preferences, team access controls, API keys, and workspace parameters.
+            Manage your profile, visual defaults, account security, and workspace access.
           </p>
         </div>
       </div>
@@ -454,12 +636,17 @@ export default function SettingsPage() {
                   <form onSubmit={handleSaveProfile} className="space-y-6">
                     {/* Avatar Customizer */}
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
-                      <div
-                        className={`grid size-16 place-items-center rounded-2xl ${avatarColor} text-2xl font-extrabold text-white shadow-md transition-colors shrink-0`}
-                      >
-                        {displayName.slice(0, 2).toUpperCase() || 'GU'}
+                      <div className={`grid size-16 shrink-0 place-items-center overflow-hidden rounded-2xl ${avatarColor} text-2xl font-extrabold text-white shadow-md`}>
+                        {user?.avatarUrl ? <img src={user.avatarUrl} alt={`${displayName} profile`} className="size-full object-cover" /> : displayName.slice(0, 2).toUpperCase() || 'GU'}
                       </div>
                       <div>
+                        {!isGuestUser && <>
+                          <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={handleAvatarUpload} className="hidden" />
+                          <button type="button" onClick={() => avatarInputRef.current?.click()} disabled={avatarUploading} className="mb-3 inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-violet-500 disabled:opacity-60">
+                            {avatarUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}{avatarUploading ? 'Uploading…' : user?.avatarUrl ? 'Change profile photo' : 'Upload profile photo'}
+                          </button>
+                          <p className="mb-3 text-[10px] text-slate-500">PNG, JPEG, GIF, or WebP. Max 10 MB.</p>
+                        </>}
                         <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
                           Avatar Badge Color (Applies Globally)
                         </p>
@@ -514,9 +701,11 @@ export default function SettingsPage() {
                           <input
                             type="email"
                             value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-white/10"
+                            readOnly
+                            aria-describedby="account-email-note"
+                            className="w-full cursor-not-allowed rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-500 outline-none dark:border-white/10 dark:bg-white/5"
                           />
+                          <p id="account-email-note" className="mt-1 text-[10px] text-slate-500">Changing your sign-in email is not available yet.</p>
                         </div>
                       )}
 
@@ -641,7 +830,7 @@ export default function SettingsPage() {
                     <p className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
                       Interface Theme Mode
                     </p>
-                    <div className="grid grid-cols-2 gap-3 sm:w-80">
+                    <div className="grid grid-cols-3 gap-2 sm:w-[30rem]">
                       <button
                         type="button"
                         onClick={() => setTheme('light')}
@@ -663,6 +852,17 @@ export default function SettingsPage() {
                         }`}
                       >
                         Dark Mode
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTheme('system')}
+                        className={`flex items-center justify-center gap-2 py-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                          theme === 'system'
+                            ? 'border-violet-600 bg-violet-500/20 text-violet-700 dark:text-violet-200 shadow-sm'
+                            : 'border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:text-slate-400 dark:hover:bg-white/5'
+                        }`}
+                      >
+                        System
                       </button>
                     </div>
                   </div>
@@ -706,7 +906,7 @@ export default function SettingsPage() {
                       {[
                         { id: 'dots', label: 'Dot Matrix' },
                         { id: 'lines', label: 'Grid Lines' },
-                        { id: 'mesh', label: 'Radial Mesh' },
+                        { id: 'radial', label: 'Radial Mesh' },
                         { id: 'blank', label: 'Clean Canvas' },
                       ].map((grid) => (
                         <button
@@ -818,10 +1018,11 @@ export default function SettingsPage() {
                   <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex justify-end">
                     <button
                       type="button"
-                      onClick={() => addToast('Appearance & Canvas preferences saved.', 'success')}
+                      onClick={(event) => handleSavePreferences(event)}
+                      disabled={isSavingPreferences}
                       className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-600/25 hover:bg-violet-500 transition cursor-pointer hover:scale-105 active:scale-95"
                     >
-                      <Check size={16} /> Save Appearance Preferences
+                      <Check size={16} /> {isSavingPreferences ? 'Saving…' : 'Save Appearance Preferences'}
                     </button>
                   </div>
                 </div>
@@ -843,15 +1044,25 @@ export default function SettingsPage() {
                       <div className="w-1.5 h-6 bg-violet-600 rounded-full" />
                       <h2 className="text-lg font-extrabold tracking-tight">Workspace & Member Access</h2>
                     </div>
-                    {!isGuestUser && (
+                      {!isGuestUser && (workspacesData?.length || 0) > 1 && (
+                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                          Workspace
+                          <select value={activeWorkspaceId || ''} onChange={(event) => { setSelectedWorkspaceId(event.target.value); setInviteUrl(''); setInviteCopied(false); }} className="max-w-56 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 dark:border-white/10 dark:bg-slate-950 dark:text-slate-200">
+                            {workspacesData.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+                          </select>
+                        </label>
+                      )}
+                    {!isGuestUser && canManageMembers && (
                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={handleCopyInvite}
-                          type="button"
-                          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 px-3.5 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-200 cursor-pointer"
-                        >
-                          <Copy size={14} /> {inviteCopied ? 'Link Copied!' : 'Copy Invite Link'}
-                        </button>
+                        {inviteUrl && (
+                          <button
+                            onClick={handleCopyInvite}
+                            type="button"
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 px-3.5 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-200 cursor-pointer"
+                          >
+                            <Copy size={14} /> {inviteCopied ? 'Link Copied!' : 'Copy Latest Invite'}
+                          </button>
+                        )}
                         <button
                           onClick={() => setInviteModalOpen(true)}
                           type="button"
@@ -908,12 +1119,18 @@ export default function SettingsPage() {
                           <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:bg-slate-900/80 dark:text-slate-400 border-b border-slate-200 dark:border-white/10">
                             <tr>
                               <th className="px-4 py-3.5">Member</th>
-                              <th className="px-4 py-3.5">Workspace Role</th>
+                          <th className="px-4 py-3.5">Workspace Role</th>
                               <th className="px-4 py-3.5 text-right">Actions</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                            {filteredMembers.map((member) => (
+                            {membersPending && (
+                              <tr><td colSpan={3} className="px-4 py-8 text-center text-slate-500">Loading workspace members…</td></tr>
+                            )}
+                            {!membersPending && filteredMembers.length === 0 && (
+                              <tr><td colSpan={3} className="px-4 py-8 text-center text-slate-500">No members match this search.</td></tr>
+                            )}
+                            {!membersPending && filteredMembers.map((member) => (
                               <tr key={member.id} className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors">
                                 <td className="px-4 py-3.5">
                                   <div className="flex items-center gap-3">
@@ -927,28 +1144,28 @@ export default function SettingsPage() {
                                   </div>
                                 </td>
                                 <td className="px-4 py-3.5">
-                                  <span
-                                    className={`inline-block rounded-full px-2.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${
-                                      member.role === 'OWNER'
-                                        ? 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200'
-                                        : member.role === 'ADMIN'
-                                          ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-200'
-                                          : member.role === 'EDITOR'
-                                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200'
-                                            : 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-400'
-                                    }`}
-                                  >
-                                    {member.role}
-                                  </span>
+                                  {canManageMembers && member.role !== 'OWNER' && (activeWorkspace?.role === 'OWNER' || member.role !== 'ADMIN') ? (
+                                    <select
+                                      value={member.role}
+                                      onChange={(event) => handleChangeRole(member, event.target.value)}
+                                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-slate-700 outline-none focus:ring-2 focus:ring-violet-500 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200"
+                                      aria-label={`Role for ${member.name || member.email}`}
+                                    >
+                                      {activeWorkspace?.role === 'OWNER' && <option value="ADMIN">Admin</option>}
+                                      <option value="EDITOR">Editor</option>
+                                      <option value="COMMENTER">Commenter</option>
+                                      <option value="VIEWER">Viewer</option>
+                                    </select>
+                                  ) : (
+                                    <span className="inline-block rounded-full bg-violet-100 px-2.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-violet-700 dark:bg-violet-500/20 dark:text-violet-200">{member.role}</span>
+                                  )}
                                 </td>
                                 <td className="px-4 py-3.5 text-right">
-                                  {member.role !== 'OWNER' && (
+                                  {canManageMembers && member.role !== 'OWNER' && (activeWorkspace?.role === 'OWNER' || member.role !== 'ADMIN') && (
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        setMembers(members.filter((m) => m.id !== member.id));
-                                        addToast(`Removed ${member.name} from workspace`, 'info');
-                                      }}
+                                      onClick={() => handleRemoveMember(member)}
+                                      title={`Remove ${member.name || member.email} from workspace`}
                                       className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg transition-colors cursor-pointer"
                                     >
                                       <Trash2 size={15} />
@@ -961,15 +1178,22 @@ export default function SettingsPage() {
                         </table>
                       </div>
 
-                      <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => addToast('Workspace team preferences saved.', 'success')}
-                          className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-600/25 hover:bg-violet-500 transition cursor-pointer hover:scale-105 active:scale-95"
-                        >
-                          <Check size={16} /> Save Workspace Settings
-                        </button>
-                      </div>
+                      {canManageMembers && (
+                        <div className="space-y-3 border-t border-slate-100 pt-5 dark:border-white/5">
+                          <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-300">Pending invitations</h3>
+                          {invitesPending ? <p className="text-xs text-slate-500">Loading invitations…</p> : (inviteData || []).length === 0 ? (
+                            <p className="text-xs text-slate-500">No pending invitations.</p>
+                          ) : (inviteData || []).map((invite) => (
+                            <div key={invite.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3.5 py-3 dark:border-white/10">
+                              <div className="min-w-0">
+                                <div className="truncate text-xs font-bold text-slate-800 dark:text-slate-200">{invite.email}</div>
+                                <div className="mt-0.5 text-[10px] text-slate-500">{invite.role} · Expires {new Date(invite.expiresAt).toLocaleDateString()}</div>
+                              </div>
+                              <button type="button" onClick={() => handleRevokeInvite(invite)} className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10">Revoke</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -1069,18 +1293,13 @@ export default function SettingsPage() {
                           />
                         </div>
 
-                        <label className="flex items-center justify-between p-3.5 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5 cursor-pointer mt-3">
+                        <div className="mt-3 flex items-center justify-between rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3.5 dark:border-white/10 dark:bg-white/5">
                           <div>
                             <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Two-Factor Authentication (2FA)</div>
-                            <div className="text-[11px] text-slate-500">Enforce TOTP authenticator prompt upon device sign in</div>
+                            <div className="text-[11px] text-slate-500">Authenticator setup will be available in a future release.</div>
                           </div>
-                          <input
-                            type="checkbox"
-                            checked={twoFactorEnabled}
-                            onChange={(e) => setTwoFactorEnabled(e.target.checked)}
-                            className="size-4 accent-violet-600 cursor-pointer"
-                          />
-                        </label>
+                          <span className="rounded-full bg-slate-200 px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-wider text-slate-600 dark:bg-white/10 dark:text-slate-400">Coming soon</span>
+                        </div>
 
                         <button
                           type="submit"
@@ -1098,9 +1317,12 @@ export default function SettingsPage() {
                           <div className="w-1.5 h-6 bg-violet-600 rounded-full" />
                           <h2 className="text-lg font-extrabold tracking-tight">Active Browser & Device Sessions</h2>
                         </div>
+                        {!isGuestUser && <button type="button" onClick={handleLogoutAll} className="rounded-xl border border-rose-200 px-3 py-2 text-[10px] font-bold text-rose-600 hover:bg-rose-50 dark:border-rose-500/20 dark:text-rose-400 dark:hover:bg-rose-500/10">Sign out everywhere</button>}
                       </div>
 
                       <div className="space-y-3">
+                        {sessionsPending && <p className="rounded-xl border border-slate-200 px-4 py-6 text-center text-xs text-slate-500 dark:border-white/10">Loading active sessions…</p>}
+                        {!sessionsPending && sessions.length === 0 && <p className="rounded-xl border border-slate-200 px-4 py-6 text-center text-xs text-slate-500 dark:border-white/10">No active sessions found.</p>}
                         {sessions.map((session) => (
                           <div
                             key={session.id}
@@ -1184,15 +1406,6 @@ export default function SettingsPage() {
                         </table>
                       </div>
 
-                      <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => addToast('Security credentials and session settings saved.', 'success')}
-                          className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-600/25 hover:bg-violet-500 transition cursor-pointer hover:scale-105 active:scale-95"
-                        >
-                          <Check size={16} /> Save Security Preferences
-                        </button>
-                      </div>
                     </div>
                   </>
                 )}
@@ -1222,7 +1435,7 @@ export default function SettingsPage() {
                           Notification Preferences Require an Account
                         </h3>
                         <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                          Email summaries, team @mention alerts, and system notification preferences are linked to verified account emails. Sign in to customize your notification channels.
+                          Sign in to save notification preferences to your account. Delivery channels are not active in this deployment.
                         </p>
                       </div>
                       <div className="pt-2">
@@ -1240,8 +1453,11 @@ export default function SettingsPage() {
                   <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 dark:border-white/10 dark:bg-slate-900/60 shadow-sm space-y-4">
                     <div className="flex items-center gap-3 mb-2">
                       <div className="w-1.5 h-6 bg-violet-600 rounded-full" />
-                      <h2 className="text-lg font-extrabold tracking-tight">Notification Channels</h2>
+                        <h2 className="text-lg font-extrabold tracking-tight">Notification Preferences</h2>
                     </div>
+                    <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                      These preferences are saved to your account. Email digests, mention delivery, and browser push are not enabled in this deployment.
+                    </p>
 
                     <div className="space-y-3">
                       <label className="flex items-center justify-between p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5 cursor-pointer">
@@ -1300,10 +1516,11 @@ export default function SettingsPage() {
                     <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex justify-end">
                       <button
                         type="button"
-                        onClick={() => addToast('Notification channel preferences saved.', 'success')}
+                        onClick={(event) => handleSavePreferences(event, true)}
+                        disabled={isSavingPreferences}
                         className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-600/25 hover:bg-violet-500 transition cursor-pointer hover:scale-105 active:scale-95"
                       >
-                        <Check size={16} /> Save Notification Preferences
+                        <Check size={16} /> {isSavingPreferences ? 'Saving…' : 'Save Notification Preferences'}
                       </button>
                     </div>
                   </div>
@@ -1330,24 +1547,21 @@ export default function SettingsPage() {
                     </div>
 
                     <p className="text-xs text-rose-600/80 dark:text-rose-300/80 leading-relaxed">
-                      You are currently operating in a guest session. Resetting your guest data clears your local canvas cache and restores default workspace templates.
+                      You are using the development guest account. Clearing guest data deletes its workspaces and dashboards, then signs you out.
                     </p>
 
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl border border-rose-200 dark:border-rose-500/20 bg-white/80 dark:bg-slate-900/60">
                       <div>
-                        <div className="text-xs font-bold text-slate-900 dark:text-white">Reset Local Guest Cache</div>
-                        <div className="text-[11px] text-slate-500">Clears browser storage and restores default guest workspace state</div>
+                        <div className="text-xs font-bold text-slate-900 dark:text-white">Clear Guest Workspace Data</div>
+                        <div className="text-[11px] text-slate-500">Deletes development guest workspaces and clears local editor history</div>
                       </div>
                       <button
                         type="button"
-                        onClick={() => {
-                          localStorage.clear();
-                          addToast('Local guest cache reset successfully.', 'warning');
-                          window.location.reload();
-                        }}
-                        className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-rose-500 cursor-pointer shrink-0"
+                        onClick={handleResetGuest}
+                        disabled={isResettingGuest}
+                        className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-rose-500 cursor-pointer shrink-0 disabled:opacity-50"
                       >
-                        Reset Guest Data
+                        {isResettingGuest ? 'Clearing…' : 'Clear guest data'}
                       </button>
                     </div>
                   </div>
@@ -1411,19 +1625,6 @@ export default function SettingsPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
-                  Member Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={inviteName}
-                  onChange={(e) => setInviteName(e.target.value)}
-                  placeholder="Elena Rostova"
-                  className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-500 dark:border-white/10"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
                   Email Address
                 </label>
                 <input
@@ -1434,6 +1635,7 @@ export default function SettingsPage() {
                   placeholder="elena@company.com"
                   className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-500 dark:border-white/10"
                 />
+                <p className="mt-1.5 text-[10px] leading-4 text-slate-500">Voxel creates a secure, email-specific link and copies it for you. Email delivery is not configured, so share the link directly with the invitee.</p>
               </div>
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
@@ -1444,8 +1646,9 @@ export default function SettingsPage() {
                   onChange={(e) => setInviteRole(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-500 dark:border-white/10 dark:bg-slate-900"
                 >
-                  <option value="ADMIN">ADMIN — Full admin rights</option>
+                  {activeWorkspace?.role === 'OWNER' && <option value="ADMIN">ADMIN — Full admin rights</option>}
                   <option value="EDITOR">EDITOR — Edit canvas nodes & layout</option>
+                  <option value="COMMENTER">COMMENTER — Review and comment</option>
                   <option value="VIEWER">VIEWER — Read-only access</option>
                 </select>
               </div>
@@ -1462,7 +1665,7 @@ export default function SettingsPage() {
                 type="submit"
                 className="rounded-xl bg-violet-600 px-4.5 py-2.5 text-xs font-bold text-white hover:bg-violet-500 shadow-md cursor-pointer"
               >
-                Send Invitation
+                Create invitation link
               </button>
             </div>
           </form>
@@ -1483,7 +1686,7 @@ export default function SettingsPage() {
               Confirm Account Deletion
             </h3>
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              This will permanently soft-delete your account, workspace memberships, and node credentials. Type <b className="font-mono text-rose-600">DELETE MY ACCOUNT</b> to confirm.
+              This permanently deletes your account and workspaces you own. Dashboards in other workspaces are reassigned to their owners. Transfer ownership or remove other members from your workspaces first. Type <b className="font-mono text-rose-600">DELETE MY ACCOUNT</b> to confirm.
             </p>
             <input
               type="text"

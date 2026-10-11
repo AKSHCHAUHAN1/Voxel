@@ -1,154 +1,77 @@
-# Voxel ── Visual Canvas & Infrastructure Telemetry System
+# Voxel
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Build Status](https://img.shields.io/badge/Build-Passing-emerald.svg)](https://github.com/AKSHCHAUHAN1/Voxel)
-[![Node Version](https://img.shields.io/badge/Node.js-%3E%3D20.0.0-43853D.svg)](https://nodejs.org/)
-[![React](https://img.shields.io/badge/Frontend-React_18_%7C_Vite-61DAFB.svg)](https://react.dev/)
-[![Fastify](https://img.shields.io/badge/Backend-Fastify_%7C_Prisma-000000.svg)](https://fastify.dev/)
+Voxel is a collaborative visual workspace for building and sharing spatial dashboards. Teams can arrange editable canvas cards, organize dashboards in workspaces, invite members with role-based access, and share expiring view or edit links.
 
-**Voxel** is an enterprise-grade collaborative visual telemetry platform and spatial canvas editor designed for real-time system monitoring, flow architecture mapping, and operational dashboards. Built as a high-performance JavaScript monorepo, Voxel combines dynamic canvas layouting with real-time multi-user collaboration, automated checkpoint version control, and granular role-based access management.
+## Product capabilities
 
----
+- **Canvas editor:** Add and configure metric, KPI display, progress, chart, note, status, logic, image, embed, table, timer, link, divider, and code cards. The built-in registry drives the element picker, defaults, inspector fields, and configuration checks. Drag, resize, snap to the canvas grid, connect, copy, paste, undo, and redo. A failing widget is isolated so the rest of the canvas stays usable.
+- **Collaboration:** Yjs and Hocuspocus synchronize canvas updates and presence. Dashboard discussions support one-level reply threads, @email teammate mentions, node or selection anchors, and resolve/reopen state. Commenter access allows posting; authors and workspace editors can moderate. Account notifications persist across devices for comments, mentions, and invitations. Workspace roles control editor access; archived dashboards and workspaces are read-only.
+- **Workspace management:** Create, rename, duplicate workspace settings, archive, restore, leave, and transfer ownership. Owners and admins can upload a workspace cover image. Deleted workspaces and dashboards stay in Trash for 30 days; restoring them does not reactivate old share or invite links.
+- **Workspace files:** Upload, download, and remove image, PDF, CSV, JSON, and Markdown files. S3-compatible storage keeps file bytes outside Postgres; uploads are type-checked, limited to 10 MB each, and accounted against a locked 1 GiB workspace quota.
+- **Sharing:** Create revocable links with view or edit access and an expiration. Invite links are scoped to an email and expire after seven days. Voxel creates the invite link; it is not sent by email in this release.
+- **Account controls:** Email and Google sign-in, profile photo upload, profile and appearance preferences, password changes, session review and revocation, workspace member roles, and audit events.
+- **Dashboard lifecycle:** Draft, publish, archive, restore, search, version history, and reusable workspace templates with private drafts, admin publishing, and personal favorites.
 
-## 🌟 Key Features
+This release ships built-in widget definitions only. The third-party widget SDK, plugin sandbox, and marketplace described in the product prompt are not implemented. External data connectors (REST, GraphQL, SQL, and vendor integrations) are not implemented; metric and chart cards currently use manual or connected widget values. Announcements, browser push, two-factor authentication, billing, public APIs, and webhooks are also not implemented. Notification preferences do not control email or browser push delivery.
 
-### 🎨 Infinite Spatial Canvas & Node Library
-- **Interactive Grid System**: Drag-and-drop node positioning with snap-to-grid alignment and customizable grid patterns (*Dot Matrix*, *Grid Lines*, *Radial Mesh*, *Clean Canvas*).
-- **Rich Telemetry Node Suite**:
-  - **Metric Cards**: Real-time numerical metrics, trend percentages, and custom units (`ms`, `req/s`, `%`, `MB`).
-  - **Status Indicators**: Operational health badges (`success`, `warning`, `error`) with pulse highlights.
-  - **Chart Nodes**: Visual sparkline and trend graphs for system load monitoring.
-  - **Rich Notes**: Markdown-supported documentation and team instruction cards.
-  - **Log Streams & Tables**: Tabular telemetry displays and live terminal-style log streams.
-- **Smart Connection Engine**: Dynamic bezier link paths with solid, dashed, pulsing, or glowing visual styles.
+Email/password registration now requires a single-use, 24-hour verification link. Local development shows a verification link in the app. Production must configure an HTTPS email-delivery webhook using `VOXEL_EMAIL_DELIVERY_URL`, `VOXEL_EMAIL_DELIVERY_TOKEN`, and `VOXEL_EMAIL_FROM`; the API sends JSON with `from`, `to`, `subject`, `text`, and `html`. Google accounts are accepted only when Google reports a verified email. Invite links also require a signed-in account whose address matches the invited address; treat the invite URL as a secret.
 
-### 🔄 Autosave Engine & Git-Style Version Control
-- **Configurable Autosave**: Multi-mode saving engine supporting Realtime (instant sync), 5-second, 30-second, or Manual Save modes.
-- **Adaptive UI**: Automatically hides manual save buttons when Autosave is active and displays live status indicators.
-- **Git-Style Version Control**:
-  - Automated version snapshot creation on canvas mutations.
-  - Comprehensive version history panel with node count, connection density, and timestamp metadata.
-  - One-click **Revert to Version #X** workflow that safely rolls back canvas states while logging audit points.
+## Architecture
 
-### 👥 Real-Time Collaboration & Workspace RBAC
-- **Live Multiplayer Awareness**: Real-time cursor tracking, live presence indicators, and conflict-free editing powered by Yjs.
-- **Multi-Tenant Workspaces**: Multi-workspace organization, workspace switching, and workspace settings customization.
-- **Role-Based Access Control (RBAC)**: Support for `OWNER`, `ADMIN`, `EDITOR`, and `VIEWER` permission levels with member invite workflows.
+This is an npm workspace monorepo:
 
-### ⚙️ Enterprise Settings Suite
-- **Account & Persona**: Avatar customization, profile metadata, language preferences, timezone configurations, and user bios.
-- **Visual Atelier**: Light & Dark mode theme transitions, accent color palette selectors, and grid density controls.
-- **Security & Access**: Active device session list with instant session revocation, password update workflows, and audit event logs (`AuditEvent`).
-- **Developer SDK & Webhooks**: Production API key generation (`vxl_live_...`), secret key regeneration, and webhook endpoint setup.
-
----
-
-## 🏗️ Architecture & Monorepo Structure
-
-Voxel is organized as an npm workspace monorepo separating frontend UI, backend API services, and shared data contracts:
-
-```
-voxel/
-├── apps/
-│   ├── api/                       # Fastify REST backend & Prisma ORM
-│   │   ├── prisma/                # PostgreSQL Schema & Migrations
-│   │   └── src/
-│   │       ├── features/          # Auth, Workspaces, Audit Logs, Telemetry
-│   │       └── db/                # Prisma client instantiation
-│   └── web/                       # React 18 frontend web application
-│       └── src/
-│           ├── components/        # Layout, Command Palette, Modals
-│           ├── features/          # Editor, Workspaces, Settings, Auth
-│           └── store/             # Zustand state management stores
-├── packages/
-│   └── contracts/                 # Shared Zod validation schemas & types
-├── docker-compose.yml             # Local PostgreSQL environment setup
-├── eslint.config.js               # Shared ESLint configuration
-└── package.json                   # Root monorepo workspace configuration
+```text
+apps/
+  api/       Fastify API, Prisma schema, auth, workspaces, sharing, realtime
+  web/       React and Vite application
+packages/
+  contracts/ Shared request and response contracts
 ```
 
----
+The app uses React 19, Vite, Tailwind CSS 4, TanStack Query, and Zustand in the web client. The API uses Fastify, Prisma, PostgreSQL, signed sessions, and Hocuspocus/Yjs for collaboration. Redis supports the realtime service.
 
-## 💻 Tech Stack
+## Requirements
 
-### Frontend (`@voxel/web`)
-- **Core Framework**: React 18, Vite
-- **State Management**: Zustand (Persistent stores for settings, theme, notifications, history), TanStack Query (React Query v5)
-- **Styling & Motion**: Vanilla Tailwind CSS v4, Framer Motion, Lucide Icons
-- **Real-Time Engine**: Yjs CRDTs, Y-Websockets
+- Node.js 22 or newer
+- npm 11 or newer
+- PostgreSQL 16 or newer
+- Redis
 
-### Backend (`@voxel/api`)
-- **HTTP Server**: Fastify
-- **Database & ORM**: PostgreSQL, Prisma ORM
-- **Security & Auth**: Node.js `crypto` (`scrypt` password hashing), `jose` (JWT authentication & HTTP-only secure cookies)
-- **Validation**: Zod schema validation via `@voxel/contracts`
+## Local setup
 
----
+1. Install dependencies:
 
-## 🚀 Quickstart Guide
+   ```bash
+   npm install
+   ```
 
-### Prerequisites
-Ensure you have the following installed on your system:
-- **Node.js**: `>= 20.0.0`
-- **npm**: `>= 10.0.0`
-- **PostgreSQL**: `>= 16.0` (or Docker Desktop)
+2. Copy `.env.example` to `.env` and set the database, Redis, session secret, and public app URL. Google OAuth is optional; configure both Google client variables to enable it. The example includes local MinIO storage credentials; production must replace them with HTTPS S3-compatible storage and configure an HTTPS email-delivery webhook.
 
-### 1. Repository Setup & Dependencies
-Clone the repository and install dependencies across all monorepo workspaces:
+3. Start PostgreSQL, Redis, and MinIO (Compose creates the development bucket), then apply the Prisma schema:
+
+   ```bash
+   docker compose up -d
+   npm run prisma:deploy -w @voxel/api
+   ```
+
+4. Start the API and web app:
+
+   ```bash
+   npm run dev
+   ```
+
+   The web app is served at `http://localhost:5173`; the API is served at `http://localhost:3000`.
+
+## Project commands
 
 ```bash
-git clone https://github.com/AKSHCHAUHAN1/Voxel.git
-cd voxel
-npm install
-```
-
-### 2. Environment Configuration
-Create environment files for API and Web apps based on `.env.example`:
-
-```bash
-cp .env.example .env
-```
-
-### 3. Database Initialization
-Start a local PostgreSQL container using Docker Compose and push the Prisma schema:
-
-```bash
-# Start PostgreSQL database container
-docker compose up -d
-
-# Generate Prisma Client & Push Database Schema
-npx prisma db push --schema=apps/api/prisma/schema.prisma
-```
-
-### 4. Running Local Development Server
-Start the client and server concurrently:
-
-```bash
-npm run dev
-```
-
-- **Web UI**: Access the application at `http://localhost:5173`
-- **API Server**: Fastify backend runs at `http://localhost:3000`
-
----
-
-## 🧪 Testing & Quality Gates
-
-Run linting, automated test suites, and production builds across all workspaces:
-
-```bash
-# Run ESLint across all packages and apps
 npm run lint
-
-# Run Vitest test suites
 npm test
-
-# Build production bundle for deployment
 npm run build
 ```
 
----
+For an existing database created with `prisma db push`, baseline the current schema before the first `prisma migrate deploy`; subsequent releases should use the checked-in migrations.
 
-## 📄 License
+## License
 
-Voxel is open-source software licensed under the **[MIT License](LICENSE)**.
+No license file is included yet.

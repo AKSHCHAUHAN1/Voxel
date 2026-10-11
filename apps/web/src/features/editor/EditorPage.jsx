@@ -1,6 +1,6 @@
-import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { Component, useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useParams, Link } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, Link } from 'react-router-dom';
 import appIcon from '@/assets/app-icon.png';
 import appIconDark from '@/assets/app-icon-dark.png';
 
@@ -36,14 +36,22 @@ import {
   Maximize2,
   Pencil,
   Target,
+  MessageSquare,
+  Send,
+  RefreshCw,
+  CheckCircle2,
+  CornerDownRight,
+  LocateFixed,
 } from 'lucide-react';
 import { workspaceService } from '@/features/workspaces/workspace-service';
+import { authService } from '@/features/auth/auth-service';
 import { useShortcut } from '@/lib/keyboard';
 import { useHistoryStore } from '@/store/history-store';
 import { useSettingsStore } from '@/store/settings-store';
 import { useNotificationStore } from '@/store/notification-store';
 import { VersionHistory } from './VersionHistory';
 import { useYjs } from './use-yjs';
+import { getWidgetDefinition, listWidgetDefinitions, validateWidgetConfiguration } from './widget-registry';
 import { CustomConfirmModal } from '@/components/feedback/CustomConfirmModal';
 
 const emptyScene = {
@@ -58,132 +66,96 @@ const sceneOf = (value) => {
   const candidate = value;
   if (!Array.isArray(candidate.nodes)) return emptyScene;
 
-  const parsedNodes = candidate.nodes.map((node, index) => {
-    const x = typeof node.x === 'number' ? node.x : (index % 2) * 360 + 40;
-    const y = typeof node.y === 'number' ? node.y : Math.floor(index / 2) * 280 + 40;
-    return { ...node, x, y };
+  const seenIds = new Set();
+  const parsedNodes = candidate.nodes.map((sourceNode, index) => {
+    const isRecord = sourceNode && typeof sourceNode === 'object' && !Array.isArray(sourceNode);
+    const node = isRecord ? sourceNode : {};
+    const requestedId = typeof node.id === 'string' && node.id.length > 0 && node.id.length <= 160 ? node.id : null;
+    const id = requestedId && !seenIds.has(requestedId) ? requestedId : `invalid-widget-${index}`;
+    seenIds.add(id);
+    const defaultX = (index % 2) * 360 + 40;
+    const defaultY = Math.floor(index / 2) * 280 + 40;
+    const validX = Number.isFinite(node.x) && Math.abs(node.x) <= 100000;
+    const validY = Number.isFinite(node.y) && Math.abs(node.y) <= 100000;
+    const validWidth = Number.isFinite(node.customWidth) && node.customWidth >= 100 && node.customWidth <= 5000;
+    const validHeight = Number.isFinite(node.customHeight) && node.customHeight >= 100 && node.customHeight <= 5000;
+    const normalized = {
+      ...node,
+      id,
+      type: typeof node.type === 'string' && node.type.length <= 160 ? node.type : 'unsupported',
+      title: typeof node.title === 'string' ? node.title.slice(0, 160) : 'Unsupported widget',
+      x: validX ? node.x : defaultX,
+      y: validY ? node.y : defaultY,
+    };
+    if (validWidth) normalized.customWidth = node.customWidth;
+    else if (node.customWidth !== undefined) {
+      delete normalized.customWidth;
+      normalized.invalidDimensions = { ...normalized.invalidDimensions, customWidth: node.customWidth };
+    }
+    if (validHeight) normalized.customHeight = node.customHeight;
+    else if (node.customHeight !== undefined) {
+      delete normalized.customHeight;
+      normalized.invalidDimensions = { ...normalized.invalidDimensions, customHeight: node.customHeight };
+    }
+    if (!isRecord) normalized.originalWidgetData = sourceNode;
+    if (node.id != null && id !== node.id) normalized.originalWidgetId = node.id;
+    if (typeof node.title === 'string' && node.title.length > 160) normalized.originalWidgetTitle = node.title;
+    if (!validX || !validY) normalized.originalPosition = { x: node.x, y: node.y };
+    return normalized;
   });
+  const incomingConnections = Array.isArray(candidate.connections) ? candidate.connections : [];
+  const connections = incomingConnections.filter((connection) =>
+    connection && typeof connection === 'object' && !Array.isArray(connection)
+    && typeof connection.fromId === 'string' && typeof connection.toId === 'string'
+    && connection.fromId.length > 0 && connection.fromId.length <= 160
+    && connection.toId.length > 0 && connection.toId.length <= 160
+    && (connection.style == null || (typeof connection.style === 'string' && connection.style.length <= 32))
+  );
+  const gridStyle = ['dots', 'lines', 'radial', 'blank'].includes(candidate.gridStyle) ? candidate.gridStyle : 'dots';
+  const gridSize = Number.isFinite(candidate.gridSize) && candidate.gridSize >= 8 && candidate.gridSize <= 100 ? candidate.gridSize : 24;
+  const gridOpacity = Number.isFinite(candidate.gridOpacity) && candidate.gridOpacity >= 0 && candidate.gridOpacity <= 0.5 ? candidate.gridOpacity : 0.08;
+  const gridThickness = Number.isFinite(candidate.gridThickness) && candidate.gridThickness >= 0.25 && candidate.gridThickness <= 4 ? candidate.gridThickness : 1.2;
+  const gridColorPreset = ['slate', 'blue', 'violet', 'indigo', 'cyan', 'rose', 'emerald'].includes(candidate.gridColorPreset) ? candidate.gridColorPreset : 'violet';
+  const hasInvalidGrid = (candidate.gridStyle != null && gridStyle !== candidate.gridStyle)
+    || (candidate.gridSize != null && gridSize !== candidate.gridSize)
+    || (candidate.gridOpacity != null && gridOpacity !== candidate.gridOpacity)
+    || (candidate.gridThickness != null && gridThickness !== candidate.gridThickness)
+    || (candidate.gridColorPreset != null && gridColorPreset !== candidate.gridColorPreset);
+  const schemaVersion = Number.isInteger(candidate.schemaVersion) && candidate.schemaVersion > 0 ? candidate.schemaVersion : 2;
 
   return {
-    schemaVersion: candidate.schemaVersion ?? 2,
+    schemaVersion,
     nodes: parsedNodes,
-    connections: Array.isArray(candidate.connections) ? candidate.connections : [],
-    gridStyle: candidate.gridStyle ?? 'dots',
-    gridSize: candidate.gridSize ?? 24,
-    gridOpacity: candidate.gridOpacity ?? 0.08,
-    gridThickness: candidate.gridThickness ?? 1.2,
-    gridColorPreset: candidate.gridColorPreset ?? 'violet',
+    connections,
+    gridStyle,
+    gridSize,
+    gridOpacity,
+    gridThickness,
+    gridColorPreset,
+    ...(hasInvalidGrid ? { originalGridConfiguration: { gridStyle: candidate.gridStyle, gridSize: candidate.gridSize, gridOpacity: candidate.gridOpacity, gridThickness: candidate.gridThickness, gridColorPreset: candidate.gridColorPreset } } : {}),
+    ...(candidate.schemaVersion != null && schemaVersion !== candidate.schemaVersion ? { originalSchemaVersion: candidate.schemaVersion } : {}),
+    ...(connections.length !== incomingConnections.length ? { originalInvalidConnections: incomingConnections.filter((connection) => !connections.includes(connection)) } : {}),
   };
 };
 
-// Node Defaults builder
+// Widget instances keep identity and placement separate from registry defaults.
 const newNode = (type, x = 40, y = 40) => {
-  const defaults = {
-    note: {
-      title: 'Untitled Note',
-      content: 'Start writing useful context for your team.',
-      size: 'wide',
-      color: 'slate',
-    },
-    metric: {
-      title: 'Monthly Goal',
-      content: '5400',
-      unit: '$',
-      size: 'medium',
-      color: 'indigo',
-    },
-    progress: {
-      title: 'Progress Target',
-      content: '65',
-      target: 100,
-      size: 'medium',
-      color: 'emerald',
-    },
-    chart: {
-      title: 'Traffic Trend',
-      content: '10,25,18,30,45,28,60',
-      size: 'medium',
-      color: 'cyan',
-    },
-    status: {
-      title: 'System Health',
-      content: 'Operational',
-      statusColor: 'success',
-      size: 'small',
-      color: 'emerald',
-    },
-    logic: {
-      title: 'Calculated Cost',
-      content: '0',
-      logicA: '150',
-      logicB: '2.5',
-      logicOp: '*',
-      size: 'medium',
-      color: 'violet',
-    },
-    image: {
-      title: 'Image Showcase',
-      imageUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&auto=format&fit=crop&q=60',
-      objectFit: 'cover',
-      size: 'medium',
-      color: 'slate',
-    },
-    embed: {
-      title: 'Figma Embed',
-      embedUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-      size: 'wide',
-      color: 'slate',
-    },
-    table: {
-      title: 'Data Grid',
-      columns: 'Item,Qty,Status',
-      rows: 'Widget A,12,Done\nWidget B,4,Pending\nWidget C,19,Active',
-      size: 'wide',
-      color: 'slate',
-    },
-    timer: {
-      title: 'Sprint Timer',
-      duration: 300,
-      timerMode: 'countdown',
-      timerState: 'idle',
-      size: 'medium',
-      color: 'amber',
-    },
-    link: {
-      title: 'Reference Link',
-      url: 'https://github.com',
-      description: 'Check out code templates and tools.',
-      size: 'medium',
-      color: 'cyan',
-    },
-    divider: {
-      title: 'Section Divider',
-      dividerStyle: 'solid',
-      size: 'wide',
-      color: 'slate',
-    },
-    code: {
-      title: 'Utility Snippet',
-      code: 'function hello() {\n  console.log("Hello, Voxel!");\n}',
-      language: 'javascript',
-      size: 'wide',
-      color: 'slate',
-    },
-  };
-
+  const definition = getWidgetDefinition(type);
+  if (!definition) throw new Error(`Widget type “${type}” is not registered.`);
+  const defaults = definition.defaults;
   return {
     id: crypto.randomUUID(),
     type,
     x,
     y,
-    title: defaults[type].title || 'Untitled Node',
-    content: defaults[type].content || '',
-    size: defaults[type].size || 'medium',
-    color: defaults[type].color || 'slate',
+    title: defaults.title || 'Untitled Widget',
+    content: defaults.content || '',
+    size: defaults.size || definition.defaultSize || 'medium',
+    color: defaults.color || 'slate',
     borderStyle: 'solid',
     fontSize: 'regular',
     headerStyle: 'simple',
-    ...defaults[type],
+    ...defaults,
   };
 };
 
@@ -212,8 +184,60 @@ const textFonts = {
   large: 'text-lg font-semibold',
 };
 
+const BUILTIN_WIDGETS = listWidgetDefinitions();
+
+const widgetIconComponents = {
+  activity: Activity,
+  zap: Zap,
+  cpu: Cpu,
+  chart: BarChart3,
+  progress: Sparkles,
+  status: CheckCircle,
+  note: FileText,
+  table: Table,
+  timer: Timer,
+  code: Code2,
+  link: LinkIcon,
+  image: ImageIcon,
+  embed: Layers,
+  divider: Minus,
+};
+
+const widgetIconColors = {
+  metric: 'text-cyan-500',
+  display: 'text-amber-500',
+  logic: 'text-violet-500',
+  chart: 'text-indigo-500',
+  progress: 'text-rose-500',
+  status: 'text-emerald-500',
+  note: 'text-emerald-500',
+  table: 'text-blue-500',
+  timer: 'text-amber-500',
+  code: 'text-indigo-500',
+  link: 'text-cyan-500',
+  image: 'text-fuchsia-500',
+  embed: 'text-violet-500',
+  divider: 'text-slate-400',
+};
+
+const safeExternalUrl = (value) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : '';
+  } catch {
+    return '';
+  }
+};
+const safeImageUrl = (value) => {
+  if (typeof value === 'string' && /^data:image\/(?:png|jpeg|gif|webp|avif);base64,/i.test(value)) return value;
+  if (typeof value === 'string' && value.startsWith('blob:')) return value;
+  return safeExternalUrl(value);
+};
+
 export default function EditorPage() {
   const { workspaceId, dashboardId } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const dashboard = useQuery({
@@ -221,11 +245,25 @@ export default function EditorPage() {
     queryFn: () => workspaceService.dashboard(dashboardId),
     enabled: Boolean(dashboardId),
   });
+  const canEditDashboard = ['OWNER', 'ADMIN', 'EDITOR'].includes(dashboard.data?.accessRole) && dashboard.data?.status !== 'ARCHIVED';
+
+  useEffect(() => {
+    if (!location.state?.openComments) return;
+    setLeftPanelOpen(true);
+    setLeftPanelTab('comments');
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.key, location.pathname, location.state, navigate]);
 
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [leftPanelTab, setLeftPanelTab] = useState('elements');
+
+  useEffect(() => {
+    if (dashboard.isSuccess && !canEditDashboard && leftPanelTab !== 'comments') {
+      setLeftPanelTab('comments');
+    }
+  }, [dashboard.isSuccess, canEditDashboard, leftPanelTab]);
 
   const [editingLayerId, setEditingLayerId] = useState(null);
   const [editingLayerTitle, setEditingLayerTitle] = useState('');
@@ -329,6 +367,18 @@ export default function EditorPage() {
     [dashboard.data?.scene, yScene],
   );
 
+  useEffect(() => {
+    const focusNodeId = location.state?.focusNodeId;
+    if (!focusNodeId || !scene.nodes.some((node) => node.id === focusNodeId)) return;
+    setSelectedNodeIds([focusNodeId]);
+    setRightPanelOpen(true);
+    window.requestAnimationFrame(() => document.getElementById(`node-card-${focusNodeId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' }));
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate, scene.nodes]);
+
+  const sceneRef = useRef(scene);
+  sceneRef.current = scene;
+
   const handleRepositionCanvas = useCallback(() => {
     if (!gridRef.current) return;
     const container = gridRef.current;
@@ -356,8 +406,9 @@ export default function EditorPage() {
         const containerW = container.clientWidth;
         const containerH = container.clientHeight;
 
-        const getNodeWidth = (size) => {
-          switch (size) {
+        const getNodeWidth = (node) => {
+          if (Number.isFinite(node.customWidth)) return node.customWidth;
+          switch (node.size) {
             case 'small': return 220;
             case 'large': return 340;
             case 'wide': return 440;
@@ -380,7 +431,7 @@ export default function EditorPage() {
 
         if (nodes.length > 0) {
           const minX = Math.min(...nodes.map((n) => n.x ?? 40));
-          const maxX = Math.max(...nodes.map((n) => (n.x ?? 40) + getNodeWidth(n.size)));
+          const maxX = Math.max(...nodes.map((n) => (n.x ?? 40) + getNodeWidth(n)));
           const minY = Math.min(...nodes.map((n) => n.y ?? 40));
           const maxY = Math.max(...nodes.map((n) => (n.y ?? 40) + getNodeHeight(n.type)));
 
@@ -422,8 +473,9 @@ export default function EditorPage() {
       const containerH = container.clientHeight;
       const nodes = dashboard.data?.scene?.nodes || [];
 
-      const getNodeWidth = (size) => {
-        switch (size) {
+      const getNodeWidth = (node) => {
+        if (Number.isFinite(node.customWidth)) return node.customWidth;
+        switch (node.size) {
           case 'small': return 220;
           case 'large': return 340;
           case 'wide': return 440;
@@ -444,7 +496,7 @@ export default function EditorPage() {
 
       if (nodes.length > 0) {
         const minX = Math.min(...nodes.map((n) => n.x ?? 40));
-        const maxX = Math.max(...nodes.map((n) => (n.x ?? 40) + getNodeWidth(n.size)));
+        const maxX = Math.max(...nodes.map((n) => (n.x ?? 40) + getNodeWidth(n)));
         const minY = Math.min(...nodes.map((n) => n.y ?? 40));
         const maxY = Math.max(...nodes.map((n) => (n.y ?? 40) + getNodeHeight(n.type)));
         const nodesCenterX = innerPad + (minX + maxX) / 2;
@@ -458,7 +510,7 @@ export default function EditorPage() {
     });
   }, [dashboard.data?.id]);
 
-  const { autosaveEnabled, autosaveInterval } = useSettingsStore();
+  const { autosaveEnabled, autosaveInterval, snapToGrid } = useSettingsStore();
 
   const [zoom, setZoom] = useState(1);
 
@@ -586,8 +638,14 @@ export default function EditorPage() {
     const existingNodes = scene.nodes || [];
 
     // Node size/height approximations for collision detection (must match CanvasNodeCard widthOf/getH)
-    const getW = (size) => ({ small: 220, large: 340, wide: 440 }[size] ?? 280);
-    const getH = (t) => ({ image: 240, chart: 220, table: 260, code: 220, metric: 160, timer: 160, status: 160, link: 160 }[t] ?? 180);
+    const widths = { small: 220, medium: 280, large: 340, wide: 440 };
+    const getW = (nodeOrSize) => typeof nodeOrSize === 'string'
+      ? (widths[nodeOrSize] ?? 280)
+      : (nodeOrSize.customWidth ?? widths[nodeOrSize.size] ?? 280);
+    const heights = { image: 240, chart: 220, table: 260, code: 220, metric: 160, timer: 160, status: 160, link: 160 };
+    const getH = (nodeOrType) => typeof nodeOrType === 'string'
+      ? (heights[nodeOrType] ?? 180)
+      : (nodeOrType.customHeight ?? heights[nodeOrType.type] ?? 180);
 
     const incomingSize = {
       note: 'wide', metric: 'medium', progress: 'medium', chart: 'medium',
@@ -604,8 +662,8 @@ export default function EditorPage() {
       existingNodes.some((n) => {
         const nx = n.x ?? 40;
         const ny = n.y ?? 40;
-        const nw = getW(n.size ?? 'medium');
-        const nh = getH(n.type);
+        const nw = getW(n);
+        const nh = getH(n);
         return (
           cx < nx + nw + gap &&
           cx + newW + gap > nx &&
@@ -619,8 +677,8 @@ export default function EditorPage() {
 
       const minX = Math.min(...existingNodes.map((n) => n.x ?? 40));
       const minY = Math.min(...existingNodes.map((n) => n.y ?? 40));
-      const maxX = Math.max(...existingNodes.map((n) => (n.x ?? 40) + getW(n.size ?? 'medium')));
-      const maxY = Math.max(...existingNodes.map((n) => (n.y ?? 40) + getH(n.type)));
+      const maxX = Math.max(...existingNodes.map((n) => (n.x ?? 40) + getW(n)));
+      const maxY = Math.max(...existingNodes.map((n) => (n.y ?? 40) + getH(n)));
 
       // Cluster center – used to sort candidates by proximity so nodes fill 2D space
       const clusterCX = (minX + maxX) / 2;
@@ -1007,6 +1065,8 @@ export default function EditorPage() {
       slate: '148, 163, 184',
       blue: '59, 130, 246',
       violet: '139, 92, 246',
+      indigo: '99, 102, 241',
+      cyan: '6, 182, 212',
       rose: '244, 63, 94',
       emerald: '16, 185, 129',
     };
@@ -1047,8 +1107,9 @@ export default function EditorPage() {
 
 
   const update = (next, skipHistory = false) => {
+    if (!canEditDashboard) return;
     if (!skipHistory) {
-      useHistoryStore.getState().push(scene);
+      useHistoryStore.getState().push(sceneRef.current);
     }
     updateScene(next);
   };
@@ -1164,6 +1225,40 @@ export default function EditorPage() {
     }
   }, [scene?.nodes]);
 
+  const alignSelectedNodes = (mode) => {
+    if (!canEditDashboard || selectedNodeIds.length < 2) return;
+    const selected = scene.nodes.filter((node) => selectedNodeIds.includes(node.id));
+    const boxes = selected.map((node) => {
+      const element = document.getElementById(`node-card-${node.id}`);
+      const width = element?.offsetWidth || node.customWidth || ({ small: 220, medium: 280, large: 340, wide: 440 }[node.size] || 280);
+      const height = element?.offsetHeight || node.customHeight || 180;
+      return {
+        node,
+        left: node.x ?? 40,
+        top: node.y ?? 40,
+        right: (node.x ?? 40) + width,
+        bottom: (node.y ?? 40) + height,
+        width,
+        height,
+      };
+    });
+    const horizontal = ['left', 'center', 'right'].includes(mode);
+    const startKey = horizontal ? 'left' : 'top';
+    const endKey = horizontal ? 'right' : 'bottom';
+    const sizeKey = horizontal ? 'width' : 'height';
+    const low = Math.min(...boxes.map((box) => box[startKey]));
+    const high = Math.max(...boxes.map((box) => box[endKey]));
+    const target = mode === 'left' || mode === 'top' ? low : mode === 'right' || mode === 'bottom' ? high : (low + high) / 2;
+    const nextNodes = scene.nodes.map((node) => {
+      if (!selectedNodeIds.includes(node.id)) return node;
+      const box = boxes.find((candidate) => candidate.node.id === node.id);
+      const position = mode === 'left' || mode === 'top' ? target : mode === 'right' || mode === 'bottom' ? target - box[sizeKey] : target - box[sizeKey] / 2;
+      return horizontal ? { ...node, x: Math.round(position) } : { ...node, y: Math.round(position) };
+    });
+    update({ ...scene, nodes: nextNodes });
+    useNotificationStore.getState().add(`Aligned ${selected.length} widgets ${mode}.`, 'info');
+  };
+
   const handleSave = () => {
     if (yScene) {
       save.mutate(scene);
@@ -1205,8 +1300,14 @@ export default function EditorPage() {
     const existingNodes = scene.nodes || [];
 
     // Node width & height approximations for collision detection
-    const getW = (size) => ({ small: 220, large: 340, wide: 440 }[size] ?? 280);
-    const getH = (t) => ({ image: 240, chart: 220, table: 260, code: 220, metric: 160 }[t] ?? 180);
+    const widths = { small: 220, medium: 280, large: 340, wide: 440 };
+    const getW = (nodeOrSize) => typeof nodeOrSize === 'string'
+      ? (widths[nodeOrSize] ?? 280)
+      : (nodeOrSize.customWidth ?? widths[nodeOrSize.size] ?? 280);
+    const heights = { image: 240, chart: 220, table: 260, code: 220, metric: 160 };
+    const getH = (nodeOrType) => typeof nodeOrType === 'string'
+      ? (heights[nodeOrType] ?? 180)
+      : (nodeOrType.customHeight ?? heights[nodeOrType.type] ?? 180);
 
     const incomingSize = {
       note: 'wide', metric: 'medium', progress: 'medium', chart: 'medium',
@@ -1224,8 +1325,8 @@ export default function EditorPage() {
       return existingNodes.some((n) => {
         const nx = n.x ?? 40;
         const ny = n.y ?? 40;
-        const nw = getW(n.size);
-        const nh = getH(n.type);
+        const nw = getW(n);
+        const nh = getH(n);
         // AABB overlap check with gap buffer
         return (
           cx < nx + nw + gap &&
@@ -1245,8 +1346,8 @@ export default function EditorPage() {
 
       const minX = Math.min(...existingNodes.map((n) => n.x ?? 40));
       const minY = Math.min(...existingNodes.map((n) => n.y ?? 40));
-      const maxX = Math.max(...existingNodes.map((n) => (n.x ?? 40) + getW(n.size)));
-      const maxY = Math.max(...existingNodes.map((n) => (n.y ?? 40) + getH(n.type)));
+      const maxX = Math.max(...existingNodes.map((n) => (n.x ?? 40) + getW(n)));
+      const maxY = Math.max(...existingNodes.map((n) => (n.y ?? 40) + getH(n)));
 
       const clusterCX = (minX + maxX) / 2;
       const clusterCY = (minY + maxY) / 2;
@@ -1279,12 +1380,13 @@ export default function EditorPage() {
   };
 
   const handleDragStart = (e, nodeId) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || !canEditDashboard) return;
     e.preventDefault();
 
-    const startScene = JSON.parse(JSON.stringify(scene));
+    const currentScene = sceneRef.current;
+    const startScene = JSON.parse(JSON.stringify(currentScene));
 
-    const draggedNode = scene.nodes.find((n) => n.id === nodeId);
+    const draggedNode = currentScene.nodes.find((n) => n.id === nodeId);
     if (!draggedNode) return;
 
     // If dragging a node that is among selected nodes, drag all selected nodes together
@@ -1292,7 +1394,7 @@ export default function EditorPage() {
     const dragNodeIds = isMultiDrag ? selectedNodeIds : [nodeId];
 
     const initialPositions = {};
-    scene.nodes.forEach((n) => {
+    currentScene.nodes.forEach((n) => {
       if (dragNodeIds.includes(n.id)) {
         initialPositions[n.id] = { x: n.x ?? 100, y: n.y ?? 100 };
       }
@@ -1314,11 +1416,11 @@ export default function EditorPage() {
 
       if (rafId) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
-        const currentZoom = zoom || 1;
+        const currentZoom = zoomRef.current || 1;
         const dx = (moveEvent.clientX - startX) / currentZoom;
         const dy = (moveEvent.clientY - startY) / currentZoom;
 
-        const current = scene;
+        const current = sceneRef.current;
         update(
           {
             ...current,
@@ -1326,8 +1428,12 @@ export default function EditorPage() {
               if (initialPositions[n.id]) {
                 return {
                   ...n,
-                  x: Math.round(initialPositions[n.id].x + dx),
-                  y: Math.round(initialPositions[n.id].y + dy),
+                  x: snapToGrid
+                    ? Math.round((initialPositions[n.id].x + dx) / (current.gridSize || 24)) * (current.gridSize || 24)
+                    : Math.round(initialPositions[n.id].x + dx),
+                  y: snapToGrid
+                    ? Math.round((initialPositions[n.id].y + dy) / (current.gridSize || 24)) * (current.gridSize || 24)
+                    : Math.round(initialPositions[n.id].y + dy),
                 };
               }
               return n;
@@ -1351,9 +1457,76 @@ export default function EditorPage() {
     window.addEventListener('mouseup', handleMouseUp);
   };
 
-  const updateNode = (id, updates) => {
-    const nextNodes = scene.nodes.map((node) => (node.id === id ? { ...node, ...updates } : node));
-    update({ ...scene, nodes: nextNodes });
+  const handleResizeStart = (e, nodeId) => {
+    if (e.button !== 0 || !canEditDashboard) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startScene = structuredClone(sceneRef.current);
+    const node = startScene.nodes.find((item) => item.id === nodeId);
+    if (!node) return;
+    const cardBounds = e.currentTarget.parentElement.getBoundingClientRect();
+    const initialWidth = node.customWidth ?? cardBounds.width;
+    const initialHeight = node.customHeight ?? cardBounds.height;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let hasResized = false;
+    let rafId = null;
+
+    const handleMouseMove = (moveEvent) => {
+      if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) > 3) hasResized = true;
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const currentZoom = zoomRef.current || 1;
+        const width = Math.max(180, Math.round(initialWidth + (moveEvent.clientX - startX) / currentZoom));
+        const height = Math.max(100, Math.round(initialHeight + (moveEvent.clientY - startY) / currentZoom));
+        updateNode(nodeId, { customWidth: width, customHeight: height }, true);
+      });
+    };
+
+    const handleMouseUp = () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      if (hasResized) useHistoryStore.getState().push(startScene);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const updateNode = (id, updates, skipHistory = false) => {
+    const current = sceneRef.current;
+    let invalidConfiguration = null;
+    const nextNodes = current.nodes.map((node) => {
+      if (node.id !== id) return node;
+      const nextNode = { ...node, ...updates };
+      if (getWidgetDefinition(node.type)) {
+        const validation = validateWidgetConfiguration(node.type, nextNode);
+        if (!validation.success) {
+          invalidConfiguration = validation.error;
+          return node;
+        }
+      }
+      return nextNode;
+    });
+    if (invalidConfiguration) {
+      useNotificationStore.getState().add(invalidConfiguration, 'warning');
+      return;
+    }
+    update({ ...current, nodes: nextNodes }, skipHistory);
+  };
+
+  const handleKeyboardMove = (event, nodeId) => {
+    if (!canEditDashboard || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    event.preventDefault();
+    const current = sceneRef.current;
+    const node = current.nodes.find((item) => item.id === nodeId);
+    if (!node) return;
+    const step = event.shiftKey ? 50 : snapToGrid ? (current.gridSize || 24) : 10;
+    updateNode(nodeId, {
+      x: (node.x ?? 40) + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0),
+      y: (node.y ?? 40) + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0),
+    });
   };
 
   const deleteNode = (id) => {
@@ -1531,7 +1704,7 @@ export default function EditorPage() {
             )}
           </div>
 
-          {!autosaveEnabled && (
+          {canEditDashboard && !autosaveEnabled && (
             <button
               disabled={!draft || save.isPending}
               onClick={() => {
@@ -1551,11 +1724,18 @@ export default function EditorPage() {
 
       {/* --- GRID EDITOR WORKSPACE --- */}
       <div className={`flex flex-1 flex-col lg:flex-row relative overflow-hidden ${isResizingLeft || isResizingRight ? 'select-none cursor-col-resize' : ''}`}>
+        {!canEditDashboard && (
+          <div className="absolute inset-0 z-40 cursor-default" aria-label="Read-only dashboard">
+            <div className="pointer-events-none fixed left-1/2 top-[4.5rem] -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-4 py-2 text-xs font-semibold text-slate-600 shadow-lg backdrop-blur dark:border-white/10 dark:bg-slate-900/95 dark:text-slate-300">
+              Read-only access · Contact a workspace admin to request edit permission
+            </div>
+          </div>
+        )}
         {/* --- CANVA/FIGMA LEFT SIDE ASSETS PANEL --- */}
         {leftPanelOpen && (
           <aside
             style={{ width: `${leftPanelWidth}px` }}
-            className="relative border-r border-slate-200/80 bg-white/95 dark:border-white/10 dark:bg-[#070a14]/95 backdrop-blur-xl flex flex-col z-20 shrink-0 select-none"
+            className={`relative border-r border-slate-200/80 bg-white/95 dark:border-white/10 dark:bg-[#070a14]/95 backdrop-blur-xl flex flex-col ${canEditDashboard ? 'z-20' : 'z-50'} shrink-0 select-none`}
           >
             {/* Left Panel Resizer Bar */}
             <div
@@ -1569,6 +1749,7 @@ export default function EditorPage() {
             />
             {/* Tabs */}
             <div className="flex border-b border-slate-200/80 dark:border-white/10 p-1.5 gap-1 bg-slate-50/50 dark:bg-white/5">
+              {canEditDashboard && <>
               <button
                 onClick={() => setLeftPanelTab('elements')}
                 className={`flex-1 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
@@ -1599,53 +1780,50 @@ export default function EditorPage() {
               >
                 <Layers size={12} /> Layers
               </button>
+              </>}
+              <button
+                onClick={() => setLeftPanelTab('comments')}
+                className={`flex-1 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  leftPanelTab === 'comments'
+                    ? 'bg-white text-violet-600 shadow-xs dark:bg-slate-800 dark:text-violet-400'
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                }`}
+              >
+                <MessageSquare size={12} /> Comments
+              </button>
             </div>
 
             {/* Tab Contents */}
             <div className="p-3.5 space-y-4 overflow-y-auto max-h-[calc(100vh-120px)] flex-1">
-              {leftPanelTab === 'elements' && (
+              {canEditDashboard && leftPanelTab === 'elements' && (
                 <div className="space-y-2.5">
                   <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block">
                     Click to Add Element
                   </span>
                   <div className="grid grid-cols-1 gap-2">
-                    {[
-                      { type: 'metric', label: 'Metric Node', desc: 'Live numerical data input source', icon: <Activity className="text-cyan-500" size={16} /> },
-                      { type: 'logic', label: 'Formula Node', desc: 'Math calculation & conditions', icon: <Cpu className="text-violet-500" size={16} /> },
-                      { type: 'display', label: 'Display Card', desc: 'Output KPI & summary card', icon: <Zap className="text-amber-500" size={16} /> },
-                      { type: 'chart', label: 'Trend Chart', desc: 'Historical line & bar graph series', icon: <BarChart3 className="text-indigo-500" size={16} /> },
-                      { type: 'progress', label: 'Goal Progress', desc: 'Target completion & velocity bar', icon: <Sparkles className="text-rose-500" size={16} /> },
-                      { type: 'status', label: 'Health Status', desc: 'Operational badge & system state', icon: <CheckCircle className="text-emerald-500" size={16} /> },
-                      { type: 'note', label: 'Annotation Note', desc: 'Markdown documentation block', icon: <FileText className="text-emerald-500" size={16} /> },
-                      { type: 'table', label: 'Data Table', desc: 'Tabular records & multi-row grid', icon: <Table className="text-blue-500" size={16} /> },
-                      { type: 'timer', label: 'Sprint Timer', desc: 'Countdown & interval timer', icon: <Timer className="text-amber-500" size={16} /> },
-                      { type: 'code', label: 'Code Snippet', desc: 'Syntax-highlighted code block', icon: <Code2 className="text-indigo-500" size={16} /> },
-                      { type: 'link', label: 'Reference Link', desc: 'URL link & documentation card', icon: <LinkIcon className="text-cyan-500" size={16} /> },
-                      { type: 'image', label: 'Image Media', desc: 'Graphic & visual showcase', icon: <ImageIcon className="text-fuchsia-500" size={16} /> },
-                      { type: 'embed', label: 'Media Embed', desc: 'Embedded iframe, video or doc', icon: <Layers className="text-violet-500" size={16} /> },
-                      { type: 'divider', label: 'Section Divider', desc: 'Visual separator line on canvas', icon: <Minus className="text-slate-400" size={16} /> },
-                    ].map((item) => (
-                      <button
-                        key={item.type}
-                        onClick={() => addNode(item.type)}
+                    {BUILTIN_WIDGETS.map((definition) => {
+                      const Icon = widgetIconComponents[definition.icon] || Layers;
+                      return <button
+                        key={definition.type}
+                        onClick={() => addNode(definition.type)}
                         className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5 hover:border-violet-500/40 hover:bg-violet-500/5 transition cursor-pointer text-left group"
                       >
                         <div className="size-8 rounded-lg bg-white dark:bg-slate-800 grid place-items-center shadow-xs group-hover:scale-105 transition-transform shrink-0">
-                          {item.icon}
+                          <Icon className={widgetIconColors[definition.type] || 'text-violet-500'} size={16} />
                         </div>
                         <div>
                           <div className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-tight">
-                            {item.label}
+                            {definition.title}
                           </div>
-                          <div className="text-[10px] text-slate-400 mt-0.5">{item.desc}</div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">{definition.description}</div>
                         </div>
                       </button>
-                    ))}
+                    })}
                   </div>
                 </div>
               )}
 
-              {leftPanelTab === 'templates' && (
+              {canEditDashboard && leftPanelTab === 'templates' && (
                 <div className="space-y-2.5">
                   <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block">
                     Canvas Template Presets
@@ -1671,7 +1849,7 @@ export default function EditorPage() {
                 </div>
               )}
 
-              {leftPanelTab === 'layers' && (
+              {canEditDashboard && leftPanelTab === 'layers' && (
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block">
@@ -1809,6 +1987,17 @@ export default function EditorPage() {
                   </div>
                 </div>
               )}
+
+              {leftPanelTab === 'comments' && (
+                <DashboardCommentsPanel
+                  dashboardId={dashboardId}
+                  workspaceId={dashboard.data?.workspaceId}
+                  accessRole={dashboard.data?.accessRole}
+                  dashboardStatus={dashboard.data?.status}
+                  selectedNodeIds={selectedNodeIds}
+                  onFocusNodes={(ids) => { setSelectedNodeIds(ids); setLeftPanelTab('elements'); }}
+                />
+              )}
             </div>
           </aside>
         )}
@@ -1906,7 +2095,10 @@ export default function EditorPage() {
                     onSelectNode={handleSelectNode}
                     resolveNodeValue={resolveNodeValue}
                     onDragStart={handleDragStart}
+                    onResizeStart={handleResizeStart}
+                    onKeyboardMove={handleKeyboardMove}
                     updateNode={updateNode}
+                    canEdit={canEditDashboard}
                     awarenessStates={awarenessStates}
                     localClientId={awareness?.clientID}
                   />
@@ -2038,6 +2230,20 @@ export default function EditorPage() {
                       </button>
                     </div>
 
+                    <fieldset className="space-y-2">
+                      <legend className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Align selection</legend>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[
+                          { id: 'left', label: 'Left' }, { id: 'center', label: 'Center' }, { id: 'right', label: 'Right' },
+                          { id: 'top', label: 'Top' }, { id: 'middle', label: 'Middle' }, { id: 'bottom', label: 'Bottom' },
+                        ].map((alignment) => (
+                          <button key={alignment.id} type="button" disabled={!canEditDashboard} onClick={() => alignSelectedNodes(alignment.id)} className="rounded-lg border border-slate-200 px-2 py-2 text-[10px] font-semibold text-slate-600 transition hover:border-violet-400 hover:bg-violet-500/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:border-violet-500/40">
+                            {alignment.label}
+                          </button>
+                        ))}
+                      </div>
+                    </fieldset>
+
                     {/* Bulk Color Palette */}
                     <div>
                       <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">
@@ -2129,6 +2335,7 @@ export default function EditorPage() {
               (() => {
                 const selectedNode = scene.nodes.find((node) => node.id === selectedNodeId);
                 if (!selectedNode) return null;
+                const widgetDefinition = getWidgetDefinition(selectedNode.type);
                 return (
                   <>
                     <div className="space-y-5 overflow-y-auto max-h-[calc(100vh-180px)] pb-4">
@@ -2155,6 +2362,7 @@ export default function EditorPage() {
                       </label>
                       <input
                         type="text"
+                        maxLength={160}
                         value={selectedNode.title}
                         onChange={(e) => updateNode(selectedNode.id, { title: e.target.value })}
                         className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
@@ -2238,406 +2446,43 @@ export default function EditorPage() {
                         </div>
                       )}
 
-                    {/* Node Type Content Configurations */}
-                    {selectedNode.type === 'note' && (
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                          Note Content
-                        </label>
-                        {selectedNode.valueSource !== 'connections' ? (
-                          <textarea
-                            value={selectedNode.content}
-                            rows={4}
-                            onChange={(e) =>
-                              updateNode(selectedNode.id, { content: e.target.value })
-                            }
-                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 resize-y"
-                          />
-                        ) : (
-                          <div className="text-xs italic text-slate-400 p-3 bg-slate-50 dark:bg-white/5 rounded-lg border border-slate-200 dark:border-white/10">
-                            Automatically resolves to: <b>{resolveNodeValue(selectedNode)}</b>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {selectedNode.type === 'metric' && (
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                            Value
-                          </label>
-                          {selectedNode.valueSource !== 'connections' ? (
-                            <input
-                              type="text"
-                              value={selectedNode.content}
-                              onChange={(e) =>
-                                updateNode(selectedNode.id, { content: e.target.value })
-                              }
-                              className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
-                            />
-                          ) : (
-                            <div className="text-xs font-semibold font-mono text-slate-400 p-2.5 bg-slate-50 dark:bg-white/5 rounded-lg border border-slate-200 dark:border-white/10">
-                              {resolveNodeValue(selectedNode)}
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                            Unit
-                          </label>
-                          <input
-                            type="text"
-                            value={selectedNode.unit || ''}
-                            placeholder="e.g. $, %, /s"
-                            onChange={(e) => updateNode(selectedNode.id, { unit: e.target.value })}
-                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedNode.type === 'progress' && (
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                            Current Value
-                          </label>
-                          {selectedNode.valueSource !== 'connections' ? (
-                            <input
-                              type="number"
-                              value={selectedNode.content}
-                              onChange={(e) =>
-                                updateNode(selectedNode.id, { content: e.target.value })
-                              }
-                              className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
-                            />
-                          ) : (
-                            <div className="text-xs font-semibold font-mono text-slate-400 p-2.5 bg-slate-50 dark:bg-white/5 rounded-lg border border-slate-200 dark:border-white/10">
-                              {resolveNodeValue(selectedNode)}
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                            Target Goal
-                          </label>
-                          <input
-                            type="number"
-                            value={selectedNode.target || 100}
-                            onChange={(e) =>
-                              updateNode(selectedNode.id, {
-                                target: parseInt(e.target.value) || 100,
-                              })
-                            }
-                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedNode.type === 'chart' && (
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                          Sparkline Data (CSV)
-                        </label>
-                        {selectedNode.valueSource !== 'connections' ? (
-                          <input
-                            type="text"
-                            value={selectedNode.content}
-                            placeholder="10, 20, 15, 30"
-                            onChange={(e) =>
-                              updateNode(selectedNode.id, { content: e.target.value })
-                            }
-                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 font-mono"
-                          />
-                        ) : (
-                          <div className="text-xs font-semibold font-mono text-slate-400 p-2.5 bg-slate-50 dark:bg-white/5 rounded-lg border border-slate-200 dark:border-white/10">
-                            {resolveNodeValue(selectedNode)}
-                          </div>
-                        )}
-                        <span className="text-[10px] text-slate-400 mt-1 block">
-                          Comma separated coordinates list
-                        </span>
-                      </div>
-                    )}
-
-                    {selectedNode.type === 'status' && (
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                            Message
-                          </label>
-                          {selectedNode.valueSource !== 'connections' ? (
-                            <input
-                              type="text"
-                              value={selectedNode.content}
-                              onChange={(e) =>
-                                updateNode(selectedNode.id, { content: e.target.value })
-                              }
-                              className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
-                            />
-                          ) : (
-                            <div className="text-xs font-semibold font-mono text-slate-400 p-2.5 bg-slate-50 dark:bg-white/5 rounded-lg border border-slate-200 dark:border-white/10">
-                              {resolveNodeValue(selectedNode)}
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                            Color/State
-                          </label>
-                          <select
-                            value={selectedNode.statusColor || 'success'}
-                            onChange={(e) =>
-                              updateNode(selectedNode.id, { statusColor: e.target.value })
-                            }
-                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900"
-                          >
-                            <option value="success">Success (Green)</option>
-                            <option value="warning">Warning (Yellow)</option>
-                            <option value="error">Error (Red)</option>
-                          </select>
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedNode.type === 'logic' && (
-                      <div className="space-y-2 border border-slate-100 p-2.5 rounded-lg dark:border-white/5 bg-slate-50 dark:bg-slate-900/30">
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                            Input Source A
-                          </label>
-                          <select
-                            value={selectedNode.logicA || ''}
-                            onChange={(e) =>
-                              updateNode(selectedNode.id, { logicA: e.target.value })
-                            }
-                            className="w-full rounded-lg border border-slate-200 bg-transparent px-2.5 py-1.5 text-xs focus:outline-none dark:border-white/10 dark:bg-slate-900"
-                          >
-                            <option value="">Choose node...</option>
-                            {scene.nodes
-                              .filter((n) => n.id !== selectedNode.id && n.type !== 'note')
-                              .map((n) => (
-                                <option key={n.id} value={n.id}>
-                                  {n.title} ({n.content})
-                                </option>
-                              ))}
-                          </select>
-                        </div>
-
-                        <div className="flex justify-center">
-                          <select
-                            value={selectedNode.logicOp || '*'}
-                            onChange={(e) =>
-                              updateNode(selectedNode.id, { logicOp: e.target.value })
-                            }
-                            className="rounded-md border border-slate-200 px-2 py-1 text-xs font-bold dark:border-white/10 dark:bg-slate-900"
-                          >
-                            <option value="+">+</option>
-                            <option value="-">-</option>
-                            <option value="*">×</option>
-                            <option value="/">÷</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                            Input Source B
-                          </label>
-                          <select
-                            value={selectedNode.logicB || ''}
-                            onChange={(e) =>
-                              updateNode(selectedNode.id, { logicB: e.target.value })
-                            }
-                            className="w-full rounded-lg border border-slate-200 bg-transparent px-2.5 py-1.5 text-xs focus:outline-none dark:border-white/10 dark:bg-slate-900"
-                          >
-                            <option value="">Choose node...</option>
-                            {scene.nodes
-                              .filter((n) => n.id !== selectedNode.id && n.type !== 'note')
-                              .map((n) => (
-                                <option key={n.id} value={n.id}>
-                                  {n.title} ({n.content})
-                                </option>
-                              ))}
-                          </select>
-                        </div>
-                      </div>
-                    )}
-                    {selectedNode.type === 'image' && (
+                    {/* Widget-specific controls come from the registered configuration schema. */}
+                    {widgetDefinition ? (
                       <div className="space-y-3">
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                            Image URL
-                          </label>
-                          <input
-                            type="text"
-                            value={selectedNode.imageUrl || ''}
-                            onChange={(e) => updateNode(selectedNode.id, { imageUrl: e.target.value })}
-                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                            Image Layout Fit
-                          </label>
-                          <select
-                            value={selectedNode.objectFit || 'cover'}
-                            onChange={(e) => updateNode(selectedNode.id, { objectFit: e.target.value })}
-                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900"
-                          >
-                            <option value="cover">Cover (Fill Container)</option>
-                            <option value="contain">Contain (Fit Aspect Ratio)</option>
-                            <option value="fill">Fill (Stretch to fit)</option>
-                          </select>
-                        </div>
+                        {widgetDefinition.fields.map((field) => {
+                          const value = selectedNode[field.key] ?? '';
+                          const controlClass = 'w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900';
+                          const connectedValue = field.isValue && selectedNode.valueSource === 'connections';
+                          return (
+                            <label key={field.key} className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                              {field.label}
+                              {connectedValue ? (
+                                <div className="mt-1 rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs font-medium normal-case tracking-normal text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                                  Resolved from connections: <b>{resolveNodeValue(selectedNode)}</b>
+                                </div>
+                              ) : field.type === 'node-select' ? (
+                                <select value={value} onChange={(event) => updateNode(selectedNode.id, { [field.key]: event.target.value })} className={`${controlClass} mt-1 normal-case tracking-normal`}>
+                                  <option value="">Choose a widget…</option>
+                                  {scene.nodes.filter((node) => node.id !== selectedNode.id && node.type !== 'note').map((node) => <option key={node.id} value={node.id}>{node.title || node.type} · {node.type}</option>)}
+                                </select>
+                              ) : field.type === 'select' ? (
+                                <select value={value || field.options[0]?.value || ''} onChange={(event) => updateNode(selectedNode.id, { [field.key]: event.target.value })} className={`${controlClass} mt-1 normal-case tracking-normal`}>
+                                  {field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                </select>
+                              ) : field.type === 'textarea' ? (
+                                <textarea value={value} maxLength={field.maxLength} rows={field.monospace ? 6 : 4} onChange={(event) => updateNode(selectedNode.id, { [field.key]: event.target.value })} className={`${controlClass} mt-1 resize-y normal-case tracking-normal ${field.monospace ? 'font-mono text-xs' : ''}`} />
+                              ) : (
+                                <input type={field.type === 'number' ? 'number' : field.type === 'url' ? 'url' : 'text'} inputMode={field.type === 'number-text' ? 'decimal' : undefined} min={field.min} max={field.max} maxLength={field.maxLength} value={value} placeholder={field.placeholder} onChange={(event) => updateNode(selectedNode.id, { [field.key]: field.type === 'number' ? (Number(event.target.value) || field.min) : event.target.value })} className={`${controlClass} mt-1 normal-case tracking-normal ${field.monospace ? 'font-mono text-xs' : ''}`} />
+                              )}
+                              {field.help && <span className="mt-1 block font-normal normal-case tracking-normal text-slate-400">{field.help}</span>}
+                            </label>
+                          );
+                        })}
                       </div>
-                    )}
-
-                    {selectedNode.type === 'embed' && (
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                          Embed URL
-                        </label>
-                        <input
-                          type="text"
-                          value={selectedNode.embedUrl || ''}
-                          onChange={(e) => updateNode(selectedNode.id, { embedUrl: e.target.value })}
-                          className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
-                        />
-                      </div>
-                    )}
-
-                    {selectedNode.type === 'table' && (
-                      <div className="space-y-3">
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                            Columns (Comma Separated)
-                          </label>
-                          <input
-                            type="text"
-                            value={selectedNode.columns || ''}
-                            onChange={(e) => updateNode(selectedNode.id, { columns: e.target.value })}
-                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                            Rows (Comma values per line)
-                          </label>
-                          <textarea
-                            value={selectedNode.rows || ''}
-                            rows={4}
-                            onChange={(e) => updateNode(selectedNode.id, { rows: e.target.value })}
-                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 font-mono text-xs"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedNode.type === 'timer' && (
-                      <div className="space-y-3">
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                            Duration (Seconds)
-                          </label>
-                          <input
-                            type="number"
-                            value={selectedNode.duration || 300}
-                            onChange={(e) => updateNode(selectedNode.id, { duration: parseInt(e.target.value) || 0 })}
-                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                            Timer Mode
-                          </label>
-                          <select
-                            value={selectedNode.timerMode || 'countdown'}
-                            onChange={(e) => updateNode(selectedNode.id, { timerMode: e.target.value })}
-                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900"
-                          >
-                            <option value="countdown">Countdown</option>
-                            <option value="stopwatch">Stopwatch</option>
-                          </select>
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedNode.type === 'link' && (
-                      <div className="space-y-3">
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                            Link URL
-                          </label>
-                          <input
-                            type="text"
-                            value={selectedNode.url || ''}
-                            onChange={(e) => updateNode(selectedNode.id, { url: e.target.value })}
-                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                            Link Description
-                          </label>
-                          <input
-                            type="text"
-                            value={selectedNode.description || ''}
-                            onChange={(e) => updateNode(selectedNode.id, { description: e.target.value })}
-                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedNode.type === 'divider' && (
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                          Divider Style
-                        </label>
-                        <select
-                          value={selectedNode.dividerStyle || 'solid'}
-                          onChange={(e) => updateNode(selectedNode.id, { dividerStyle: e.target.value })}
-                          className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900"
-                        >
-                          <option value="solid">Solid Line</option>
-                          <option value="dashed">Dashed Line</option>
-                          <option value="dotted">Dotted Line</option>
-                        </select>
-                      </div>
-                    )}
-
-                    {selectedNode.type === 'code' && (
-                      <div className="space-y-3">
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                            Language
-                          </label>
-                          <select
-                            value={selectedNode.language || 'javascript'}
-                            onChange={(e) => updateNode(selectedNode.id, { language: e.target.value })}
-                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900"
-                          >
-                            <option value="javascript">JavaScript</option>
-                            <option value="html">HTML</option>
-                            <option value="css">CSS</option>
-                            <option value="python">Python</option>
-                            <option value="json">JSON</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                            Code Block
-                          </label>
-                          <textarea
-                            value={selectedNode.code || ''}
-                            rows={6}
-                            onChange={(e) => updateNode(selectedNode.id, { code: e.target.value })}
-                            className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-xs focus:outline-none focus:border-violet-500 dark:border-white/10 font-mono leading-normal"
-                          />
-                        </div>
-                      </div>
+                    ) : (
+                      <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+                        This widget type is not available in this version. Its saved data is preserved.
+                      </p>
                     )}
 
                     {/* Sizing Tiers */}
@@ -2647,7 +2492,7 @@ export default function EditorPage() {
                       </label>
                       <select
                         value={selectedNode.size}
-                        onChange={(e) => updateNode(selectedNode.id, { size: e.target.value })}
+                        onChange={(e) => updateNode(selectedNode.id, { size: e.target.value, customWidth: null, customHeight: null })}
                         className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900"
                       >
                         <option value="small">Small (3 cols - 1/4 Row)</option>
@@ -2900,6 +2745,8 @@ export default function EditorPage() {
                             { id: 'slate', color: 'bg-slate-400' },
                             { id: 'blue', color: 'bg-blue-500' },
                             { id: 'violet', color: 'bg-violet-500' },
+                            { id: 'indigo', color: 'bg-indigo-500' },
+                            { id: 'cyan', color: 'bg-cyan-500' },
                             { id: 'rose', color: 'bg-rose-500' },
                             { id: 'emerald', color: 'bg-emerald-500' },
                           ].map((preset) => (
@@ -2984,7 +2831,7 @@ export default function EditorPage() {
 }
 
 // --- FREEFORM GRID SETUP ---
-function NodeGrid({ nodes, selectedNodeIds = [], selectedNodeId, onSelectNode, resolveNodeValue, onDragStart, updateNode, awarenessStates, localClientId }) {
+function NodeGrid({ nodes, selectedNodeIds = [], selectedNodeId, onSelectNode, resolveNodeValue, onDragStart, onResizeStart, onKeyboardMove, updateNode, canEdit, awarenessStates, localClientId }) {
   const remoteSelections = useMemo(() => {
     if (!awarenessStates) return {};
     const selections = {};
@@ -3000,41 +2847,59 @@ function NodeGrid({ nodes, selectedNodeIds = [], selectedNodeId, onSelectNode, r
   return (
     <div className="relative w-full min-h-[650px] z-10">
       {nodes.map((node) => (
-        <CanvasNodeCard
-          key={node.id}
-          node={node}
-          isSelected={selectedNodeIds.length > 0 ? selectedNodeIds.includes(node.id) : node.id === selectedNodeId}
-          remoteSelectedBy={remoteSelections[node.id] || []}
-          onSelect={(e) => onSelectNode(node.id, e)}
-          resolveNodeValue={resolveNodeValue}
-          onDragStart={onDragStart}
-          updateNode={updateNode}
-        />
+        <WidgetErrorBoundary key={node.id} node={node} onSelectNode={onSelectNode}>
+          <CanvasNodeCard
+            node={node}
+            isSelected={selectedNodeIds.length > 0 ? selectedNodeIds.includes(node.id) : node.id === selectedNodeId}
+            remoteSelectedBy={remoteSelections[node.id] || []}
+            onSelect={(e) => onSelectNode(node.id, e)}
+            resolveNodeValue={resolveNodeValue}
+            onDragStart={onDragStart}
+            onResizeStart={onResizeStart}
+            onKeyboardMove={onKeyboardMove}
+            updateNode={updateNode}
+            canEdit={canEdit}
+          />
+        </WidgetErrorBoundary>
       ))}
     </div>
   );
 }
 
+class WidgetErrorBoundary extends Component {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error) {
+    console.error(`Widget ${this.props.node.id} failed to render.`, error);
+  }
+
+  componentDidUpdate(previousProps) {
+    if (this.state.failed && previousProps.node !== this.props.node) this.setState({ failed: false });
+  }
+
+  render() {
+    const { node, onSelectNode, children } = this.props;
+    if (!this.state.failed) return children;
+    return (
+      <article id={`node-card-${node.id}`} role="alert" style={{ position: 'absolute', left: `${node.x ?? 40}px`, top: `${node.y ?? 40}px`, width: `${node.customWidth ?? 280}px`, minHeight: '140px' }} className="rounded-2xl border border-rose-300 bg-rose-50 p-5 text-rose-900 shadow-lg dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-100">
+        <p className="text-sm font-bold">Widget couldn’t render</p>
+        <p className="mt-1 text-xs leading-5">The rest of the dashboard is still available. Open its properties to repair or remove this widget.</p>
+        <button type="button" onClick={(event) => onSelectNode(node.id, event)} className="mt-3 rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-semibold hover:bg-rose-100 dark:border-rose-800 dark:hover:bg-rose-900/40">Open widget properties</button>
+      </article>
+    );
+  }
+}
+
 // --- CANVAS CARD COMPONENT ---
-function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveNodeValue, onDragStart, updateNode }) {
+function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveNodeValue, onDragStart, onResizeStart, onKeyboardMove, updateNode, canEdit }) {
   const displayValue = resolveNodeValue(node);
-  // Icon picker based on type
-  const nodeIcon = useMemo(() => {
-    switch (node.type) {
-      case 'note':
-        return <FileText size={18} className="text-violet-500" />;
-      case 'metric':
-        return <BarChart3 size={18} className="text-cyan-500" />;
-      case 'progress':
-        return <Layers size={18} className="text-amber-500" />;
-      case 'chart':
-        return <Activity size={18} className="text-indigo-500" />;
-      case 'status':
-        return <CheckCircle size={18} className="text-emerald-500" />;
-      case 'logic':
-        return <Cpu size={18} className="text-pink-500" />;
-    }
-  }, [node.type]);
+  const nodeDefinition = getWidgetDefinition(node.type);
+  const NodeIcon = widgetIconComponents[nodeDefinition?.icon] || Layers;
+  const nodeIcon = <NodeIcon size={18} className={widgetIconColors[node.type] || 'text-slate-500'} />;
 
   // Glow classes for visual border style options
   const borderStyles = {
@@ -3080,13 +2945,23 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
         position: 'absolute',
         left: `${node.x ?? 40}px`,
         top: `${node.y ?? 40}px`,
-        width: `${widthOf(node.size)}px`,
+        width: `${node.customWidth ?? widthOf(node.size)}px`,
+        minHeight: node.customHeight ? `${node.customHeight}px` : undefined,
         zIndex: isSelected ? 30 : 10,
         willChange: 'left, top',
       }}
       onClick={(e) => {
         e.stopPropagation();
         onSelect(e);
+      }}
+      onFocus={(event) => {
+        if (event.target === event.currentTarget) onSelect(event);
+      }}
+      role="group"
+      tabIndex={0}
+      aria-label={`${node.title || node.type} canvas widget${isSelected ? ', selected' : ''}. Use arrow keys to move.`}
+      onKeyDown={(event) => {
+        if (event.target === event.currentTarget) onKeyboardMove(event, node.id);
       }}
       onMouseDown={(e) => {
         // Allow dragging from anywhere on the card unless clicking interactive controls
@@ -3147,7 +3022,16 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
             {node.unit && <span className="text-2xl font-semibold opacity-60">{node.unit}</span>}
             <span className="text-4xl font-extrabold tracking-tight font-mono">{displayValue}</span>
           </div>
-          <span className="text-[10px] text-slate-400 block mt-2">Streaming data ready</span>
+          <span className="text-[10px] text-slate-400 block mt-2">Sample value · no data source connected</span>
+        </div>
+      )}
+
+      {node.type === 'display' && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{node.title}</p>
+          <div className="text-4xl font-extrabold tracking-tight font-mono">{displayValue}</div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">{node.description || 'KPI summary'}</p>
+          <span className="text-[10px] text-slate-400">Sample value · no data source connected</span>
         </div>
       )}
 
@@ -3270,7 +3154,7 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
                   <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">
                     {displayValue || 'Status'}
                   </h3>
-                  <span className="text-[10px] text-slate-400">Monitoring relay active</span>
+                  <span className="text-[10px] text-slate-400">Status set in widget properties</span>
                 </div>
               </div>
             </div>
@@ -3302,12 +3186,15 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
         <div className="space-y-2">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{node.title}</p>
           <div className="w-full h-32 rounded-lg overflow-hidden bg-slate-100 dark:bg-white/5 relative">
+            <span className="absolute inset-0 grid place-items-center text-xs text-slate-400">Image unavailable</span>
             <img
-              src={node.imageUrl}
+              src={safeImageUrl(node.imageUrl)}
               alt={node.title}
-              className={`w-full h-full object-${node.objectFit || 'cover'}`}
+              referrerPolicy="no-referrer"
+              className="h-full w-full"
+              style={{ objectFit: ['cover', 'contain', 'fill', 'none', 'scale-down'].includes(node.objectFit) ? node.objectFit : 'cover' }}
               onError={(e) => {
-                e.target.src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&auto=format&fit=crop&q=60';
+                e.currentTarget.style.display = 'none';
               }}
             />
           </div>
@@ -3319,13 +3206,13 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
         <div className="space-y-2">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{node.title}</p>
           <div className="w-full h-32 rounded-lg overflow-hidden bg-slate-100 dark:bg-white/5 relative">
-            <iframe
-              src={node.embedUrl}
+            {safeExternalUrl(node.embedUrl) ? <iframe
+              src={safeExternalUrl(node.embedUrl)}
               title={node.title}
               className="w-full h-full border-0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
+              sandbox="allow-scripts allow-forms allow-popups"
+              referrerPolicy="no-referrer"
+            /> : <p className="p-3 text-xs text-slate-500">Use an HTTP or HTTPS URL to embed content.</p>}
           </div>
         </div>
       )}
@@ -3369,10 +3256,12 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
       {/* 11. Link Card */}
       {node.type === 'link' && (
         <a
-          href={node.url}
+          href={safeExternalUrl(node.url) || undefined}
           target="_blank"
           rel="noopener noreferrer"
-          className="block group/link space-y-2 cursor-pointer"
+          aria-disabled={!safeExternalUrl(node.url)}
+          onClick={(event) => { if (!safeExternalUrl(node.url)) event.preventDefault(); }}
+          className={`block group/link space-y-2 ${safeExternalUrl(node.url) ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
         >
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide group-hover/link:text-violet-600 dark:group-hover/link:text-violet-400 transition-colors">{node.title}</p>
@@ -3389,7 +3278,7 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
       {node.type === 'divider' && (
         <div className="py-2.5">
           <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">{node.title}</p>
-          <div className={`w-full border-t border-${node.dividerStyle || 'solid'} border-slate-300 dark:border-white/10`} />
+          <div className="w-full border-t border-slate-300 dark:border-white/10" style={{ borderTopStyle: ['solid', 'dashed', 'dotted', 'double'].includes(node.dividerStyle) ? node.dividerStyle : 'solid' }} />
         </div>
       )}
 
@@ -3402,7 +3291,273 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
           </pre>
         </div>
       )}
+      {!nodeDefinition && (
+        <div role="status" className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-100">
+          <p className="text-xs font-bold">Unsupported widget type</p>
+          <p className="text-[10px] leading-4">Its saved data is preserved. This widget can’t run in the current Voxel version.</p>
+        </div>
+      )}
+      {canEdit && isSelected && (
+        <button
+          type="button"
+          aria-label={`Resize ${node.title || node.type}`}
+          title="Drag to resize or use arrow keys"
+          onMouseDown={(event) => onResizeStart(event, node.id)}
+          onKeyDown={(event) => {
+            if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const bounds = event.currentTarget.parentElement.getBoundingClientRect();
+            const step = event.shiftKey ? 40 : 10;
+            const width = node.customWidth ?? bounds.width;
+            const height = node.customHeight ?? bounds.height;
+            updateNode(node.id, {
+              customWidth: Math.max(180, width + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0)),
+              customHeight: Math.max(100, height + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0)),
+            });
+          }}
+          className="absolute -bottom-2 -right-2 z-50 grid size-6 cursor-nwse-resize place-items-center rounded-lg border border-indigo-300 bg-white text-indigo-600 shadow-md hover:bg-indigo-50 dark:border-indigo-500/50 dark:bg-slate-900 dark:text-indigo-300"
+        >
+          <Maximize2 size={12} />
+        </button>
+      )}
     </article>
+  );
+}
+
+function DashboardCommentsPanel({ dashboardId, workspaceId, accessRole, dashboardStatus, selectedNodeIds, onFocusNodes }) {
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [editBody, setEditBody] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [replyToId, setReplyToId] = useState(null);
+  const [replyDraft, setReplyDraft] = useState('');
+  const [attachSelection, setAttachSelection] = useState(false);
+  const currentUser = useQuery({ queryKey: ['auth', 'me'], queryFn: authService.me, retry: false });
+  const comments = useQuery({
+    queryKey: ['dashboard', dashboardId, 'comments'],
+    queryFn: () => workspaceService.comments(dashboardId),
+    enabled: Boolean(dashboardId),
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
+  });
+  const canComment = ['OWNER', 'ADMIN', 'EDITOR', 'COMMENTER'].includes(accessRole) && dashboardStatus !== 'ARCHIVED';
+  const canModerate = ['OWNER', 'ADMIN', 'EDITOR'].includes(accessRole);
+
+  const create = useMutation({
+    mutationFn: (input) => workspaceService.createComment(dashboardId, input),
+    onSuccess: async (_comment, input) => {
+      if (input.parentId) {
+        setReplyDraft('');
+        setReplyToId(null);
+      } else {
+        setDraft('');
+        setAttachSelection(false);
+      }
+      await queryClient.invalidateQueries({ queryKey: ['dashboard', dashboardId, 'comments'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'comments'] }),
+        queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'activity'] }),
+      ]);
+    },
+  });
+  const update = useMutation({
+    mutationFn: ({ commentId, body }) => workspaceService.updateComment(dashboardId, commentId, body),
+    onSuccess: async () => {
+      setEditingId(null);
+      setEditBody('');
+      await queryClient.invalidateQueries({ queryKey: ['dashboard', dashboardId, 'comments'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'comments'] }),
+        queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'activity'] }),
+      ]);
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (commentId) => workspaceService.deleteComment(dashboardId, commentId),
+    onSuccess: async () => {
+      setConfirmDeleteId(null);
+      await queryClient.invalidateQueries({ queryKey: ['dashboard', dashboardId, 'comments'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'comments'] }),
+        queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'activity'] }),
+      ]);
+    },
+  });
+
+  const resolution = useMutation({
+    mutationFn: ({ commentId, resolved }) => workspaceService.resolveComment(dashboardId, commentId, resolved),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['dashboard', dashboardId, 'comments'] });
+      await queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'activity'] });
+    },
+  });
+
+  const errorMessage = create.error?.message || update.error?.message || remove.error?.message || resolution.error?.message;
+  const formatDate = (value) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+  const startEditing = (comment) => {
+    setEditingId(comment.id);
+    setEditBody(comment.body);
+    setConfirmDeleteId(null);
+    update.reset();
+  };
+
+  return (
+    <section aria-label="Dashboard comments" className="space-y-4">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-xs font-extrabold text-slate-900 dark:text-white">Discussion</h2>
+          <p className="mt-1 text-[10px] leading-relaxed text-slate-500">Comments are visible to everyone with dashboard access.</p>
+        </div>
+        <button type="button" onClick={() => void comments.refetch()} disabled={comments.isFetching} aria-label="Refresh comments" className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-violet-600 disabled:opacity-50 dark:hover:bg-white/5">
+          <RefreshCw size={13} className={comments.isFetching ? 'animate-spin' : ''} />
+        </button>
+      </div>
+
+      {canComment ? (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            const body = draft.trim();
+            if (body && !create.isPending) create.mutate({
+              body,
+              ...(attachSelection && selectedNodeIds.length ? {
+                anchor: {
+                  type: selectedNodeIds.length === 1 ? 'node' : 'selection',
+                  nodeIds: selectedNodeIds,
+                  label: selectedNodeIds.length === 1 ? 'Attached node' : `${selectedNodeIds.length} selected nodes`,
+                },
+              } : {}),
+            });
+          }}
+          className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs dark:border-white/10 dark:bg-slate-900/70"
+        >
+          <label className="sr-only" htmlFor="dashboard-comment-draft">Write a comment</label>
+          <textarea
+            id="dashboard-comment-draft"
+            rows={3}
+            maxLength={4000}
+            value={draft}
+            onChange={(event) => { setDraft(event.target.value); create.reset(); }}
+            placeholder="Share an update, ask a question, or mention @teammate@company.com…"
+            className="w-full resize-y bg-transparent text-xs leading-relaxed text-slate-800 outline-none placeholder:text-slate-400 dark:text-slate-100"
+          />
+          <div className="mt-1 flex min-h-6 items-center justify-between gap-2">
+            <span className="text-[9px] text-slate-400">Use @email to notify a workspace teammate.</span>
+            {selectedNodeIds.length > 0 && <button type="button" onClick={() => setAttachSelection((attached) => !attached)} className={`inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[9px] font-bold ${attachSelection ? 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5'}`}>
+              <LocateFixed size={11} /> {attachSelection ? `Attached ${selectedNodeIds.length} node${selectedNodeIds.length === 1 ? '' : 's'}` : `Attach selection (${selectedNodeIds.length})`}
+            </button>}
+          </div>
+          <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2 dark:border-white/5">
+            <span className="text-[9px] text-slate-400">{draft.length}/4000</span>
+            <button type="submit" disabled={!draft.trim() || create.isPending} className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-2.5 py-1.5 text-[10px] font-bold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-45">
+              <Send size={11} /> {create.isPending ? 'Posting…' : 'Post comment'}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-[10px] leading-relaxed text-slate-500 dark:border-white/10 dark:bg-white/5">
+          {dashboardStatus === 'ARCHIVED' ? 'This dashboard is archived. Comments are read-only.' : 'You can read this discussion. Ask a workspace admin for commenter access to add a comment.'}
+        </div>
+      )}
+
+      {errorMessage && <p role="alert" className="rounded-lg bg-rose-50 px-2.5 py-2 text-[10px] leading-relaxed text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">{errorMessage}</p>}
+
+      {comments.isPending ? (
+        <div className="space-y-3" aria-label="Loading comments">
+          {[0, 1].map((index) => <div key={index} className="animate-pulse space-y-2 rounded-xl border border-slate-100 p-3 dark:border-white/5"><div className="h-3 w-2/5 rounded bg-slate-100 dark:bg-white/10" /><div className="h-8 rounded bg-slate-100 dark:bg-white/10" /></div>)}
+        </div>
+      ) : comments.isError ? (
+        <div role="status" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-[10px] text-rose-700 dark:border-rose-500/20 dark:bg-rose-950/20 dark:text-rose-300">
+          <p>Comments could not be loaded.</p>
+          <button type="button" onClick={() => void comments.refetch()} className="mt-2 font-bold underline">Try again</button>
+        </div>
+      ) : comments.data?.length ? (
+        <ol className="space-y-3">
+          {comments.data.map((comment) => {
+            const isAuthor = comment.author?.id === currentUser.data?.id;
+            const canManageComment = canComment && (isAuthor || canModerate) && !comment.deletedAt;
+            const canResolveThread = canComment && (isAuthor || canModerate) && !comment.deletedAt;
+            const initials = (comment.author?.displayName || 'Former member').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+            return (
+              <li key={comment.id} className={`rounded-xl border p-3 dark:bg-slate-900/60 ${comment.resolvedAt ? 'border-emerald-200/80 bg-emerald-50/40 dark:border-emerald-500/20' : 'border-slate-200/80 bg-white/80 dark:border-white/10'}`}>
+                <div className="flex items-start gap-2.5">
+                  {comment.author?.avatarUrl ? (
+                    <img src={comment.author.avatarUrl} alt="" className="size-7 shrink-0 rounded-full object-cover" />
+                  ) : (
+                    <span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full bg-violet-100 text-[9px] font-extrabold text-violet-700 dark:bg-violet-500/20 dark:text-violet-300">{initials || 'FM'}</span>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+                      <span className="truncate text-[10px] font-bold text-slate-800 dark:text-slate-100">{comment.author?.displayName || 'Former member'}</span>
+                      <time className="text-[9px] text-slate-400" dateTime={comment.createdAt}>{formatDate(comment.createdAt)}</time>
+                    </div>
+                    {comment.deletedAt ? (
+                      <p className="mt-2 text-[10px] italic text-slate-400">Comment removed</p>
+                    ) : editingId === comment.id ? (
+                      <form onSubmit={(event) => { event.preventDefault(); const body = editBody.trim(); if (body && !update.isPending) update.mutate({ commentId: comment.id, body }); }} className="mt-2 space-y-2">
+                        <textarea autoFocus rows={3} maxLength={4000} value={editBody} onChange={(event) => { setEditBody(event.target.value); update.reset(); }} className="w-full resize-y rounded-lg border border-violet-300 bg-white p-2 text-xs leading-relaxed outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-violet-500/30 dark:bg-slate-950" aria-label="Edit comment" />
+                        <div className="flex justify-end gap-1.5">
+                          <button type="button" onClick={() => { setEditingId(null); setEditBody(''); }} className="rounded-lg px-2 py-1 text-[10px] font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5">Cancel</button>
+                          <button type="submit" disabled={!editBody.trim() || update.isPending} className="rounded-lg bg-violet-600 px-2.5 py-1 text-[10px] font-bold text-white disabled:opacity-45">{update.isPending ? 'Saving…' : 'Save'}</button>
+                        </div>
+                      </form>
+                    ) : (
+                      <p className="mt-2 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">{comment.body}</p>
+                    )}
+                    {comment.anchor?.nodeIds?.length > 0 && <button type="button" onClick={() => onFocusNodes(comment.anchor.nodeIds)} className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-md bg-cyan-50 px-2 py-1 text-[9px] font-bold text-cyan-700 hover:bg-cyan-100 dark:bg-cyan-500/10 dark:text-cyan-200 dark:hover:bg-cyan-500/20">
+                      <LocateFixed size={11} /> <span className="truncate">{comment.anchor.label || (comment.anchor.type === 'node' ? 'Attached node' : `${comment.anchor.nodeIds.length} attached nodes`)}</span>
+                    </button>}
+                    {comment.resolvedAt && <p className="mt-2 inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 dark:text-emerald-300"><CheckCircle2 size={12} /> Resolved{comment.resolvedBy?.displayName ? ` by ${comment.resolvedBy.displayName}` : ''}</p>}
+                    {canManageComment && editingId !== comment.id && (
+                      <div className="mt-2 flex items-center justify-end gap-2">
+                        {confirmDeleteId === comment.id ? (
+                          <>
+                            <span className="mr-auto text-[9px] text-slate-500">Remove this comment?</span>
+                            <button type="button" onClick={() => setConfirmDeleteId(null)} className="text-[9px] font-semibold text-slate-500">Cancel</button>
+                            <button type="button" onClick={() => remove.mutate(comment.id)} disabled={remove.isPending} className="text-[9px] font-bold text-rose-600 disabled:opacity-50 dark:text-rose-300">{remove.isPending ? 'Removing…' : 'Remove'}</button>
+                          </>
+                        ) : (
+                          <>
+                            {isAuthor && <button type="button" onClick={() => startEditing(comment)} aria-label="Edit your comment" className="rounded p-1 text-slate-400 hover:bg-violet-50 hover:text-violet-600 dark:hover:bg-violet-500/10"><Pencil size={11} /></button>}
+                            <button type="button" onClick={() => { setConfirmDeleteId(comment.id); remove.reset(); }} aria-label={isAuthor ? 'Remove your comment' : 'Moderate comment'} className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"><Trash2 size={11} /></button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    <div className="mt-2 flex items-center justify-end gap-2">
+                      {canComment && !comment.resolvedAt && !comment.deletedAt && <button type="button" onClick={() => { setReplyToId(replyToId === comment.id ? null : comment.id); setReplyDraft(''); create.reset(); }} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-bold text-slate-500 hover:bg-slate-100 hover:text-violet-600 dark:hover:bg-white/5"><CornerDownRight size={11} /> Reply{comment.replies?.length ? ` · ${comment.replies.length}` : ''}</button>}
+                      {canResolveThread && <button type="button" onClick={() => resolution.mutate({ commentId: comment.id, resolved: !comment.resolvedAt })} disabled={resolution.isPending} className={`inline-flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-bold ${comment.resolvedAt ? 'text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5' : 'text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-500/10'}`}>
+                        <CheckCircle2 size={11} /> {comment.resolvedAt ? 'Reopen' : 'Resolve'}
+                      </button>}
+                    </div>
+                  </div>
+                </div>
+                {comment.replies?.length > 0 && <ol className="ml-9 mt-3 space-y-2 border-l border-slate-200 pl-3 dark:border-white/10">
+                  {comment.replies.map((reply) => <li key={reply.id} className="rounded-lg bg-slate-50/80 px-2.5 py-2 dark:bg-white/[0.025]">
+                    <div className="flex items-baseline justify-between gap-2"><span className="truncate text-[9px] font-bold text-slate-700 dark:text-slate-200">{reply.author?.displayName || 'Former member'}</span><time className="shrink-0 text-[8px] text-slate-400" dateTime={reply.createdAt}>{formatDate(reply.createdAt)}</time></div>
+                    {reply.deletedAt ? <p className="mt-1 text-[10px] italic text-slate-400">Reply removed</p> : <p className="mt-1 whitespace-pre-wrap break-words text-[10px] leading-relaxed text-slate-600 dark:text-slate-300">{reply.body}</p>}
+                  </li>)}
+                </ol>}
+                {replyToId === comment.id && canComment && !comment.resolvedAt && <form onSubmit={(event) => { event.preventDefault(); const body = replyDraft.trim(); if (body && !create.isPending) create.mutate({ body, parentId: comment.id }); }} className="ml-9 mt-3 rounded-lg border border-slate-200 bg-white p-2 dark:border-white/10 dark:bg-slate-950">
+                  <label className="sr-only" htmlFor={`reply-${comment.id}`}>Write a reply</label>
+                  <textarea id={`reply-${comment.id}`} autoFocus rows={2} maxLength={4000} value={replyDraft} onChange={(event) => { setReplyDraft(event.target.value); create.reset(); }} placeholder="Write a reply… Use @email to notify a teammate." className="w-full resize-y bg-transparent text-[10px] leading-relaxed outline-none placeholder:text-slate-400" />
+                  <div className="flex justify-end gap-1.5 border-t border-slate-100 pt-2 dark:border-white/5"><button type="button" onClick={() => { setReplyToId(null); setReplyDraft(''); }} className="rounded-md px-2 py-1 text-[9px] font-semibold text-slate-500">Cancel</button><button type="submit" disabled={!replyDraft.trim() || create.isPending} className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2 py-1 text-[9px] font-bold text-white disabled:opacity-45"><Send size={10} />{create.isPending ? 'Sending…' : 'Reply'}</button></div>
+                </form>}
+              </li>
+            );
+          })}
+        </ol>
+      ) : (
+        <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center dark:border-white/10">
+          <span className="mx-auto grid size-9 place-items-center rounded-xl bg-violet-50 text-violet-500 dark:bg-violet-500/10 dark:text-violet-300"><MessageSquare size={16} /></span>
+          <p className="mt-3 text-[11px] font-bold text-slate-700 dark:text-slate-200">Start the discussion</p>
+          <p className="mt-1 text-[10px] leading-relaxed text-slate-500">Share context, ask a question, or leave a note for your team.</p>
+        </div>
+      )}
+      {!comments.isPending && !comments.isError && (comments.data?.length || 0) >= 200 && <p className="text-center text-[9px] text-slate-400">Showing the latest 200 comments.</p>}
+    </section>
   );
 }
 
@@ -3433,99 +3588,7 @@ function CanvasEmpty({ onAdd }) {
 
 // --- NODE PICKER DIALOG ---
 function NodePicker({ onClose, onAdd }) {
-  const options = [
-    {
-      type: 'note',
-      label: 'Rich Note',
-      desc: 'Markdown logs and instructions',
-      icon: <FileText size={20} />,
-      color: 'text-violet-500 bg-violet-500/10',
-    },
-    {
-      type: 'metric',
-      label: 'Metric Value',
-      desc: 'Custom integers, floats and currency',
-      icon: <BarChart3 size={20} />,
-      color: 'text-cyan-500 bg-cyan-500/10',
-    },
-    {
-      type: 'progress',
-      label: 'Progress Target',
-      desc: 'Track progress to completion',
-      icon: <Layers size={20} />,
-      color: 'text-amber-500 bg-amber-500/10',
-    },
-    {
-      type: 'chart',
-      label: 'Sparkline Chart',
-      desc: 'Custom coordinates plotted dynamically',
-      icon: <Activity size={20} />,
-      color: 'text-indigo-500 bg-indigo-500/10',
-    },
-    {
-      type: 'status',
-      label: 'Status Indicator',
-      desc: 'Monitoring relays and server health',
-      icon: <CheckCircle size={20} />,
-      color: 'text-emerald-500 bg-emerald-500/10',
-    },
-    {
-      type: 'logic',
-      label: 'Math Logic',
-      desc: 'Dynamic calculations between nodes',
-      icon: <Cpu size={20} />,
-      color: 'text-pink-500 bg-pink-500/10',
-    },
-    {
-      type: 'image',
-      label: 'Image Showcase',
-      desc: 'Display an online image card',
-      icon: <ImageIcon size={20} />,
-      color: 'text-violet-500 bg-violet-500/10',
-    },
-    {
-      type: 'embed',
-      label: 'Third-Party Embed',
-      desc: 'Render custom iframe content',
-      icon: <Layers size={20} />,
-      color: 'text-indigo-500 bg-indigo-500/10',
-    },
-    {
-      type: 'table',
-      label: 'Data Grid Table',
-      desc: 'Editable rows and columns table',
-      icon: <Table size={20} />,
-      color: 'text-teal-500 bg-teal-500/10',
-    },
-    {
-      type: 'timer',
-      label: 'Stopwatch / Timer',
-      desc: 'Live countdown or timer clock',
-      icon: <Timer size={20} />,
-      color: 'text-amber-500 bg-amber-500/10',
-    },
-    {
-      type: 'link',
-      label: 'Reference Link',
-      desc: 'URL card with title and metadata',
-      icon: <LinkIcon size={20} />,
-      color: 'text-blue-500 bg-blue-500/10',
-    },
-    {
-      type: 'divider',
-      label: 'Section Divider',
-      desc: 'Visual line to partition canvas',
-      icon: <Minus size={20} />,
-      color: 'text-slate-500 bg-slate-500/10',
-    },
-    {
-      type: 'code',
-      label: 'Code Block',
-      desc: 'Syntax highlighted code container',
-      icon: <Code2 size={20} />,
-      color: 'text-orange-500 bg-orange-500/10',
-    },
-  ];
+  const options = BUILTIN_WIDGETS;
 
   return (
     <div
@@ -3538,9 +3601,9 @@ function NodePicker({ onClose, onAdd }) {
       >
         <div className="flex items-start justify-between border-b border-slate-100 dark:border-white/5 pb-4">
           <div>
-            <h2 className="text-lg font-bold">Add a node</h2>
+            <h2 className="text-lg font-bold">Add a widget</h2>
             <p className="mt-1 text-xs text-slate-400">
-              Choose a functional dashboard node for your layout.
+              Choose a registered widget for your dashboard.
             </p>
           </div>
           <button
@@ -3552,23 +3615,24 @@ function NodePicker({ onClose, onAdd }) {
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 max-h-[380px] overflow-y-auto pr-1">
-          {options.map((opt) => (
-            <button
-              key={opt.type}
-              onClick={() => onAdd(opt.type)}
+          {options.map((definition) => {
+            const Icon = widgetIconComponents[definition.icon] || Layers;
+            return <button
+              key={definition.type}
+              onClick={() => onAdd(definition.type)}
               className="flex items-start gap-3 rounded-2xl border border-slate-200 p-4 text-left hover:border-violet-300 hover:bg-violet-500/5 cursor-pointer dark:border-white/10 dark:hover:border-violet-500/20"
             >
-              <span className={`grid size-10 place-items-center rounded-xl shrink-0 ${opt.color}`}>
-                {opt.icon}
+              <span className={`grid size-10 place-items-center rounded-xl shrink-0 bg-violet-500/10 ${widgetIconColors[definition.type] || 'text-violet-500'}`}>
+                <Icon size={20} />
               </span>
               <div>
-                <b className="text-sm font-bold text-slate-900 dark:text-white">{opt.label}</b>
+                <b className="text-sm font-bold text-slate-900 dark:text-white">{definition.title}</b>
                 <span className="mt-1 block text-xs leading-relaxed text-slate-400">
-                  {opt.desc}
+                  {definition.description}
                 </span>
               </div>
             </button>
-          ))}
+          })}
         </div>
       </div>
     </div>

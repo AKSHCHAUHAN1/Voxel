@@ -36,11 +36,17 @@ export function LoginPage() {
 
   // Form State
   const [displayName, setDisplayName] = useState('');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(searchParams.get('email') || '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState(() => {
+    if (searchParams.get('error') === 'google_unconfigured') return 'Google sign-in is not configured for this deployment. Use email and password instead.';
+    if (searchParams.get('error') === 'google_oauth_failed') return 'Google sign-in could not be completed. Please try again or use email and password.';
+    return '';
+  });
   const [loading, setLoading] = useState(false);
+  const [verificationNotice, setVerificationNotice] = useState('');
+  const [verificationUrl, setVerificationUrl] = useState('');
 
   const handleMouseMove = (e) => {
     const { clientX, clientY } = e;
@@ -72,14 +78,16 @@ export function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
+    setVerificationNotice('');
+    setVerificationUrl('');
 
     if (mode === 'signup') {
       if (!displayName.trim()) {
         setErrorMsg('Please enter your full name.');
         return;
       }
-      if (password.length < 6) {
-        setErrorMsg('Password must be at least 6 characters.');
+      if (password.length < 12) {
+        setErrorMsg('Password must be at least 12 characters.');
         return;
       }
       if (password !== confirmPassword) {
@@ -91,7 +99,12 @@ export function LoginPage() {
     try {
       setLoading(true);
       if (mode === 'signup') {
-        await authService.signup({ email, password, displayName: displayName.trim() });
+        const result = await authService.signup({ email, password, displayName: displayName.trim() });
+        if (result.verificationRequired) {
+          setVerificationNotice(`Check ${result.email} for a verification link. You need to verify your address before signing in.`);
+          setVerificationUrl(result.verificationUrl || '');
+          return;
+        }
         useNotificationStore.getState().clearAll();
         useNotificationStore.getState().add(`Account created for ${email}. Welcome to Voxel!`, 'success');
       } else {
@@ -100,9 +113,24 @@ export function LoginPage() {
         useNotificationStore.getState().add(`Signed in successfully as ${email}`, 'success');
         useNotificationStore.getState().add(`New authentication session active on ${getDeviceOSString()}`, 'info');
       }
-      navigate('/workspaces');
+      const returnTo = searchParams.get('returnTo');
+      navigate(returnTo?.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/workspaces');
     } catch (err) {
       setErrorMsg(err.message || (mode === 'signup' ? 'Failed to create account.' : 'Invalid email or password.'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    try {
+      setLoading(true);
+      setErrorMsg('');
+      await authService.resendEmailVerification(email);
+      setVerificationNotice(`If ${email} has a pending account, a new verification link has been sent.`);
+      setVerificationUrl('');
+    } catch (error) {
+      setErrorMsg(error.message || 'A verification link could not be sent.');
     } finally {
       setLoading(false);
     }
@@ -217,6 +245,8 @@ export function LoginPage() {
               onClick={() => {
                 setMode('signin');
                 setErrorMsg('');
+                setVerificationNotice('');
+                setVerificationUrl('');
               }}
               className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 ${
                 mode === 'signin'
@@ -231,6 +261,8 @@ export function LoginPage() {
               onClick={() => {
                 setMode('signup');
                 setErrorMsg('');
+                setVerificationNotice('');
+                setVerificationUrl('');
               }}
               className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 ${
                 mode === 'signup'
@@ -260,6 +292,18 @@ export function LoginPage() {
             )}
           </AnimatePresence>
 
+          {verificationNotice && (
+            <div role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/90 p-3 text-xs font-semibold leading-5 text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-950/30 dark:text-emerald-200">
+              <p>{verificationNotice}</p>
+              {verificationUrl && <a href={verificationUrl} className="mt-2 inline-flex font-bold underline underline-offset-2">Open the development verification link <ArrowRight size={13} className="ml-1" /></a>}
+            </div>
+          )}
+          {errorMsg.toLowerCase().includes('verify') && (
+            <button type="button" onClick={handleResendVerification} disabled={loading || !email} className="mt-3 text-xs font-bold text-violet-600 underline underline-offset-2 disabled:opacity-50 dark:text-violet-300">
+              Resend verification email
+            </button>
+          )}
+
           {/* Form */}
           <form onSubmit={handleSubmit} className="mt-5 space-y-3.5">
             {mode === 'signup' && (
@@ -270,6 +314,7 @@ export function LoginPage() {
                 <input
                   type="text"
                   required
+                  maxLength={120}
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="Alex Rivers"
@@ -285,6 +330,7 @@ export function LoginPage() {
               <input
                 type="email"
                 required
+                maxLength={254}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="alex@company.com"
@@ -300,6 +346,9 @@ export function LoginPage() {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
+                  minLength={mode === 'signup' ? 12 : undefined}
+                  maxLength={128}
+                  autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••••••"
@@ -323,6 +372,9 @@ export function LoginPage() {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
+                  minLength={12}
+                  maxLength={128}
+                  autoComplete="new-password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="••••••••••••"
@@ -372,14 +424,14 @@ export function LoginPage() {
               <span>Continue with Google</span>
             </a>
 
-            <button
+            {import.meta.env.DEV && <button
               onClick={handleGuestLogin}
               type="button"
               disabled={loading}
               className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200/60 bg-slate-100 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-200 dark:border-white/5 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 transition cursor-pointer"
             >
               Log in as Guest User
-            </button>
+            </button>}
           </div>
         </div>
       </motion.section>

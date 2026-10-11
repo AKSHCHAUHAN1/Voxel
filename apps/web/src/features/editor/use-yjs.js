@@ -1,16 +1,24 @@
 import { useEffect, useState, useCallback } from 'react';
 import * as Y from 'yjs';
 import { HocuspocusProvider } from '@hocuspocus/provider';
+import { runtime } from '@/config/runtime';
 
 const getWsUrl = () => {
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  const apiUrl = runtime.apiBaseUrl || window.location.origin;
   return apiUrl.replace(/^http/, 'ws') + '/api/v1/realtime';
 };
 
-const getAuthToken = () => {
-  // Simple way to get the voxel_access cookie for WebSocket auth
-  const match = document.cookie.match(/(?:^|;)\s*voxel_access=([^;]+)/);
-  return match ? match[1] : '';
+const getRealtimeToken = async (dashboardId) => {
+  const apiUrl = runtime.apiBaseUrl;
+  const response = await fetch(`${apiUrl}/api/v1/dashboards/${encodeURIComponent(dashboardId)}/realtime-token`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  const payload = await response.json();
+  if (!response.ok || !payload.success) {
+    throw new Error(payload.error?.message || 'Realtime access could not be verified.');
+  }
+  return payload.data.token;
 };
 
 export function useYjs(dashboardId, initialScene) {
@@ -27,7 +35,7 @@ export function useYjs(dashboardId, initialScene) {
       url: getWsUrl(),
       name: dashboardId,
       document: doc,
-      token: getAuthToken(),
+      token: () => getRealtimeToken(dashboardId),
     });
 
     const color = '#' + Math.floor(Math.random() * 16777215).toString(16).padEnd(6, '0');

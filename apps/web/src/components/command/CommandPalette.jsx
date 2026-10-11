@@ -45,6 +45,19 @@ export function CommandPalette({ open, onClose, onLogout }) {
     enabled: open,
     staleTime: 30_000,
   });
+  const dashboards = useQuery({
+    queryKey: ['all-dashboards', workspaces.data?.map((workspace) => workspace.id)],
+    queryFn: async () => {
+      if (!workspaces.data) return [];
+      const results = await Promise.all(workspaces.data.map(async (workspace) => {
+        const dashboardsInWorkspace = await workspaceService.dashboards(workspace.id).catch(() => []);
+        return dashboardsInWorkspace.map((dashboard) => ({ ...dashboard, workspaceName: workspace.name }));
+      }));
+      return results.flat();
+    },
+    enabled: open && Boolean(workspaces.data),
+    staleTime: 60_000,
+  });
 
   // Build command list
   const commands = useMemo(() => {
@@ -85,6 +98,18 @@ export function CommandPalette({ open, onClose, onLogout }) {
         });
       });
     }
+    if (dashboards.data && Array.isArray(dashboards.data)) {
+      dashboards.data.forEach((dashboard) => {
+        items.push({
+          id: `dashboard-${dashboard.id}`,
+          label: `Open dashboard: ${dashboard.name}`,
+          category: 'Dashboards',
+          icon: LayoutDashboard,
+          suffix: dashboard.workspaceName,
+          action: () => { navigate(`/workspaces/${dashboard.workspaceId}/dashboards/${dashboard.id}`); onClose(); },
+        });
+      });
+    }
 
     // Actions
     items.push({
@@ -92,7 +117,7 @@ export function CommandPalette({ open, onClose, onLogout }) {
       label: 'Create new workspace',
       category: 'Actions',
       icon: Plus,
-      action: () => { navigate('/workspaces'); onClose(); },
+      action: () => { navigate('/workspaces', { state: { openCreateWorkspace: true } }); onClose(); },
     });
     items.push({
       id: 'action-theme',
@@ -132,7 +157,7 @@ export function CommandPalette({ open, onClose, onLogout }) {
     });
 
     return items;
-  }, [workspaces.data, theme, navigate, onClose, setTheme]);
+  }, [workspaces.data, dashboards.data, theme, navigate, onClose, setTheme]);
 
   // Fuzzy filter
   const filtered = useMemo(() => {

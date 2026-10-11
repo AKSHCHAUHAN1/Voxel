@@ -21,6 +21,17 @@ enum DashboardStatus {
   ARCHIVED
 }
 
+enum DashboardSharePermission {
+  VIEW
+  EDIT
+}
+
+enum StoredFilePurpose {
+  WORKSPACE
+  AVATAR
+  COVER
+}
+
 model User {
   id            String    @id @default(uuid()) @db.Uuid
   email         String    @unique
@@ -28,8 +39,11 @@ model User {
   googleSubject String?   @unique
   displayName   String
   avatarUrl     String?
+  jobTitle      String?
+  bio           String?
   timezone      String    @default("UTC")
   locale        String    @default("en")
+  preferences   Json      @default("{}")
   emailVerified Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -37,8 +51,19 @@ model User {
   sessions      Session[]
   workspaces    Workspace[] @relation("WorkspaceOwner")
   memberships   WorkspaceMember[]
+  dashboardPreferences DashboardPreference[]
   dashboards    Dashboard[] @relation("DashboardOwner")
   auditEvents   AuditEvent[] @relation("AuditActor")
+  workspaceInvitesCreated WorkspaceInvite[] @relation("WorkspaceInviteCreator")
+  dashboardSharesCreated DashboardShare[] @relation("DashboardShareCreator")
+  dashboardTemplatesCreated DashboardTemplate[] @relation("DashboardTemplateCreator")
+  dashboardTemplateFavorites DashboardTemplateFavorite[]
+  dashboardComments DashboardComment[] @relation("DashboardCommentAuthor")
+  resolvedDashboardComments DashboardComment[] @relation("DashboardCommentResolver")
+  notifications       Notification[] @relation("NotificationRecipient")
+  notificationsSent   Notification[] @relation("NotificationActor")
+  uploadedFiles      StoredFile[] @relation("StoredFileUploader")
+  emailVerificationTokens EmailVerificationToken[]
 
   @@index([createdAt])
 }
@@ -72,6 +97,18 @@ model RefreshToken {
   @@index([expiresAt])
 }
 
+model EmailVerificationToken {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  tokenHash   String    @unique @db.Char(64)
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consumedAt, expiresAt])
+}
+
 model Workspace {
   id          String   @id @default(uuid()) @db.Uuid
   ownerId     String   @db.Uuid
@@ -81,12 +118,19 @@ model Workspace {
   description String?
   icon        String   @default("grid")
   accentColor String   @default("violet")
+  coverImageUrl String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   deletedAt   DateTime?
+  archivedAt  DateTime?
   members     WorkspaceMember[]
   dashboards  Dashboard[]
   auditEvents AuditEvent[]
+  invites     WorkspaceInvite[]
+  templates   DashboardTemplate[]
+  files       StoredFile[]
+  storageUsedBytes  BigInt @default(0)
+  storageQuotaBytes BigInt @default(1073741824)
 
   @@index([ownerId, updatedAt])
 }
@@ -96,6 +140,8 @@ model WorkspaceMember {
   workspaceId String              @db.Uuid
   userId      String              @db.Uuid
   role        WorkspaceMemberRole @default(VIEWER)
+  isFavorite  Boolean             @default(false)
+  isPinned    Boolean             @default(false)
   createdAt   DateTime            @default(now())
   workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -120,6 +166,9 @@ model Dashboard {
   workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   owner       User            @relation("DashboardOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   versions    DashboardVersion[]
+  shares      DashboardShare[]
+  preferences DashboardPreference[]
+  comments    DashboardComment[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, updatedAt])
@@ -135,6 +184,148 @@ model DashboardVersion {
 
   @@unique([dashboardId, version])
   @@index([dashboardId, createdAt])
+}
+
+model DashboardComment {
+  id          String    @id @default(uuid()) @db.Uuid
+  dashboardId String    @db.Uuid
+  authorId    String?   @db.Uuid
+  parentId    String?   @db.Uuid
+  resolvedById String?  @db.Uuid
+  body        String
+  anchor      Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  resolvedAt  DateTime?
+  deletedAt   DateTime?
+  dashboard   Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  author      User?     @relation("DashboardCommentAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  parent      DashboardComment? @relation("DashboardCommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     DashboardComment[] @relation("DashboardCommentThread")
+  resolvedBy  User?     @relation("DashboardCommentResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([dashboardId, createdAt])
+  @@index([authorId, createdAt])
+  @@index([dashboardId, parentId, createdAt])
+}
+
+model Notification {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  actorId     String?   @db.Uuid
+  type        String
+  title       String
+  message     String
+  payload     Json      @default("{}")
+  readAt      DateTime?
+  archivedAt  DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  user        User      @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  actor       User?     @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([userId, archivedAt, createdAt])
+  @@index([userId, readAt, archivedAt])
+}
+
+model StoredFile {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  uploaderId  String?   @db.Uuid
+  storageKey  String    @unique
+  originalName String   @db.VarChar(255)
+  contentType String
+  sizeBytes   BigInt
+  sha256      String    @db.Char(64)
+  purpose     StoredFilePurpose @default(WORKSPACE)
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  uploader    User?     @relation("StoredFileUploader", fields: [uploaderId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, deletedAt, createdAt])
+  @@index([uploaderId, createdAt])
+}
+
+model DashboardPreference {
+  id          String    @id @default(uuid()) @db.Uuid
+  dashboardId String    @db.Uuid
+  userId      String    @db.Uuid
+  isFavorite  Boolean   @default(false)
+  isPinned    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  dashboard   Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([dashboardId, userId])
+  @@index([userId, isPinned, isFavorite])
+}
+
+model DashboardTemplate {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  createdById String?   @db.Uuid
+  name        String
+  description String?
+  category    String    @default("General")
+  tags        String[]  @default([])
+  scene       Json
+  isPublished Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy   User?     @relation("DashboardTemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  favorites   DashboardTemplateFavorite[]
+
+  @@index([workspaceId, isPublished, updatedAt])
+  @@index([createdById, updatedAt])
+}
+
+model DashboardTemplateFavorite {
+  id         String           @id @default(uuid()) @db.Uuid
+  templateId String           @db.Uuid
+  userId     String           @db.Uuid
+  createdAt  DateTime         @default(now())
+  template   DashboardTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, userId])
+  @@index([userId, createdAt])
+}
+
+model WorkspaceInvite {
+  id          String              @id @default(uuid()) @db.Uuid
+  workspaceId String              @db.Uuid
+  createdById String?             @db.Uuid
+  email       String
+  role        WorkspaceMemberRole @default(VIEWER)
+  tokenHash   String              @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime            @default(now())
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy   User?               @relation("WorkspaceInviteCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([email, expiresAt])
+}
+
+model DashboardShare {
+  id          String                   @id @default(uuid()) @db.Uuid
+  dashboardId String                   @db.Uuid
+  createdById String?                  @db.Uuid
+  permission  DashboardSharePermission @default(VIEW)
+  tokenHash   String                   @unique
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime                 @default(now())
+  dashboard   Dashboard                @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  createdBy   User?                    @relation("DashboardShareCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([dashboardId, createdAt])
+  @@index([expiresAt])
 }
 
 model AuditEvent {

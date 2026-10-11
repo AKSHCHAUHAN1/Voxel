@@ -1,78 +1,31 @@
 import { create } from 'zustand';
 
-/**
- * Persisted notification manager for Voxel.
- * Handles read/unread states, mock-live additions, and toast triggers.
- */
+/** Transient in-page feedback. Persistent inbox notifications are server-owned. */
+try {
+  globalThis.localStorage?.removeItem('voxel_notifications');
+} catch (_error) {
+  // Storage may be unavailable in a restricted browser context.
+}
 
-export const useNotificationStore = create((set, _get) => {
-  // Load real user notifications
-  let initialList = [];
-  try {
-    const saved = localStorage.getItem('voxel_notifications');
-    if (saved) initialList = JSON.parse(saved);
-  } catch (_e) {
-    // ignore
-  }
+export const useNotificationStore = create((set) => ({
+  toasts: [],
 
-  const save = (list) => {
-    localStorage.setItem('voxel_notifications', JSON.stringify(list));
-  };
+  add(text, type = 'info') {
+    const toast = {
+      id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+      text,
+      type,
+    };
+    set((state) => ({ toasts: [...state.toasts, { ...toast, duration: 4000 }] }));
+  },
 
-  return {
-    notifications: initialList,
-    toasts: [],
+  removeToast(id) {
+    set((state) => ({ toasts: state.toasts.filter((toast) => toast.id !== id) }));
+  },
 
-    add(text, type = 'info') {
-      const newNotif = {
-        id: Math.random().toString(),
-        text,
-        time: 'Just now',
-        read: false,
-        type,
-      };
-      set((state) => {
-        const nextNotifs = [newNotif, ...state.notifications];
-        save(nextNotifs);
+  clearAll() {
+    set({ toasts: [] });
+  },
+}));
 
-        // Add to active toast list
-        const nextToasts = [...state.toasts, { ...newNotif, duration: 4000 }];
-        return { notifications: nextNotifs, toasts: nextToasts };
-      });
-    },
-
-    removeToast(id) {
-      set((state) => ({
-        toasts: state.toasts.filter((t) => t.id !== id),
-      }));
-    },
-
-    dismiss(id) {
-      set((state) => {
-        const nextNotifs = state.notifications.filter((n) => n.id !== id);
-        save(nextNotifs);
-        return { notifications: nextNotifs };
-      });
-    },
-
-    markAllAsRead() {
-      set((state) => {
-        const nextNotifs = state.notifications.map((n) => ({ ...n, read: true }));
-        save(nextNotifs);
-        return { notifications: nextNotifs };
-      });
-    },
-
-    clearAll() {
-      set(() => {
-        try {
-          localStorage.removeItem('voxel_notifications');
-        } catch (_e) {
-          // ignore
-        }
-        return { notifications: [], toasts: [] };
-      });
-    },
-  };
-});
 export default useNotificationStore;

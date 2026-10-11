@@ -4,6 +4,7 @@ import { prisma } from '../../database/prisma.js';
 import { createRequestId } from '@voxel/contracts';
 import { success } from '../../lib/api-response.js';
 import { AuthService } from './auth-service.js';
+import { sendVerificationEmail } from './email-delivery.js';
 
 const GOOGLE_USER_INFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 const googleIdentitySchema = z.object({
@@ -15,15 +16,43 @@ const googleIdentitySchema = z.object({
 });
 
 const signupSchema = z.object({
-  email: z.string().trim().email('Please enter a valid email address.'),
-  password: z.string().min(6, 'Password must be at least 6 characters.'),
+  email: z.string().trim().email('Please enter a valid email address.').transform((email) => email.toLowerCase()),
+  password: z.string().min(12, 'Password must be at least 12 characters.').max(128),
   displayName: z.string().trim().min(2, 'Name must be at least 2 characters.').max(80),
 });
 
 const loginSchema = z.object({
-  email: z.string().trim().email('Please enter a valid email address.'),
+  email: z.string().trim().email('Please enter a valid email address.').transform((email) => email.toLowerCase()),
   password: z.string().min(1, 'Password is required.'),
 });
+const emailVerificationSchema = z.object({ token: z.string().min(40).max(100) });
+const resendVerificationSchema = z.object({
+  email: z.string().trim().email().transform((email) => email.toLowerCase()),
+});
+
+const profileUpdateSchema = z.object({
+  displayName: z.string().trim().min(2).max(80).optional(),
+  jobTitle: z.string().trim().max(100).nullable().optional(),
+  bio: z.string().trim().max(280).nullable().optional(),
+  timezone: z.string().trim().min(1).max(80).optional(),
+  locale: z.string().trim().min(2).max(64).optional(),
+}).refine((input) => Object.keys(input).length > 0, 'At least one profile field is required.');
+
+const preferencesSchema = z.object({
+  theme: z.enum(['light', 'dark', 'system']).optional(),
+  accentColor: z.enum(['violet', 'indigo', 'cyan', 'emerald', 'rose']).optional(),
+  defaultGridStyle: z.enum(['dots', 'lines', 'radial', 'mesh', 'blank']).optional(),
+  snapToGrid: z.boolean().optional(),
+  reducedMotion: z.boolean().optional(),
+  autosaveEnabled: z.boolean().optional(),
+  autosaveInterval: z.enum(['realtime', '5s', '30s', 'off']).optional(),
+  notifications: z.object({
+    emailDigest: z.boolean().optional(),
+    mentions: z.boolean().optional(),
+    desktop: z.boolean().optional(),
+    productUpdates: z.boolean().optional(),
+  }).partial().optional(),
+}).refine((input) => Object.keys(input).length > 0, 'At least one preference is required.');
 
 const ACCESS_COOKIE = 'voxel_access';
 const REFRESH_COOKIE = 'voxel_refresh';
@@ -58,74 +87,107 @@ const applySessionCookies = (reply, tokens, environment) => {
 export const registerAuthRoutes = async (app, environment) => {
   const authService = new AuthService(prisma, environment);
 
-  // Official Google OAuth 2.0 PKCE Flow (accounts.google.com)
-  await app.register(oauthPlugin, {
-    name: 'googleOAuth2',
-    scope: ['openid', 'profile', 'email'],
-    credentials: {
-      client: { id: environment.GOOGLE_CLIENT_ID, secret: environment.GOOGLE_CLIENT_SECRET },
-      auth: {
-        tokenHost: 'https://oauth2.googleapis.com',
-        tokenPath: '/token',
-        authorizeHost: 'https://accounts.google.com',
-        authorizePath: '/o/oauth2/v2/auth',
+  const googleOAuthEnabled = Boolean(environment.GOOGLE_CLIENT_ID && environment.GOOGLE_CLIENT_SECRET);
+  if (googleOAuthEnabled) {
+    // Official Google OAuth 2.0 PKCE Flow (accounts.google.com)
+    await app.register(oauthPlugin, {
+      name: 'googleOAuth2',
+      scope: ['openid', 'profile', 'email'],
+      credentials: {
+        client: { id: environment.GOOGLE_CLIENT_ID, secret: environment.GOOGLE_CLIENT_SECRET },
+        auth: {
+          tokenHost: 'https://oauth2.googleapis.com',
+          tokenPath: '/token',
+          authorizeHost: 'https://accounts.google.com',
+          authorizePath: '/o/oauth2/v2/auth',
+        },
       },
-    },
-    startRedirectPath: '/api/v1/auth/google',
-    callbackUri: `${environment.VOXEL_PUBLIC_APP_URL}/api/v1/auth/google/callback`,
-    pkce: 'S256',
-  });
+      startRedirectPath: '/api/v1/auth/google',
+      callbackUri: `${environment.VOXEL_PUBLIC_APP_URL}/api/v1/auth/google/callback`,
+      pkce: 'S256',
+    });
 
-  app.get('/api/v1/auth/google/callback', async (request, reply) => {
-    try {
-      const oauthClient = app.oauth2GoogleOAuth2;
-      if (!oauthClient) throw new Error('Google OAuth is not registered.');
-      const { token } = await oauthClient.getAccessTokenFromAuthorizationCodeFlow(request, reply);
-      const response = await fetch(GOOGLE_USER_INFO_URL, {
-        headers: { Authorization: `Bearer ${token.access_token}` },
-      });
-      if (!response.ok) throw new AuthenticationError('Google identity could not be verified.');
-      const rawIdentity = await response.json();
-      const parsed = googleIdentitySchema.parse(rawIdentity);
-      const identity = {
-        subject: parsed.sub,
-        email: parsed.email,
-        emailVerified: parsed.email_verified,
-        displayName: parsed.name,
-        ...(parsed.picture ? { avatarUrl: parsed.picture } : {}),
-      };
-      const tokens = await authService.createSession(identity, {
-        ip: request.ip,
-        ...(request.headers['user-agent'] ? { userAgent: request.headers['user-agent'] } : {}),
-      });
-      applySessionCookies(reply, tokens, environment);
-      return reply.redirect(`${environment.VOXEL_PUBLIC_APP_URL}/workspaces`);
-    } catch (error) {
-      request.log.error(error, 'Google OAuth callback error');
-      return reply.redirect(`${environment.VOXEL_PUBLIC_APP_URL}/login?error=google_oauth_failed`);
-    }
-  });
+    app.get('/api/v1/auth/google/callback', async (request, reply) => {
+      try {
+        const { token } = await app.oauth2GoogleOAuth2.getAccessTokenFromAuthorizationCodeFlow(request, reply);
+        const response = await fetch(GOOGLE_USER_INFO_URL, {
+          headers: { Authorization: `Bearer ${token.access_token}` },
+        });
+        if (!response.ok) throw new AuthenticationError('Google identity could not be verified.');
+        const parsed = googleIdentitySchema.parse(await response.json());
+        const identity = {
+          subject: parsed.sub,
+          email: parsed.email,
+          emailVerified: parsed.email_verified,
+          displayName: parsed.name,
+          ...(parsed.picture ? { avatarUrl: parsed.picture } : {}),
+        };
+        const tokens = await authService.createSession(identity, {
+          ip: request.ip,
+          ...(request.headers['user-agent'] ? { userAgent: request.headers['user-agent'] } : {}),
+        });
+        applySessionCookies(reply, tokens, environment);
+        return reply.redirect(`${environment.VOXEL_PUBLIC_APP_URL}/workspaces`);
+      } catch (error) {
+        request.log.error(error, 'Google OAuth callback error');
+        return reply.redirect(`${environment.VOXEL_PUBLIC_APP_URL}/login?error=google_oauth_failed`);
+      }
+    });
+  } else {
+    const unavailable = async (_request, reply) =>
+      reply.redirect(`${environment.VOXEL_PUBLIC_APP_URL}/login?error=google_unconfigured`);
+    app.get('/api/v1/auth/google', unavailable);
+    app.get('/api/v1/auth/google/callback', unavailable);
+  }
 
-  app.post('/api/v1/auth/signup', async (request, reply) => {
+  app.post('/api/v1/auth/signup', { config: { rateLimit: { max: 8, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const input = signupSchema.parse(request.body);
-    const result = await authService.signUpWithEmail(input, {
+    const result = await authService.signUpWithEmail(input);
+    let delivery = { delivered: false };
+    try {
+      delivery = await sendVerificationEmail({
+        email: result.user.email,
+        displayName: result.user.displayName,
+        token: result.verificationToken,
+        environment,
+      });
+    } catch (error) {
+      request.log.warn({ err: error }, 'Signup verification email could not be delivered');
+    }
+    return reply.status(202).send(success({
+      authenticated: false,
+      verificationRequired: true,
+      email: result.user.email,
+      ...(environment.NODE_ENV !== 'production' && delivery.verificationUrl ? { verificationUrl: delivery.verificationUrl } : {}),
+    }, createRequestId(request.id)));
+  });
+
+  app.post('/api/v1/auth/email-verification/resend', { config: { rateLimit: { max: 4, timeWindow: '1 hour' } } }, async (request, reply) => {
+    const { email } = resendVerificationSchema.parse(request.body);
+    const user = await prisma.user.findFirst({ where: { email, deletedAt: null }, select: { id: true, email: true, displayName: true, passwordHash: true, emailVerified: true } });
+    if (user?.passwordHash && !user.emailVerified) {
+      const token = await authService.issueEmailVerificationToken(user.id);
+      try {
+        await sendVerificationEmail({ email: user.email, displayName: user.displayName, token, environment });
+      } catch (error) {
+        request.log.warn({ err: error }, 'Resent verification email could not be delivered');
+      }
+    }
+    return reply.send(success({ sent: true }, createRequestId(request.id)));
+  });
+
+  app.post('/api/v1/auth/email-verification/verify', async (request, reply) => {
+    const { token } = emailVerificationSchema.parse(request.body);
+    const user = await authService.verifyEmailToken(token);
+    const result = await authService.generateSessionForUser(user, {
       ip: request.ip,
       ...(request.headers['user-agent'] ? { userAgent: request.headers['user-agent'] } : {}),
     });
-
     applySessionCookies(reply, result, environment);
-    return reply.status(201).send(
-      success(
-        {
-          authenticated: true,
-          user: result.user,
-        },
-        createRequestId(request.id),
-      ),
-    );
+    return reply.send(success({ authenticated: true, user: result.user }, createRequestId(request.id)));
   });
 
-  app.post('/api/v1/auth/login', async (request, reply) => {
+  app.post('/api/v1/auth/login', { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const input = loginSchema.parse(request.body);
     const result = await authService.loginWithEmail(input, {
       ip: request.ip,
@@ -187,6 +249,7 @@ export const registerAuthRoutes = async (app, environment) => {
     }
 
     await authService.revokeSession(refreshToken);
+    await authService.revokeAccessSession(accessToken);
     reply.clearCookie(ACCESS_COOKIE, { path: '/' });
     reply.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
     return reply.status(204).send();
@@ -220,10 +283,105 @@ export const registerAuthRoutes = async (app, environment) => {
           email: user.email,
           displayName: user.displayName,
           avatarUrl: user.avatarUrl,
+          jobTitle: user.jobTitle,
+          bio: user.bio,
+          timezone: user.timezone,
+          locale: user.locale,
+          preferences: user.preferences,
         },
         createRequestId(request.id),
       ),
     );
+  });
+
+  app.patch('/api/v1/auth/me', async (request, reply) => {
+    const accessToken = request.cookies[ACCESS_COOKIE];
+    const context = await authService.getAuthenticatedContext(accessToken);
+    if (!context) throw new AuthenticationError('Authentication is required.');
+    const input = profileUpdateSchema.parse(request.body);
+    const user = await prisma.user.update({
+      where: { id: context.user.id },
+      data: input,
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        avatarUrl: true,
+        jobTitle: true,
+        bio: true,
+        timezone: true,
+        locale: true,
+        preferences: true,
+      },
+    });
+    return reply.send(success(user, createRequestId(request.id)));
+  });
+
+  app.patch('/api/v1/auth/preferences', async (request, reply) => {
+    const context = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+    if (!context) throw new AuthenticationError('Authentication is required.');
+    const input = preferencesSchema.parse(request.body);
+    const previous = context.user.preferences && typeof context.user.preferences === 'object'
+      ? context.user.preferences
+      : {};
+    const updatedPreferences = {
+      ...previous,
+      ...input,
+      ...(input.notifications ? {
+        notifications: { ...(previous.notifications || {}), ...input.notifications },
+      } : {}),
+    };
+    const user = await prisma.user.update({
+      where: { id: context.user.id },
+      data: { preferences: updatedPreferences },
+      select: { preferences: true },
+    });
+    return reply.send(success(user.preferences, createRequestId(request.id)));
+  });
+
+  app.post('/api/v1/auth/password', { config: { rateLimit: { max: 5, timeWindow: '15 minutes' } } }, async (request, reply) => {
+    const context = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+    if (!context) throw new AuthenticationError('Authentication is required.');
+    const input = z.object({
+      currentPassword: z.string().min(1),
+      newPassword: z.string().min(12, 'Password must be at least 12 characters.').max(128),
+    }).parse(request.body);
+    await authService.updatePassword(
+      context.user.id,
+      context.sessionId,
+      input.currentPassword,
+      input.newPassword,
+    );
+    return reply.send(success({ updated: true, otherSessionsRevoked: true }, createRequestId(request.id)));
+  });
+
+  app.get('/api/v1/auth/sessions', async (request, reply) => {
+    const context = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+    if (!context) throw new AuthenticationError('Authentication is required.');
+    const sessions = await authService.listSessions(context.user.id, context.sessionId);
+    return reply.send(success(sessions, createRequestId(request.id)));
+  });
+
+  app.delete('/api/v1/auth/sessions/:sessionId', async (request, reply) => {
+    const context = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+    if (!context) throw new AuthenticationError('Authentication is required.');
+    const { sessionId } = z.object({ sessionId: z.string().uuid() }).parse(request.params);
+    const revoked = await authService.revokeSessionById(context.user.id, sessionId);
+    if (!revoked) throw new AuthenticationError('The session was not found or is already revoked.');
+    if (sessionId === context.sessionId) {
+      reply.clearCookie(ACCESS_COOKIE, { path: '/' });
+      reply.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
+    }
+    return reply.send(success({ revoked: true }, createRequestId(request.id)));
+  });
+
+  app.post('/api/v1/auth/logout-all', async (request, reply) => {
+    const context = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+    if (!context) throw new AuthenticationError('Authentication is required.');
+    await authService.revokeAllSessions(context.user.id);
+    reply.clearCookie(ACCESS_COOKIE, { path: '/' });
+    reply.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
+    return reply.send(success({ loggedOut: true }, createRequestId(request.id)));
   });
 
   app.delete('/api/v1/auth/me', async (request, reply) => {

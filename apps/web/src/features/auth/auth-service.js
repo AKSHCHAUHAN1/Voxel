@@ -3,6 +3,17 @@ import { request } from '@/lib/http';
 
 export const authService = {
   me: () => request('/api/v1/auth/me'),
+  updateProfile: (input) => request('/api/v1/auth/me', { method: 'PATCH', body: JSON.stringify(input) }),
+  uploadAvatar: (file) => request('/api/v1/auth/me/avatar', {
+    method: 'POST',
+    headers: { 'content-type': 'application/octet-stream', 'x-file-name': encodeURIComponent(file.name), 'x-file-content-type': file.type },
+    body: file,
+  }),
+  updatePreferences: (input) => request('/api/v1/auth/preferences', { method: 'PATCH', body: JSON.stringify(input) }),
+  updatePassword: (input) => request('/api/v1/auth/password', { method: 'POST', body: JSON.stringify(input) }),
+  sessions: () => request('/api/v1/auth/sessions'),
+  revokeSession: (sessionId) => request(`/api/v1/auth/sessions/${sessionId}`, { method: 'DELETE' }),
+  logoutAll: () => request('/api/v1/auth/logout-all', { method: 'POST', body: JSON.stringify({}) }),
   deleteAccount: () => request('/api/v1/auth/me', { method: 'DELETE' }),
   logout: () => request('/api/v1/auth/logout', { method: 'POST', body: JSON.stringify({}) }),
   loginUrl: () => `${runtime.apiBaseUrl}/api/v1/auth/google`,
@@ -13,6 +24,8 @@ export const authService = {
       method: 'POST',
       body: JSON.stringify({ email, password, displayName }),
     }),
+  resendEmailVerification: (email) => request('/api/v1/auth/email-verification/resend', { method: 'POST', body: JSON.stringify({ email }) }),
+  verifyEmail: (token) => request('/api/v1/auth/email-verification/verify', { method: 'POST', body: JSON.stringify({ token }) }),
   login: ({ email, password }) =>
     request('/api/v1/auth/login', {
       method: 'POST',

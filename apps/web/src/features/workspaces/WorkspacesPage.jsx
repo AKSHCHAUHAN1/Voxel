@@ -7,13 +7,25 @@ import {
   ArrowRight,
   FolderPlus,
   LayoutDashboard,
+  Layers,
+  Box,
+  BarChart3,
   Plus,
   Sparkles,
   X,
   Edit2,
   Trash2,
+  Archive,
+  RotateCcw,
+  Copy as CopyIcon,
+  Star,
+  LogOut,
+  Users,
+  Pin,
+  Search,
+  MoreHorizontal,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { workspaceService } from './workspace-service';
 
 import { useNotificationStore } from '@/store/notification-store';
@@ -21,7 +33,18 @@ import { useNotificationStore } from '@/store/notification-store';
 const schema = z.object({
   name: z.string().trim().min(2, 'Use at least 2 characters.').max(80),
   description: z.string().trim().max(280).optional(),
+  icon: z.enum(['grid', 'layers', 'box', 'chart']).default('grid'),
+  accentColor: z.enum(['violet', 'cyan', 'emerald', 'amber', 'rose']).default('violet'),
 });
+
+const workspaceIcons = { grid: LayoutDashboard, layers: Layers, box: Box, chart: BarChart3 };
+const workspaceAccentClasses = {
+  violet: 'border-violet-500/20 bg-gradient-to-br from-violet-500/15 to-indigo-500/15 text-violet-600 dark:text-violet-300',
+  cyan: 'border-cyan-500/20 bg-gradient-to-br from-cyan-500/15 to-sky-500/15 text-cyan-600 dark:text-cyan-300',
+  emerald: 'border-emerald-500/20 bg-gradient-to-br from-emerald-500/15 to-teal-500/15 text-emerald-600 dark:text-emerald-300',
+  amber: 'border-amber-500/20 bg-gradient-to-br from-amber-500/15 to-orange-500/15 text-amber-600 dark:text-amber-300',
+  rose: 'border-rose-500/20 bg-gradient-to-br from-rose-500/15 to-pink-500/15 text-rose-600 dark:text-rose-300',
+};
 
 export default function WorkspacesPage() {
   const addNotification = useNotificationStore((s) => s.add);
@@ -29,14 +52,31 @@ export default function WorkspacesPage() {
   const [contextMenu, setContextMenu] = useState(null);
   const [editWorkspace, setEditWorkspace] = useState(null);
   const [deleteWorkspace, setDeleteWorkspace] = useState(null);
+  const [transferWorkspace, setTransferWorkspace] = useState(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [showDeleted, setShowDeleted] = useState(false);
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('recent');
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
   const menuRef = useRef(null);
 
+  useEffect(() => {
+    if (!location.state?.openCreateWorkspace) return;
+    setDialogOpen(true);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.key, location.pathname, location.state, navigate]);
+
   const workspaces = useQuery({
-    queryKey: ['workspaces'],
-    queryFn: workspaceService.list,
+    queryKey: ['workspaces', 'all'],
+    queryFn: () => workspaceService.list({ includeArchived: true, includeDeleted: true }),
+  });
+  const transferMembers = useQuery({
+    queryKey: ['workspaces', transferWorkspace?.id, 'members'],
+    queryFn: () => workspaceService.members(transferWorkspace.id),
+    enabled: Boolean(transferWorkspace),
   });
 
   const create = useMutation({
@@ -50,8 +90,8 @@ export default function WorkspacesPage() {
   });
 
   const rename = useMutation({
-    mutationFn: ({ id, name, description }) =>
-      workspaceService.update(id, { name, description: description ?? null }),
+    mutationFn: ({ id, ...input }) =>
+      workspaceService.update(id, { ...input, description: input.description ?? null }),
     onSuccess: async (_res, variables) => {
       await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
       addNotification(`Updated workspace "${variables.name}"`, 'info');
@@ -73,6 +113,78 @@ export default function WorkspacesPage() {
     }
   });
 
+  const archive = useMutation({
+    mutationFn: workspaceService.archive,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      addNotification('Workspace archived.', 'info');
+      setContextMenu(null);
+    },
+    onError: (error) => addNotification(error.message || 'Workspace could not be archived.', 'warning'),
+  });
+
+  const restore = useMutation({
+    mutationFn: workspaceService.restore,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      addNotification('Workspace restored.', 'success');
+      setContextMenu(null);
+    },
+    onError: (error) => addNotification(error.message || 'Workspace could not be restored.', 'warning'),
+  });
+
+  const recover = useMutation({
+    mutationFn: workspaceService.recoverWorkspace,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      addNotification('Workspace restored from trash. Public links and invitations stay revoked.', 'success');
+      setContextMenu(null);
+    },
+    onError: (error) => addNotification(error.message || 'Workspace could not be restored from trash.', 'warning'),
+  });
+
+  const duplicate = useMutation({
+    mutationFn: workspaceService.duplicate,
+    onSuccess: async (workspace) => {
+      await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      addNotification(`Created “${workspace.name}” with the same workspace settings.`, 'success');
+      setContextMenu(null);
+    },
+    onError: (error) => addNotification(error.message || 'Workspace could not be duplicated.', 'warning'),
+  });
+
+  const leave = useMutation({
+    mutationFn: workspaceService.leave,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      addNotification('You left the workspace.', 'info');
+      setContextMenu(null);
+    },
+    onError: (error) => addNotification(error.message || 'You could not leave the workspace.', 'warning'),
+  });
+
+  const setFavorite = useMutation({
+    mutationFn: ({ id, ...preferences }) => workspaceService.updatePreferences(id, preferences),
+    onSuccess: async (_result, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      addNotification(variables.isFavorite !== undefined
+        ? variables.isFavorite ? 'Workspace added to favorites.' : 'Workspace removed from favorites.'
+        : variables.isPinned ? 'Workspace pinned.' : 'Workspace unpinned.', 'info');
+      setContextMenu(null);
+    },
+    onError: (error) => addNotification(error.message || 'Favorite could not be updated.', 'warning'),
+  });
+
+  const transferOwnership = useMutation({
+    mutationFn: ({ workspaceId, memberId }) => workspaceService.transferOwnership(workspaceId, memberId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      addNotification('Workspace ownership transferred.', 'success');
+      setTransferWorkspace(null);
+    },
+    onError: (error) => addNotification(error.message || 'Ownership could not be transferred.', 'warning'),
+  });
+
   // Global click listener to close context menu
   useEffect(() => {
     const handleOutsideClick = (e) => {
@@ -92,6 +204,15 @@ export default function WorkspacesPage() {
       workspace,
     });
   };
+
+  const visibleWorkspaces = (workspaces.data || [])
+    .filter((workspace) => showDeleted ? Boolean(workspace.deletedAt) : !workspace.deletedAt && Boolean(workspace.archivedAt) === showArchived)
+    .filter((workspace) => `${workspace.name} ${workspace.description || ''}`.toLowerCase().includes(search.trim().toLowerCase()))
+    .sort((a, b) => sortBy === 'name'
+      ? a.name.localeCompare(b.name)
+      : sortBy === 'favorites'
+        ? Number(b.isPinned) - Number(a.isPinned) || Number(b.isFavorite) - Number(a.isFavorite) || new Date(b.updatedAt) - new Date(a.updatedAt)
+        : new Date(b.updatedAt) - new Date(a.updatedAt));
 
   return (
     <section>
@@ -118,44 +239,83 @@ export default function WorkspacesPage() {
       {workspaces.isPending && <WorkspaceSkeleton />}
       {workspaces.isError && <ErrorState onRetry={() => void workspaces.refetch()} />}
       {workspaces.data && (
+        <>
+        <div className="mt-6 flex items-center gap-2 border-b border-slate-200 dark:border-white/10">
+          {[{ label: 'Active', archived: false, deleted: false }, { label: 'Archived', archived: true, deleted: false }, { label: 'Trash', archived: false, deleted: true }].map((view) => (
+            <button key={view.label} type="button" onClick={() => { setShowArchived(view.archived); setShowDeleted(view.deleted); }} className={`border-b-2 px-3 py-2.5 text-xs font-bold ${showDeleted === view.deleted && showArchived === view.archived ? 'border-violet-600 text-violet-600' : 'border-transparent text-slate-500'}`}>
+              {view.label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <label className="relative block min-w-0 flex-1 max-w-md">
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search workspaces" aria-label="Search workspaces" className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500/15 dark:border-white/10 dark:bg-slate-900" />
+          </label>
+          <label>
+            <span className="sr-only">Sort workspaces</span>
+            <select aria-label="Sort workspaces" value={sortBy} onChange={(event) => setSortBy(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-600 outline-none focus:border-violet-400 dark:border-white/10 dark:bg-slate-900 dark:text-slate-300">
+              <option value="recent">Recently updated</option>
+              <option value="name">Name A–Z</option>
+              <option value="favorites">Pinned and favorite</option>
+            </select>
+          </label>
+        </div>
         <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {workspaces.data.map((workspace) => (
+          {visibleWorkspaces.map((workspace) => (
             <WorkspaceCard
               key={workspace.id}
               workspace={workspace}
-              onOpen={() => navigate(`/workspaces/${workspace.id}/dashboards`)}
+              isArchived={Boolean(workspace.archivedAt)}
+              isDeleted={Boolean(workspace.deletedAt)}
+              onOpen={() => {
+                if (workspace.deletedAt) {
+                  return ['OWNER', 'ADMIN'].includes(workspace.role)
+                    ? recover.mutate(workspace.id)
+                    : addNotification('Ask a workspace administrator to restore this workspace.', 'info');
+                }
+                if (workspace.archivedAt) {
+                  return ['OWNER', 'ADMIN'].includes(workspace.role)
+                    ? restore.mutate(workspace.id)
+                    : addNotification('Ask a workspace administrator to restore this workspace.', 'info');
+                }
+                return navigate(`/workspaces/${workspace.id}/dashboards`);
+              }}
               onContextMenu={(e) => handleRightClick(e, workspace)}
             />
           ))}
-          {workspaces.data.length === 0 && <EmptyState onCreate={() => setDialogOpen(true)} />}
+          {visibleWorkspaces.length === 0 && (search ? <p className="col-span-full rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-white/10">No workspaces match “{search}”.</p> : showDeleted ? <p className="col-span-full rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-white/10">Trash is empty.</p> : showArchived ? <p className="col-span-full rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-white/10">No archived workspaces.</p> : <EmptyState onCreate={() => setDialogOpen(true)} />)}
         </div>
+        </>
       )}
 
-      {/* Floating Context Menu - Only Edit Title and Delete for Workspaces */}
+      {/* Workspace actions */}
       {contextMenu && (
         <div
           ref={menuRef}
           style={{ top: contextMenu.y, left: contextMenu.x }}
-          className="fixed z-50 w-36 rounded-xl border border-slate-200 bg-white/95 p-1.5 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/95"
+          className="fixed z-50 w-48 rounded-xl border border-slate-200 bg-white/95 p-1.5 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/95"
         >
-          <button
-            onClick={() => {
-              setEditWorkspace(contextMenu.workspace);
-              setContextMenu(null);
-            }}
-            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/5"
-          >
-            <Edit2 size={13} /> Edit title
-          </button>
-          <button
-            onClick={() => {
-              setDeleteWorkspace(contextMenu.workspace);
-              setContextMenu(null);
-            }}
-            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"
-          >
-            <Trash2 size={13} /> Delete
-          </button>
+          {contextMenu.workspace.deletedAt ? (
+            ['OWNER', 'ADMIN'].includes(contextMenu.workspace.role)
+              ? <button type="button" onClick={() => recover.mutate(contextMenu.workspace.id)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold hover:bg-slate-100 dark:hover:bg-white/5"><RotateCcw size={13} /> Restore within 30 days</button>
+              : <p className="px-2.5 py-2 text-xs text-slate-500">Ask an administrator to restore</p>
+          ) : contextMenu.workspace.archivedAt ? (
+            ['OWNER', 'ADMIN'].includes(contextMenu.workspace.role)
+              ? <button type="button" onClick={() => restore.mutate(contextMenu.workspace.id)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold hover:bg-slate-100 dark:hover:bg-white/5"><RotateCcw size={13} /> Restore workspace</button>
+              : <p className="px-2.5 py-2 text-xs text-slate-500">Ask an administrator to restore</p>
+          ) : (
+            <>
+              {['OWNER', 'ADMIN'].includes(contextMenu.workspace.role) && <button type="button" onClick={() => { setEditWorkspace(contextMenu.workspace); setContextMenu(null); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold hover:bg-slate-100 dark:hover:bg-white/5"><Edit2 size={13} /> Edit workspace</button>}
+          <button type="button" onClick={() => setFavorite.mutate({ id: contextMenu.workspace.id, isFavorite: !contextMenu.workspace.isFavorite })} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold hover:bg-slate-100 dark:hover:bg-white/5"><Star size={13} className={contextMenu.workspace.isFavorite ? 'fill-amber-400 text-amber-400' : ''} /> {contextMenu.workspace.isFavorite ? 'Remove favorite' : 'Add favorite'}</button>
+          <button type="button" onClick={() => setFavorite.mutate({ id: contextMenu.workspace.id, isPinned: !contextMenu.workspace.isPinned })} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold hover:bg-slate-100 dark:hover:bg-white/5"><Pin size={13} className={contextMenu.workspace.isPinned ? 'fill-amber-400 text-amber-400' : ''} /> {contextMenu.workspace.isPinned ? 'Unpin workspace' : 'Pin workspace'}</button>
+              <button type="button" onClick={() => duplicate.mutate(contextMenu.workspace.id)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold hover:bg-slate-100 dark:hover:bg-white/5"><CopyIcon size={13} /> Duplicate settings</button>
+              {['OWNER', 'ADMIN'].includes(contextMenu.workspace.role) && <button type="button" onClick={() => archive.mutate(contextMenu.workspace.id)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold hover:bg-slate-100 dark:hover:bg-white/5"><Archive size={13} /> Archive workspace</button>}
+              {contextMenu.workspace.role === 'OWNER' && <button type="button" onClick={() => { setTransferWorkspace(contextMenu.workspace); setContextMenu(null); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold hover:bg-slate-100 dark:hover:bg-white/5"><Users size={13} /> Transfer ownership</button>}
+              {contextMenu.workspace.role === 'OWNER' && <button type="button" onClick={() => { setDeleteWorkspace(contextMenu.workspace); setContextMenu(null); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"><Trash2 size={13} /> Delete</button>}
+              {contextMenu.workspace.role !== 'OWNER' && <button type="button" onClick={() => leave.mutate(contextMenu.workspace.id)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"><LogOut size={13} /> Leave workspace</button>}
+            </>
+          )}
         </div>
       )}
 
@@ -175,9 +335,7 @@ export default function WorkspacesPage() {
           workspace={editWorkspace}
           pending={rename.isPending}
           onClose={() => setEditWorkspace(null)}
-          onSubmit={(name, description) =>
-            rename.mutate({ id: editWorkspace.id, name, description: description ?? null })
-          }
+          onSubmit={(input) => rename.mutate({ id: editWorkspace.id, ...input })}
         />
       )}
 
@@ -193,9 +351,7 @@ export default function WorkspacesPage() {
           >
             <h3 className="text-base font-semibold text-rose-600">Delete Workspace</h3>
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400 leading-5">
-              Are you sure you want to delete <b>{deleteWorkspace.name}</b>? All dashboard designs
-              and connected node canvas assets will be soft-deleted. This action can be undone by
-              system administrators.
+              Are you sure you want to delete <b>{deleteWorkspace.name}</b>? Its dashboards will move to Trash with it. You can restore it for 30 days; public links and pending invitations will be revoked.
             </p>
             <div className="mt-6 flex justify-end gap-2 text-xs">
               <button
@@ -216,40 +372,69 @@ export default function WorkspacesPage() {
           </div>
         </div>
       )}
+      {transferWorkspace && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4 backdrop-blur-sm" onMouseDown={() => setTransferWorkspace(null)}>
+          <form onSubmit={(event) => { event.preventDefault(); const memberId = new FormData(event.currentTarget).get('memberId'); if (memberId) transferOwnership.mutate({ workspaceId: transferWorkspace.id, memberId }); }} onMouseDown={(event) => event.stopPropagation()} className="w-full max-w-md space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900">
+            <div><h2 className="text-lg font-bold">Transfer workspace ownership</h2><p className="mt-1 text-xs leading-5 text-slate-500">You’ll become an administrator. The selected member will become the owner.</p></div>
+            <select name="memberId" required defaultValue="" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-white/10 dark:bg-slate-950"><option value="" disabled>Select a member</option>{(transferMembers.data || []).filter((member) => member.role !== 'OWNER').map((member) => <option key={member.id} value={member.id}>{member.user.displayName || member.user.email} · {member.role}</option>)}</select>
+            {transferOwnership.isError && <p className="text-xs text-rose-600">{transferOwnership.error.message}</p>}
+            <div className="flex justify-end gap-2"><button type="button" onClick={() => setTransferWorkspace(null)} className="rounded-xl px-4 py-2 text-xs font-bold text-slate-500">Cancel</button><button type="submit" disabled={transferOwnership.isPending || transferMembers.isPending} className="rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{transferOwnership.isPending ? 'Transferring…' : 'Transfer ownership'}</button></div>
+          </form>
+        </div>
+      )}
     </section>
   );
 }
 
-function WorkspaceCard({ workspace, onOpen, onContextMenu }) {
+function WorkspaceCard({ workspace, isArchived, isDeleted, onOpen, onContextMenu }) {
+  const WorkspaceIcon = workspaceIcons[workspace.icon] || LayoutDashboard;
+  const accentClass = workspaceAccentClasses[workspace.accentColor] || workspaceAccentClasses.violet;
   return (
-    <button
-      onClick={onOpen}
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={`${isDeleted || isArchived ? 'Restore' : 'Open'} workspace ${workspace.name}`}
+      onClick={(event) => { if (event.target === event.currentTarget) onOpen(); }}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpen();
+        }
+        if ((event.key === 'F10' && event.shiftKey) || event.key === 'ContextMenu') {
+          event.preventDefault();
+          onContextMenu({ preventDefault: () => {}, clientX: event.currentTarget.getBoundingClientRect().right, clientY: event.currentTarget.getBoundingClientRect().top });
+        }
+      }}
       onContextMenu={onContextMenu}
-      className="group relative rounded-3xl border border-slate-200/90 bg-white/90 p-6 text-left shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-violet-500/50 hover:shadow-xl hover:shadow-violet-500/10 dark:border-white/10 dark:bg-[#0c111e]/90 backdrop-blur-xl cursor-pointer"
+      className="group relative cursor-pointer rounded-3xl border border-slate-200/90 bg-white/90 p-6 text-left shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-violet-500/50 hover:shadow-xl hover:shadow-violet-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:border-white/10 dark:bg-[#0c111e]/90 backdrop-blur-xl"
     >
-      <div className="flex items-start justify-between">
-        <span className="grid size-12 place-items-center rounded-2xl bg-gradient-to-br from-violet-500/15 to-indigo-500/15 text-violet-600 dark:text-violet-300 border border-violet-500/20 group-hover:scale-105 transition-transform">
-          <LayoutDashboard size={22} />
+      <div className="flex items-start justify-between gap-3">
+        <span className={`grid size-12 place-items-center rounded-2xl border transition-transform group-hover:scale-105 ${accentClass}`}>
+          <WorkspaceIcon size={22} />
         </span>
-        <span className="rounded-full bg-slate-100 dark:bg-white/5 border border-slate-200/60 dark:border-white/10 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          {workspace.role}
+        <span className="ml-auto rounded-full bg-slate-100 dark:bg-white/5 border border-slate-200/60 dark:border-white/10 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          {isDeleted ? 'Trash · 30 days' : isArchived ? 'Archived' : workspace.isPinned ? 'Pinned' : workspace.isFavorite ? '★ Favorite' : workspace.role}
         </span>
+        <button type="button" aria-label={`More actions for ${workspace.name}`} onClick={(event) => { event.stopPropagation(); onContextMenu(event); }} className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-white">
+          <MoreHorizontal size={17} />
+        </button>
       </div>
       <h2 className="mt-5 text-lg font-bold text-slate-900 dark:text-white tracking-tight">{workspace.name}</h2>
       <p className="mt-2 min-h-10 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
         {workspace.description || 'A focused visual workspace for collaborative modeling and data telemetry.'}
       </p>
       <span className="mt-4 inline-flex items-center gap-2 text-xs font-bold text-violet-600 dark:text-violet-400 group-hover:text-violet-500">
-        Open workspace <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
+        {isDeleted || isArchived ? 'Restore to open' : 'Open workspace'} <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
       </span>
-    </button>
+    </div>
   );
 }
 
 function EditWorkspaceDialog({ workspace, pending, onClose, onSubmit }) {
   const { register, handleSubmit } = useForm({
     resolver: zodResolver(schema),
-    defaultValues: { name: workspace.name, description: workspace.description || '' },
+    defaultValues: { name: workspace.name, description: workspace.description || '', icon: workspace.icon || 'grid', accentColor: workspace.accentColor || 'violet' },
   });
 
   return (
@@ -258,7 +443,7 @@ function EditWorkspaceDialog({ workspace, pending, onClose, onSubmit }) {
       onMouseDown={onClose}
     >
       <form
-        onSubmit={handleSubmit((data) => onSubmit(data.name, data.description ?? null))}
+        onSubmit={handleSubmit(onSubmit)}
         onMouseDown={(e) => e.stopPropagation()}
         className="w-full max-w-md rounded-3xl border border-slate-200/90 bg-white p-7 shadow-2xl dark:border-white/10 dark:bg-[#0e1322] backdrop-blur-xl"
       >
@@ -288,6 +473,18 @@ function EditWorkspaceDialog({ workspace, pending, onClose, onSubmit }) {
             className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-slate-50/50 dark:bg-white/5 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white outline-none ring-violet-500/40 focus:ring-2 dark:border-white/10 focus:border-violet-500"
           />
         </label>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Icon
+            <select {...register('icon')} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm normal-case dark:border-white/10 dark:bg-slate-950 dark:text-white">
+              <option value="grid">Grid</option><option value="layers">Layers</option><option value="box">Box</option><option value="chart">Chart</option>
+            </select>
+          </label>
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Accent color
+            <select {...register('accentColor')} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm normal-case dark:border-white/10 dark:bg-slate-950 dark:text-white">
+              <option value="violet">Violet</option><option value="cyan">Cyan</option><option value="emerald">Emerald</option><option value="amber">Amber</option><option value="rose">Rose</option>
+            </select>
+          </label>
+        </div>
         <div className="mt-6 flex justify-end gap-2.5">
           <button
             type="button"
@@ -357,7 +554,7 @@ function WorkspaceSkeleton() {
 function WorkspaceDialog({ pending, error, onClose, onSubmit }) {
   const form = useForm({
     resolver: zodResolver(schema),
-    defaultValues: { name: '', description: '' },
+    defaultValues: { name: '', description: '', icon: 'grid', accentColor: 'violet' },
   });
   return (
     <div
@@ -405,6 +602,18 @@ function WorkspaceDialog({ pending, error, onClose, onSubmit }) {
             placeholder="What does this team use Voxel for?"
           />
         </label>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <label className="block text-sm font-medium">Icon
+            <select {...form.register('icon')} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-white/10 dark:bg-slate-950">
+              <option value="grid">Grid</option><option value="layers">Layers</option><option value="box">Box</option><option value="chart">Chart</option>
+            </select>
+          </label>
+          <label className="block text-sm font-medium">Accent color
+            <select {...form.register('accentColor')} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-white/10 dark:bg-slate-950">
+              <option value="violet">Violet</option><option value="cyan">Cyan</option><option value="emerald">Emerald</option><option value="amber">Amber</option><option value="rose">Rose</option>
+            </select>
+          </label>
+        </div>
         {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
         <div className="mt-6 flex justify-end gap-2">
           <button
