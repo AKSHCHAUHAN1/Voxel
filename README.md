@@ -45,9 +45,9 @@ The app uses React 19, Vite, Tailwind CSS 4, TanStack Query, and Zustand in the 
    npm install
    ```
 
-2. Copy `.env.example` to `.env` and set the database, Redis, session secret, and public app URL. Google OAuth is optional; configure both Google client variables to enable it. The example includes local MinIO storage credentials; production must replace them with HTTPS S3-compatible storage and configure an HTTPS email-delivery webhook.
+2. Copy `.env.example` to `.env` and set the database, Redis, session secret, and public app URL. Google OAuth is optional; configure both Google client variables to enable it. The example includes local RustFS storage credentials; production must replace them with HTTPS S3-compatible storage and configure an HTTPS email-delivery webhook.
 
-3. Start PostgreSQL, Redis, and MinIO (Compose creates the development bucket), then apply the Prisma schema:
+3. Start PostgreSQL, Redis, and RustFS (Compose creates the development bucket), then apply the Prisma schema:
 
    ```bash
    docker compose up -d
