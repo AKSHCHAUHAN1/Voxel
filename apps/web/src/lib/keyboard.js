@@ -98,6 +98,7 @@ export function formatCombo(combo) {
  * Global listener — call this once at app root.
  */
 function handleGlobalKeyDown(e) {
+  if (!e || typeof e.key !== 'string') return;
   const combo = comboFromEvent(e);
   const shortcut = registry.get(combo);
   if (!shortcut) return;

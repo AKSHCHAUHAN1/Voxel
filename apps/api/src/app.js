@@ -13,6 +13,7 @@ import { registerAuthRoutes } from './features/auth/auth-routes.js';
 import { registerWorkspaceRoutes } from './features/workspaces/workspace-routes.js';
 import { registerNotificationRoutes } from './features/notifications/notification-routes.js';
 import { registerFileRoutes } from './features/files/file-routes.js';
+import { registerPluginRoutes } from './features/plugins/plugin-routes.js';
 import { failure, success } from './lib/api-response.js';
 
 const toRequestId = (value) => createRequestId(value);
@@ -94,8 +95,9 @@ export const buildApp = async (environment) => {
 
   app.setErrorHandler((error, request, reply) => {
     const requestId = toRequestId(request.id);
+    const serializationConflict = error?.code === 'P2034';
     const statusCode =
-      error instanceof ZodError ? 422 : isHttpError(error) ? error.statusCode : 500;
+      error instanceof ZodError ? 422 : serializationConflict ? 409 : isHttpError(error) ? error.statusCode : 500;
     const details = error instanceof ZodError ? error.issues.map((issue) => issue.message) : [];
 
     if (statusCode >= 500) {
@@ -108,7 +110,9 @@ export const buildApp = async (environment) => {
         failure(
           requestId,
           error instanceof ZodError ? 'VALIDATION_FAILED' : mapErrorCode(statusCode),
-          statusCode >= 500
+          serializationConflict
+            ? 'A concurrent change prevented this save. Please retry.'
+            : statusCode >= 500
             ? 'An unexpected error occurred.'
             : error instanceof Error
               ? error.message
@@ -132,6 +136,7 @@ export const buildApp = async (environment) => {
   await registerNotificationRoutes(app, environment);
   await registerFileRoutes(app, environment);
   await registerWorkspaceRoutes(app, environment);
+  await registerPluginRoutes(app, environment);
   app.addHook('onClose', async () => prisma.$disconnect());
 
   return app;

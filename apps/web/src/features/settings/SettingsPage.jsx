@@ -19,6 +19,8 @@ import {
   UserCheck,
   Upload,
   Loader2,
+  Puzzle,
+  Search,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -155,6 +157,8 @@ export default function SettingsPage() {
 
   // Active Tab State
   const [activeTab, setActiveTab] = useState('account');
+  const [pluginSearch, setPluginSearch] = useState('');
+  const [pluginActionId, setPluginActionId] = useState('');
 
   // Fetch Current User
   const { data: user } = useQuery({
@@ -183,6 +187,16 @@ export default function SettingsPage() {
     queryKey: ['workspaces', activeWorkspaceId, 'invites'],
     queryFn: () => workspaceService.invites(activeWorkspaceId),
     enabled: Boolean(activeWorkspaceId) && canManageMembers && !isGuestUser,
+  });
+  const { data: pluginCatalog = [], isPending: pluginCatalogPending, error: pluginCatalogError } = useQuery({
+    queryKey: ['marketplace', 'plugins'],
+    queryFn: workspaceService.pluginCatalog,
+    enabled: activeTab === 'plugins' && !isGuestUser,
+  });
+  const { data: installedPlugins = [], isPending: installedPluginsPending, error: installedPluginsError } = useQuery({
+    queryKey: ['workspaces', activeWorkspaceId, 'plugins'],
+    queryFn: () => workspaceService.plugins(activeWorkspaceId),
+    enabled: activeTab === 'plugins' && Boolean(activeWorkspaceId) && !isGuestUser,
   });
   const { data: sessionData, isPending: sessionsPending } = useQuery({
     queryKey: ['auth', 'sessions'],
@@ -477,7 +491,12 @@ export default function SettingsPage() {
       setInviteEmail('');
       setInviteModalOpen(false);
       await queryClient.invalidateQueries({ queryKey: ['workspaces', activeWorkspaceId, 'invites'] });
-      addToast(`Invitation link created for ${result.email} and copied to clipboard.`, 'success');
+      addToast(
+        result.emailDelivered
+          ? `Invitation emailed to ${result.email}; a copy of the link is on your clipboard.`
+          : `Invitation link created for ${result.email} and copied to your clipboard. Email delivery is unavailable.`,
+        'success',
+      );
     } catch (error) {
       addToast(error.message || 'Invitation could not be created.', 'error');
     }
@@ -513,6 +532,34 @@ export default function SettingsPage() {
     }
   };
 
+  const handleInstallPlugin = async (plugin) => {
+    if (!activeWorkspaceId || !canManageMembers || pluginActionId) return;
+    setPluginActionId(plugin.id);
+    try {
+      await workspaceService.installPlugin(activeWorkspaceId, plugin.id);
+      await queryClient.invalidateQueries({ queryKey: ['workspaces', activeWorkspaceId, 'plugins'] });
+      addToast(`${plugin.name} is ready in this workspace.`, 'success');
+    } catch (error) {
+      addToast(error.message || 'Extension could not be installed.', 'error');
+    } finally {
+      setPluginActionId('');
+    }
+  };
+
+  const handleUninstallPlugin = async (plugin) => {
+    if (!activeWorkspaceId || !canManageMembers || pluginActionId) return;
+    setPluginActionId(plugin.id);
+    try {
+      await workspaceService.uninstallPlugin(activeWorkspaceId, plugin.id);
+      await queryClient.invalidateQueries({ queryKey: ['workspaces', activeWorkspaceId, 'plugins'] });
+      addToast(`${plugin.name} was removed from this workspace.`, 'info');
+    } catch (error) {
+      addToast(error.message || 'Extension could not be removed.', 'error');
+    } finally {
+      setPluginActionId('');
+    }
+  };
+
   const handleLogoutAll = async () => {
     try {
       await authService.logoutAll();
@@ -531,10 +578,20 @@ export default function SettingsPage() {
     );
   }, [members, memberSearch]);
 
+  const visiblePluginCatalog = useMemo(() => {
+    const query = pluginSearch.trim().toLowerCase();
+    if (!query) return pluginCatalog;
+    return pluginCatalog.filter((plugin) =>
+      [plugin.name, plugin.author, plugin.category, plugin.description]
+        .some((value) => value?.toLowerCase().includes(query)),
+    );
+  }, [pluginCatalog, pluginSearch]);
+
   const tabs = [
     { id: 'account', label: 'Account & Profile', icon: User },
     { id: 'appearance', label: 'Appearance & Canvas', icon: Palette },
     { id: 'workspace', label: 'Workspace & Team', icon: Users },
+    { id: 'plugins', label: 'Widget Packs', icon: Puzzle },
     { id: 'security', label: 'Security & Sessions', icon: Shield },
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'danger', label: 'Danger Zone', icon: AlertTriangle, danger: true },
@@ -597,6 +654,130 @@ export default function SettingsPage() {
         {/* Content Area */}
         <main className="col-span-12 lg:col-span-9">
           <AnimatePresence mode="wait">
+            {activeTab === 'plugins' && (
+              <motion.div
+                key="plugins"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="space-y-6"
+              >
+                <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm dark:border-white/10 dark:bg-slate-900/60">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <div className="grid size-10 place-items-center rounded-2xl bg-violet-500/10 text-violet-600 dark:text-violet-300">
+                          <Puzzle size={19} />
+                        </div>
+                        <div>
+                          <h2 className="text-lg font-extrabold tracking-tight">Widget Packs</h2>
+                          <p className="mt-0.5 text-xs text-slate-500">Curated extensions for your workspace</p>
+                        </div>
+                      </div>
+                      <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+                        Packs add schema-driven widgets using Voxel’s built-in renderers. They do not run remote code or request browser permissions.
+                      </p>
+                    </div>
+                    {activeWorkspace && (
+                      <span className="shrink-0 rounded-full border border-slate-200 px-3 py-1.5 text-[11px] font-bold text-slate-600 dark:border-white/10 dark:text-slate-300">
+                        {activeWorkspace.name}
+                      </span>
+                    )}
+                  </div>
+
+                  {isGuestUser ? (
+                    <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-100">
+                      Sign in to browse and install widget packs in a workspace.
+                    </div>
+                  ) : !activeWorkspaceId ? (
+                    <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                      Create or join a workspace to use widget packs.
+                    </div>
+                  ) : (
+                    <>
+                      <label className="relative mt-6 block max-w-xl">
+                        <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input type="search" value={pluginSearch} onChange={(event) => setPluginSearch(event.target.value)} placeholder="Search widget packs" className="w-full rounded-xl border border-slate-200 bg-transparent py-3 pl-10 pr-4 text-sm outline-none focus:border-violet-500 dark:border-white/10" />
+                      </label>
+
+                      {!canManageMembers && (
+                        <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
+                          Workspace owners and admins manage installed packs. You can browse the catalog and view what is installed.
+                        </p>
+                      )}
+                      {pluginCatalogError && (
+                        <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-200">
+                          {pluginCatalogError.message || 'The widget catalog could not be loaded.'}
+                        </p>
+                      )}
+                      {installedPluginsError && (
+                        <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-200">
+                          {installedPluginsError.message || 'Installed widget packs could not be loaded.'}
+                        </p>
+                      )}
+                      {(pluginCatalogPending || installedPluginsPending) ? (
+                        <div role="status" className="mt-6 flex items-center gap-2 text-sm text-slate-500">
+                          <Loader2 size={16} className="animate-spin" /> Loading widget packs…
+                        </div>
+                      ) : visiblePluginCatalog.length === 0 ? (
+                        <p className="mt-6 rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-white/15">
+                          No widget packs match that search.
+                        </p>
+                      ) : (
+                        <div className="mt-6 grid gap-4 xl:grid-cols-2">
+                          {visiblePluginCatalog.map((plugin) => {
+                            const installed = installedPlugins.find((item) => item.id === plugin.id);
+                            const isBusy = pluginActionId === plugin.id;
+                            return (
+                              <article key={plugin.id} className="rounded-2xl border border-slate-200 p-5 dark:border-white/10">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <h3 className="text-sm font-extrabold">{plugin.name}</h3>
+                                      <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold text-violet-700 dark:text-violet-300">{plugin.category}</span>
+                                      {installed && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">Installed</span>}
+                                    </div>
+                                    <p className="mt-1 text-[11px] text-slate-500">By {plugin.author} · v{plugin.version}</p>
+                                  </div>
+                                  {canManageMembers && (installed ? (
+                                    <button type="button" disabled={Boolean(pluginActionId)} onClick={() => handleUninstallPlugin(plugin)} className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5">
+                                      {isBusy ? <Loader2 size={14} className="animate-spin" /> : 'Uninstall'}
+                                    </button>
+                                  ) : (
+                                    <button type="button" disabled={Boolean(pluginActionId) || Boolean(installedPluginsError)} onClick={() => handleInstallPlugin(plugin)} className="shrink-0 rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white hover:bg-violet-500 disabled:opacity-50">
+                                      {isBusy ? <Loader2 size={14} className="animate-spin" /> : 'Install'}
+                                    </button>
+                                  ))}
+                                </div>
+                                <p className="mt-4 text-xs leading-5 text-slate-600 dark:text-slate-300">{plugin.description}</p>
+                                <div className="mt-4 border-t border-slate-100 pt-3 dark:border-white/5">
+                                  <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Included widgets</p>
+                                  <ul className="mt-2 space-y-1.5">
+                                    {plugin.widgets.map((widget) => (
+                                      <li key={widget.type} className="flex items-center justify-between gap-3 text-xs">
+                                        <span className="font-semibold text-slate-700 dark:text-slate-200">{widget.title}</span>
+                                        <span className="text-[10px] text-slate-400">{widget.category}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                  <p className="mt-3 text-[10px] text-slate-500 dark:text-slate-400">
+                                    Permissions: {plugin.permissions.length ? plugin.permissions.join(', ') : 'none'}
+                                  </p>
+                                  {installed && !installed.compatible && (
+                                    <p role="status" className="mt-2 text-[11px] font-semibold text-amber-700 dark:text-amber-300">This installed version needs an update before it can be used.</p>
+                                  )}
+                                </div>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </motion.div>
+            )}
+
             {/* TAB 1: Account & Profile */}
             {activeTab === 'account' && (
               <motion.div
@@ -1635,7 +1816,7 @@ export default function SettingsPage() {
                   placeholder="elena@company.com"
                   className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-500 dark:border-white/10"
                 />
-                <p className="mt-1.5 text-[10px] leading-4 text-slate-500">Voxel creates a secure, email-specific link and copies it for you. Email delivery is not configured, so share the link directly with the invitee.</p>
+                <p className="mt-1.5 text-[10px] leading-4 text-slate-500">Voxel emails the invitation when delivery is configured and always copies a secure, email-specific link for you to share.</p>
               </div>
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">

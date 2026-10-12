@@ -1,0 +1,152 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import Fastify from 'fastify';
+import cookie from '@fastify/cookie';
+import { ZodError } from 'zod';
+
+const { prismaMock, userId } = vi.hoisted(() => ({
+  userId: '1b0e3ced-1d40-4a2a-a819-59c2250872bd',
+  prismaMock: {
+    workspaceMember: { findUnique: vi.fn() },
+    workspacePlugin: { create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), delete: vi.fn() },
+    dashboard: { findMany: vi.fn() },
+    dashboardTemplate: { findMany: vi.fn() },
+    auditEvent: { create: vi.fn() },
+    $transaction: vi.fn(),
+  },
+}));
+
+vi.mock('../../database/prisma.js', () => ({ prisma: prismaMock }));
+vi.mock('../auth/auth-service.js', () => ({
+  AuthService: class {
+    async getAuthenticatedUser() {
+      return { id: userId, email: 'member@example.com' };
+    }
+  },
+}));
+
+const { registerPluginRoutes } = await import('./plugin-routes.js');
+const workspaceId = '9f4f0208-352b-4ed2-9ed9-b12f3cc4c095';
+const pluginId = 'voxel.operations-toolkit';
+let app;
+
+beforeEach(async () => {
+  vi.clearAllMocks();
+  prismaMock.workspaceMember.findUnique.mockResolvedValue({
+    role: 'OWNER',
+    workspace: { archivedAt: null, deletedAt: null },
+  });
+  prismaMock.auditEvent.create.mockResolvedValue({});
+  prismaMock.dashboardTemplate.findMany.mockResolvedValue([]);
+  prismaMock.$transaction.mockImplementation(async (action) =>
+    typeof action === 'function' ? action(prismaMock) : Promise.all(action),
+  );
+  app = Fastify({ logger: false });
+  app.setErrorHandler((error, _request, reply) =>
+    reply
+      .status(error instanceof ZodError ? 422 : error.statusCode || 500)
+      .send({ error: error.message }),
+  );
+  await app.register(cookie);
+  await registerPluginRoutes(app, {});
+});
+
+afterEach(async () => {
+  await app?.close();
+  app = undefined;
+});
+
+describe('workspace widget packs', () => {
+  it('lists only the curated declarative catalog', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/marketplace/plugins',
+      headers: { cookie: 'voxel_access=test-session' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.map((plugin) => plugin.id)).toEqual([
+      'voxel.operations-toolkit',
+      'voxel.delivery-metrics',
+    ]);
+  });
+
+  it('limits installation to workspace owners and admins', async () => {
+    prismaMock.workspaceMember.findUnique.mockResolvedValue({
+      role: 'EDITOR',
+      workspace: { archivedAt: null, deletedAt: null },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/workspaces/${workspaceId}/plugins`,
+      headers: { cookie: 'voxel_access=test-session' },
+      payload: { pluginId },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(prismaMock.workspacePlugin.create).not.toHaveBeenCalled();
+  });
+
+  it('persists a catalog version, widget IDs, and audit event on install', async () => {
+    const installedAt = new Date('2026-10-12T10:00:00.000Z');
+    prismaMock.workspacePlugin.create.mockImplementation(async ({ data }) => ({
+      ...data,
+      id: 'da98c469-97f3-4140-a4b7-9fc1c76bf998',
+      installedAt,
+    }));
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/workspaces/${workspaceId}/plugins`,
+      headers: { cookie: 'voxel_access=test-session' },
+      payload: { pluginId },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().data).toMatchObject({
+      id: pluginId,
+      version: '1.0.0',
+      compatible: true,
+    });
+    expect(prismaMock.workspacePlugin.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId,
+        pluginId,
+        version: '1.0.0',
+        widgetTypes: ['voxel.operations.service-health'],
+        installedById: userId,
+      }),
+    });
+    expect(prismaMock.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'plugin.installed', workspaceId }),
+      }),
+    );
+  });
+
+  it('does not uninstall a pack while one of its widgets is on a dashboard', async () => {
+    prismaMock.workspacePlugin.findUnique.mockResolvedValue({
+      id: 'da98c469-97f3-4140-a4b7-9fc1c76bf998',
+      pluginId,
+      version: '1.0.0',
+      widgetTypes: ['voxel.operations.service-health'],
+    });
+    prismaMock.dashboard.findMany.mockResolvedValue([
+      {
+        id: 'a050c2d7-3d5c-48ec-8417-f2bce4eddf6e',
+        name: 'Operations',
+        scene: { nodes: [{ type: 'voxel.operations.service-health' }] },
+      },
+    ]);
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/workspaces/${workspaceId}/plugins/${pluginId}`,
+      headers: { cookie: 'voxel_access=test-session' },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toMatch(/Operations/);
+    expect(prismaMock.workspacePlugin.delete).not.toHaveBeenCalled();
+  });
+});

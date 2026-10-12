@@ -1,17 +1,41 @@
 import { Server } from '@hocuspocus/server';
 import { Redis } from '@hocuspocus/extension-redis';
 import { prisma } from '../../database/prisma.js';
+import { runSerializableTransaction } from '../../lib/serializable-transaction.js';
 import { AuthService } from '../auth/auth-service.js';
 import { parseEnvironment } from '../../config/environment.js';
+import { sanitizePresenceState } from './presence.js';
+import { getWidgetPluginForType, validatePluginWidgetConfiguration } from '@voxel/contracts';
 
 const environment = parseEnvironment(process.env);
 const authService = new AuthService(prisma, environment);
+
 const canonicalJson = (value) => {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
   if (value && typeof value === 'object') {
     return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
   }
   return JSON.stringify(value);
+};
+
+const hasInstalledPluginWidgets = async (workspaceId, scene, database = prisma) => {
+  const requiredPlugins = new Map();
+  for (const node of scene?.nodes ?? []) {
+    if (typeof node?.type !== 'string' || !node.type.startsWith('voxel.')) continue;
+    const plugin = getWidgetPluginForType(node.type);
+    if (!plugin) return false;
+    const widget = plugin.widgets.find((definition) => definition.type === node.type);
+    if (validatePluginWidgetConfiguration(widget, node)) return false;
+    requiredPlugins.set(plugin.id, plugin.version);
+  }
+  if (!requiredPlugins.size) return true;
+  const installed = await database.workspacePlugin.findMany({
+    where: { workspaceId, pluginId: { in: [...requiredPlugins.keys()] } },
+    select: { pluginId: true, version: true },
+  });
+  return installed.length === requiredPlugins.size && installed.every(
+    (record) => requiredPlugins.get(record.pluginId) === record.version,
+  );
 };
 
 export const createHocuspocusServer = () => {
@@ -69,6 +93,14 @@ export const createHocuspocusServer = () => {
         connection.close();
         throw new Error('Realtime access has expired or been revoked.');
       }
+
+      const user = data.context?.user;
+      if (user?.id) {
+        for (const [clientId, state] of data.states) {
+          if (!state || typeof state !== 'object') continue;
+          data.states.set(clientId, sanitizePresenceState(state, user));
+        }
+      }
       connection.readOnly = !['OWNER', 'ADMIN', 'EDITOR'].includes(role);
     },
 
@@ -104,9 +136,22 @@ export const createHocuspocusServer = () => {
       const baseVersion = Number(metadata.get('dashboardVersion'));
       const dashboard = await prisma.dashboard.findFirst({
         where: { id: dashboardId, deletedAt: null },
-        select: { id: true, version: true, scene: true, status: true },
+        select: { id: true, workspaceId: true, version: true, scene: true, status: true },
       });
       if (!dashboard || dashboard.status === 'ARCHIVED') return;
+
+      if (!(await hasInstalledPluginWidgets(dashboard.workspaceId, sceneJson))) {
+        const canonicalScene = dashboard.scene && typeof dashboard.scene === 'object' ? dashboard.scene : {};
+        const yScene = data.document.getMap('scene');
+        data.document.transact(() => {
+          for (const key of Array.from(yScene.keys())) {
+            if (!(key in canonicalScene)) yScene.delete(key);
+          }
+          for (const [key, value] of Object.entries(canonicalScene)) yScene.set(key, value);
+          metadata.set('dashboardVersion', dashboard.version);
+        });
+        return;
+      }
 
       // REST edits (including public share edits) are canonical. Adopt their
       // version when this document already contains the same scene, and never
@@ -129,18 +174,42 @@ export const createHocuspocusServer = () => {
       }
 
       const updatedVersion = dashboard.version + 1;
-      const saved = await prisma.$transaction(async (transaction) => {
-        const result = await transaction.dashboard.updateMany({
-          where: { id: dashboard.id, version: baseVersion, deletedAt: null, status: { not: 'ARCHIVED' } },
-          data: { scene: sceneJson, version: { increment: 1 } },
+      let saved;
+      try {
+        saved = await runSerializableTransaction(prisma, async (transaction) => {
+          if (!(await hasInstalledPluginWidgets(dashboard.workspaceId, sceneJson, transaction))) return false;
+          const result = await transaction.dashboard.updateMany({
+            where: { id: dashboard.id, version: baseVersion, deletedAt: null, status: { not: 'ARCHIVED' } },
+            data: { scene: sceneJson, version: { increment: 1 } },
+          });
+          if (result.count !== 1) return false;
+          await transaction.dashboardVersion.create({
+            data: { dashboardId: dashboard.id, version: updatedVersion, scene: sceneJson },
+          });
+          return true;
         });
-        if (result.count !== 1) return false;
-        await transaction.dashboardVersion.create({
-          data: { dashboardId: dashboard.id, version: updatedVersion, scene: sceneJson },
-        });
-        return true;
-      });
+      } catch (error) {
+        if (error?.code !== 'P2034') throw error;
+        saved = false;
+      }
       if (saved) metadata.set('dashboardVersion', updatedVersion);
+      else {
+        const latest = await prisma.dashboard.findFirst({
+          where: { id: dashboard.id, deletedAt: null },
+          select: { scene: true, version: true },
+        });
+        if (latest) {
+          const canonicalScene = latest.scene && typeof latest.scene === 'object' ? latest.scene : {};
+          const yScene = data.document.getMap('scene');
+          data.document.transact(() => {
+            for (const key of Array.from(yScene.keys())) {
+              if (!(key in canonicalScene)) yScene.delete(key);
+            }
+            for (const [key, value] of Object.entries(canonicalScene)) yScene.set(key, value);
+            metadata.set('dashboardVersion', latest.version);
+          });
+        }
+      }
     },
   });
 

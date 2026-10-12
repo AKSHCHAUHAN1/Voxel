@@ -529,61 +529,54 @@ export default function WorkspaceDashboardsPage() {
     setDownloadDashboard(null);
   };
 
-  const handleImportFile = async (e) => {
-    const file = e.target.files?.[0];
+  const handleImportFile = async (event) => {
+    const fileInput = event.target;
+    const file = fileInput.files?.[0];
+    fileInput.value = '';
     if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      addNotification('Dashboard JSON must be 2 MB or smaller.', 'warning');
+      return;
+    }
 
     setImporting(true);
-    const reader = new FileReader();
-
-    reader.onload = async (event) => {
-      try {
-        const payload = JSON.parse(event.target?.result);
-        let dbName = '';
-        let dbDesc = '';
-        let dbScene = null;
-
-        if (payload.dashboard && payload.dashboard.name) {
-          dbName = payload.dashboard.name;
-          dbDesc = payload.dashboard.description || '';
-          dbScene = payload.dashboard.scene;
-        } else if (
-          payload.workspace &&
-          Array.isArray(payload.dashboards) &&
-          payload.dashboards.length > 0
-        ) {
-          const firstDb = payload.dashboards[0];
-          dbName = firstDb.name;
-          dbDesc = firstDb.description || '';
-          dbScene = firstDb.scene;
-        } else {
-          throw new Error('Invalid Voxel Dashboard JSON structure.');
-        }
-
-        const newDb = await workspaceService.createDashboard(workspaceId, {
-          name: `${dbName} (Imported)`,
-          description: dbDesc || 'Imported dashboard design.',
-        });
-
-        if (dbScene) {
-          await workspaceService.updateDashboard(newDb.id, {
-            scene: dbScene,
-            version: newDb.version,
-          });
-        }
-
-        await queryClient.invalidateQueries({
-          queryKey: ['workspaces', workspaceId, 'dashboards'],
-        });
-        setImporting(false);
-      } catch (err) {
-        setImporting(false);
-        addNotification(err instanceof Error ? err.message : 'Failed to parse dashboard JSON.', 'warning');
+    try {
+      const payload = JSON.parse(await file.text());
+      if (payload?.schemaVersion !== undefined && payload.schemaVersion !== 2) {
+        throw new Error(`Dashboard file version ${payload.schemaVersion} is not supported.`);
       }
-    };
 
-    reader.readAsText(file);
-    e.target.value = '';
+      let importedDashboard;
+      if (payload?.dashboard && typeof payload.dashboard === 'object') {
+        importedDashboard = payload.dashboard;
+      } else if (payload?.workspace && Array.isArray(payload.dashboards) && payload.dashboards.length > 0) {
+        importedDashboard = payload.dashboards[0];
+      }
+      if (!importedDashboard || typeof importedDashboard.name !== 'string' || !importedDashboard.scene) {
+        throw new Error('Choose a Voxel dashboard JSON file with a name and scene.');
+      }
+      if (importedDashboard.scene.schemaVersion !== 2 || !Array.isArray(importedDashboard.scene.nodes)) {
+        throw new Error('This dashboard scene version is not supported.');
+      }
+
+      const dashboardName = importedDashboard.name.trim();
+      if (dashboardName.length < 2 || dashboardName.length > 109) {
+        throw new Error('The imported dashboard name must be between 2 and 109 characters.');
+      }
+      const imported = await workspaceService.importDashboard(workspaceId, {
+        name: `${dashboardName} (Imported)`,
+        description: typeof importedDashboard.description === 'string'
+          ? importedDashboard.description.slice(0, 280)
+          : 'Imported dashboard design.',
+        scene: importedDashboard.scene,
+      });
+      await queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'dashboards'] });
+      addNotification(`“${imported.name}” was imported with its first history version.`, 'success');
+    } catch (error) {
+      addNotification(error instanceof Error ? error.message : 'Failed to import dashboard JSON.', 'warning');
+    } finally {
+      setImporting(false);
+    }
   };
 
   const handleStorageUpload = (event) => {

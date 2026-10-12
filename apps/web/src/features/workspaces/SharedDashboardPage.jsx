@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Edit3, Loader2, LockKeyhole, Save } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { workspaceService } from './workspace-service';
+import { getWidgetDefinition, registerWidgetDefinition, useWidgetDefinitions } from '@/features/editor/widget-registry';
 
 const nodeWidth = (size) => ({ small: 220, medium: 280, large: 340, wide: 440 }[size] || 280);
 const typeLabel = (type = 'widget') => type.charAt(0).toUpperCase() + type.slice(1);
@@ -37,9 +38,12 @@ function safeImageUrl(value) {
 }
 
 function SharedNode({ node, editing, onUpdate }) {
+  const definition = getWidgetDefinition(node.type);
+  const renderer = definition?.renderer || node.type;
+  const widgetLabel = definition?.title || typeLabel(node.type);
   const content = displayValue(node.content);
   const numericProgress = Number.parseFloat(content);
-  const isProgress = node.type === 'progress' && Number.isFinite(numericProgress);
+  const isProgress = renderer === 'progress' && Number.isFinite(numericProgress);
   const accent = ['emerald', 'rose', 'amber', 'cyan'].includes(node.color) ? node.color : 'violet';
   const chartValues = content.split(',').map((value) => Number.parseFloat(value.trim())).filter(Number.isFinite);
   const chartMin = Math.min(...chartValues, 0);
@@ -50,41 +54,41 @@ function SharedNode({ node, editing, onUpdate }) {
   const rows = (node.rows || '').split('\n').filter(Boolean).map((row) => row.split(',').map((value) => value.trim()));
   let body;
 
-  if (editing && node.type !== 'divider') {
+  if (editing && renderer !== 'divider') {
     body = <textarea value={content} onChange={(event) => onUpdate(node.id, { content: event.target.value })} className="min-h-24 w-full resize-y rounded-lg border border-slate-200 bg-slate-50/70 p-2.5 text-sm leading-6 outline-none focus:border-violet-400 dark:border-white/10 dark:bg-black/10" aria-label="Widget content" />;
-  } else if (node.type === 'divider') {
+  } else if (renderer === 'divider') {
     body = <div className="mt-5 border-t border-slate-200 dark:border-white/10" style={{ borderTopStyle: ['solid', 'dashed', 'dotted', 'double'].includes(node.dividerStyle) ? node.dividerStyle : 'solid' }} />;
   } else if (isProgress) {
     body = <div><div className="mb-2 text-3xl font-black">{numericProgress}%</div><div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-white/10"><div className={`h-full rounded-full ${progressClasses[accent]}`} style={{ width: `${Math.max(0, Math.min(100, numericProgress))}%` }} /></div></div>;
-  } else if (node.type === 'metric') {
+  } else if (renderer === 'metric') {
     body = <div className="text-3xl font-black tracking-tight">{node.unit}{content}</div>;
-  } else if (node.type === 'status') {
+  } else if (renderer === 'status') {
     const statusColor = node.statusColor === 'success' ? 'bg-emerald-500' : node.statusColor === 'warning' ? 'bg-amber-500' : 'bg-rose-500';
     body = <div className="flex items-center gap-2 text-sm font-bold"><span className={`size-2.5 rounded-full ${statusColor}`} />{content || 'Status'}</div>;
-  } else if (node.type === 'chart') {
+  } else if (renderer === 'chart') {
     body = chartValues.length > 1 ? <svg viewBox="0 0 240 70" className="h-16 w-full"><polyline points={chartPoints} fill="none" stroke="#8b5cf6" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg> : <p className="text-sm text-slate-500">{content || 'No chart values'}</p>;
-  } else if (node.type === 'image') {
+  } else if (renderer === 'image') {
     body = safeImageUrl(node.imageUrl) ? <img src={safeImageUrl(node.imageUrl)} alt={node.title || 'Dashboard image'} referrerPolicy="no-referrer" className="h-36 w-full rounded-lg object-cover" /> : <p className="text-xs text-slate-500">Image unavailable</p>;
-  } else if (node.type === 'embed') {
+  } else if (renderer === 'embed') {
     body = safeExternalUrl(node.embedUrl) ? <iframe src={safeExternalUrl(node.embedUrl)} title={node.title || 'Embedded content'} sandbox="allow-scripts allow-forms allow-popups" referrerPolicy="no-referrer" className="h-36 w-full rounded-lg border-0" /> : <p className="text-xs text-slate-500">Embedded content unavailable</p>;
-  } else if (node.type === 'link') {
+  } else if (renderer === 'link') {
     const href = safeExternalUrl(node.url);
     body = href ? <a href={href} target="_blank" rel="noopener noreferrer" className="block rounded-lg border border-slate-200 p-3 text-sm font-semibold text-violet-600 dark:border-white/10">{node.url}<p className="mt-1 text-xs font-normal text-slate-500">{node.description}</p></a> : <p className="text-sm text-slate-500">{content}</p>;
-  } else if (node.type === 'code') {
+  } else if (renderer === 'code') {
     body = <pre className="max-h-48 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100"><code>{node.code || content}</code></pre>;
-  } else if (node.type === 'table') {
+  } else if (renderer === 'table') {
     body = <div className="overflow-auto rounded-lg border border-slate-200 dark:border-white/10"><table className="w-full text-left text-xs"><thead><tr>{columns.map((column, index) => <th key={`${column}-${index}`} className="border-b border-slate-200 px-2 py-2 dark:border-white/10">{column}</th>)}</tr></thead><tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((value, columnIndex) => <td key={`${rowIndex}-${columnIndex}`} className="border-b border-slate-100 px-2 py-1.5 dark:border-white/5">{value}</td>)}</tr>)}</tbody></table></div>;
   } else {
     body = <div className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-600 dark:text-slate-300">{content}</div>;
   }
 
   return (
-    <article className="absolute overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 p-4 text-slate-900 shadow-xl shadow-slate-900/5 dark:border-white/10 dark:bg-slate-900/95 dark:text-slate-100" style={{ left: Math.max(24, Number(node.x) || 0), top: Math.max(24, Number(node.y) || 0), width: nodeWidth(node.size), minHeight: node.type === 'divider' ? 72 : 150 }}>
+    <article className="absolute overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 p-4 text-slate-900 shadow-xl shadow-slate-900/5 dark:border-white/10 dark:bg-slate-900/95 dark:text-slate-100" style={{ left: Math.max(24, Number(node.x) || 0), top: Math.max(24, Number(node.y) || 0), width: nodeWidth(node.size), minHeight: renderer === 'divider' ? 72 : 150 }}>
       <div className="mb-3 flex items-center justify-between gap-3">
         {editing ? (
           <input value={node.title || ''} onChange={(event) => onUpdate(node.id, { title: event.target.value })} className="min-w-0 flex-1 border-b border-violet-300 bg-transparent pb-1 text-sm font-bold outline-none focus:border-violet-600" aria-label="Widget title" />
-        ) : <h2 className="truncate text-sm font-bold">{node.title || typeLabel(node.type)}</h2>}
-        <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-wider ${accentClasses[accent]}`}>{typeLabel(node.type)}</span>
+        ) : <h2 className="truncate text-sm font-bold">{node.title || widgetLabel}</h2>}
+        <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-wider ${accentClasses[accent]}`}>{widgetLabel}</span>
       </div>
       {body}
     </article>
@@ -92,12 +96,28 @@ function SharedNode({ node, editing, onUpdate }) {
 }
 
 export default function SharedDashboardPage() {
+  useWidgetDefinitions();
   const { token } = useParams();
   const queryClient = useQueryClient();
   const dashboard = useQuery({ queryKey: ['shared-dashboard', token], queryFn: () => workspaceService.sharedDashboard(token), retry: false });
   const [scene, setScene] = useState(null);
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    const unregister = [];
+    for (const plugin of dashboard.data?.plugins || []) {
+      for (const widget of plugin.widgets || []) {
+        if (getWidgetDefinition(widget.type)) continue;
+        try {
+          unregister.push(registerWidgetDefinition(widget));
+        } catch (error) {
+          console.error('A shared widget definition could not be loaded.', error);
+        }
+      }
+    }
+    return () => unregister.reverse().forEach((remove) => remove());
+  }, [dashboard.data?.plugins]);
 
   useEffect(() => {
     if (dashboard.data) setScene(structuredClone(dashboard.data.scene || { schemaVersion: 2, nodes: [] }));

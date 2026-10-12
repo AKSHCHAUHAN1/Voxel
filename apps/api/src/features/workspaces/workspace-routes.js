@@ -1,8 +1,15 @@
 import { z } from 'zod';
 import { createHash, randomBytes } from 'node:crypto';
-import { createRequestId } from '@voxel/contracts';
+import {
+  createRequestId,
+  getWidgetPluginForType,
+  validatePluginWidgetConfiguration,
+  widgetPluginCatalog,
+} from '@voxel/contracts';
 import { prisma } from '../../database/prisma.js';
+import { runSerializableTransaction } from '../../lib/serializable-transaction.js';
 import { AuthService } from '../auth/auth-service.js';
+import { createWorkspaceInviteUrl, sendWorkspaceInviteEmail } from '../auth/email-delivery.js';
 import { notifyMentionedUsers, notifyVerifiedUserByEmail, notifyWorkspaceMembers } from '../notifications/notification-service.js';
 import { success } from '../../lib/api-response.js';
 
@@ -61,6 +68,11 @@ const dashboardSceneSchema = z.object({
   gridThickness: z.number().finite().min(0.25).max(4).optional(),
   gridColorPreset: z.enum(['slate', 'blue', 'violet', 'indigo', 'cyan', 'rose', 'emerald']).optional(),
 }).passthrough();
+const dashboardImportSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  description: z.string().trim().max(280).optional(),
+  scene: dashboardSceneSchema,
+});
 const dashboardUpdateSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
   description: z.string().trim().max(280).nullable().optional(),
@@ -121,6 +133,31 @@ const requireMembership = async (workspaceId, userId, roles, { allowArchived = f
     throw new RequestError('This workspace is archived or no longer available.', 404);
   }
   return membership;
+};
+
+const validateInstalledPluginNodes = async (workspaceId, scene, database = prisma) => {
+  const requiredPlugins = new Map();
+  for (const node of scene?.nodes ?? []) {
+    if (typeof node?.type !== 'string' || !node.type.startsWith('voxel.')) continue;
+    const plugin = getWidgetPluginForType(node.type);
+    if (!plugin) throw new RequestError(`Widget type “${node.type}” is not in the Voxel catalog.`, 422);
+    const widget = plugin.widgets.find((definition) => definition.type === node.type);
+    const configurationError = validatePluginWidgetConfiguration(widget, node);
+    if (configurationError) throw new RequestError(configurationError, 422);
+    requiredPlugins.set(plugin.id, plugin);
+  }
+  if (requiredPlugins.size === 0) return;
+
+  const installed = await database.workspacePlugin.findMany({
+    where: { workspaceId, pluginId: { in: [...requiredPlugins.keys()] } },
+    select: { pluginId: true, version: true },
+  });
+  const versions = new Map(installed.map((record) => [record.pluginId, record.version]));
+  for (const plugin of requiredPlugins.values()) {
+    if (versions.get(plugin.id) !== plugin.version) {
+      throw new RequestError(`Install the “${plugin.name}” widget pack before using its widgets.`, 409);
+    }
+  }
 };
 
 const recordAuditEvent = async ({
@@ -496,13 +533,29 @@ export const registerWorkspaceRoutes = async (app, environment) => {
       message: `${actor.displayName} invited you to join as ${invite.role.toLowerCase()}.`,
       payload: { workspaceId: params.workspaceId, inviteId: invite.id, inviteToken: rawToken },
     }, request);
+    let emailDelivered = false;
+    try {
+      const delivery = await sendWorkspaceInviteEmail({
+        email: invite.email,
+        inviterName: actor.displayName,
+        workspaceName: invite.workspace.name,
+        role: invite.role,
+        token: rawToken,
+        expiresAt: invite.expiresAt,
+        environment,
+      });
+      emailDelivered = delivery.delivered;
+    } catch (error) {
+      request.log.error({ err: error, inviteId: invite.id }, 'Could not deliver workspace invitation email');
+    }
     return reply.status(201).send(success({
       id: invite.id,
       email: invite.email,
       role: invite.role,
       workspaceName: invite.workspace.name,
       expiresAt: invite.expiresAt.toISOString(),
-      inviteUrl: `${environment.VOXEL_PUBLIC_APP_URL}/invite/${rawToken}`,
+      emailDelivered,
+      inviteUrl: createWorkspaceInviteUrl(rawToken, environment),
     }, createRequestId(request.id)));
   });
 
@@ -637,26 +690,29 @@ export const registerWorkspaceRoutes = async (app, environment) => {
     if (input.isPublished && !['OWNER', 'ADMIN'].includes(membership.role)) {
       throw new RequestError('Only workspace administrators can publish templates.', 403);
     }
-    const dashboard = await prisma.dashboard.findFirst({
-      where: { id: input.dashboardId, workspaceId: params.workspaceId, deletedAt: null },
-      select: { scene: true },
-    });
-    if (!dashboard) throw new RequestError('Dashboard was not found.', 404);
-    const template = await prisma.dashboardTemplate.create({
-      data: {
-        workspaceId: params.workspaceId,
-        createdById: user.id,
-        name: input.name,
-        description: input.description || null,
-        category: input.category,
-        tags: input.tags,
-        scene: dashboard.scene,
-        isPublished: input.isPublished,
-      },
-      include: {
-        favorites: { where: { userId: user.id }, select: { userId: true } },
-        createdBy: { select: { displayName: true } },
-      },
+    const template = await runSerializableTransaction(prisma, async (transaction) => {
+      const dashboard = await transaction.dashboard.findFirst({
+        where: { id: input.dashboardId, workspaceId: params.workspaceId, deletedAt: null },
+        select: { scene: true },
+      });
+      if (!dashboard) throw new RequestError('Dashboard was not found.', 404);
+      await validateInstalledPluginNodes(params.workspaceId, dashboard.scene, transaction);
+      return transaction.dashboardTemplate.create({
+        data: {
+          workspaceId: params.workspaceId,
+          createdById: user.id,
+          name: input.name,
+          description: input.description || null,
+          category: input.category,
+          tags: input.tags,
+          scene: dashboard.scene,
+          isPublished: input.isPublished,
+        },
+        include: {
+          favorites: { where: { userId: user.id }, select: { userId: true } },
+          createdBy: { select: { displayName: true } },
+        },
+      });
     });
     await recordAuditEvent({
       actorId: user.id,
@@ -744,15 +800,18 @@ export const registerWorkspaceRoutes = async (app, environment) => {
     });
     if (!template) throw new RequestError('Template was not found.', 404);
     const name = input.name || `${template.name} copy`;
-    const dashboard = await prisma.dashboard.create({
-      data: {
-        workspaceId: params.workspaceId,
-        ownerId: user.id,
-        name,
-        slug: uniqueSlug(name),
-        description: template.description,
-        scene: template.scene,
-      },
+    const dashboard = await runSerializableTransaction(prisma, async (transaction) => {
+      await validateInstalledPluginNodes(params.workspaceId, template.scene, transaction);
+      return transaction.dashboard.create({
+        data: {
+          workspaceId: params.workspaceId,
+          ownerId: user.id,
+          name,
+          slug: uniqueSlug(name),
+          description: template.description,
+          scene: template.scene,
+        },
+      });
     });
     await recordAuditEvent({
       actorId: user.id,
@@ -804,6 +863,42 @@ export const registerWorkspaceRoutes = async (app, environment) => {
       .send(success(serializeDashboard(dashboard), createRequestId(request.id)));
   });
 
+  app.post('/api/v1/workspaces/:workspaceId/dashboards/import', { bodyLimit: 2 * 1024 * 1024 }, async (request, reply) => {
+    const user = await requireUser(request, auth);
+    const params = z.object({ workspaceId: idSchema }).parse(request.params);
+    const input = dashboardImportSchema.parse(request.body);
+    await requireMembership(params.workspaceId, user.id, ['OWNER', 'ADMIN', 'EDITOR']);
+
+    const dashboard = await runSerializableTransaction(prisma, async (transaction) => {
+      await validateInstalledPluginNodes(params.workspaceId, input.scene, transaction);
+      const created = await transaction.dashboard.create({
+        data: {
+          workspaceId: params.workspaceId,
+          ownerId: user.id,
+          name: input.name,
+          slug: uniqueSlug(input.name),
+          ...(input.description ? { description: input.description } : {}),
+          scene: input.scene,
+        },
+      });
+      await transaction.dashboardVersion.create({
+        data: { dashboardId: created.id, version: created.version, scene: created.scene },
+      });
+      return created;
+    });
+
+    await recordAuditEvent({
+      actorId: user.id,
+      workspaceId: params.workspaceId,
+      action: 'dashboard.import',
+      resourceType: 'dashboard',
+      resourceId: dashboard.id,
+      after: dashboard,
+      request,
+    });
+    return reply.status(201).send(success(serializeDashboard(dashboard), createRequestId(request.id)));
+  });
+
   app.patch('/api/v1/dashboards/:dashboardId/status', async (request, reply) => {
     const user = await requireUser(request, auth);
     const params = z.object({ dashboardId: idSchema }).parse(request.params);
@@ -847,7 +942,8 @@ export const registerWorkspaceRoutes = async (app, environment) => {
     if (!source) throw new RequestError('Dashboard was not found.', 404);
     await requireMembership(source.workspaceId, user.id, ['OWNER', 'ADMIN', 'EDITOR']);
     const copyName = `${source.name} copy`.slice(0, 120);
-    const duplicate = await prisma.$transaction(async (transaction) => {
+    const duplicate = await runSerializableTransaction(prisma, async (transaction) => {
+      await validateInstalledPluginNodes(source.workspaceId, source.scene, transaction);
       const dashboard = await transaction.dashboard.create({
         data: {
           workspaceId: source.workspaceId,
@@ -885,10 +981,18 @@ export const registerWorkspaceRoutes = async (app, environment) => {
     await requireMembership(dashboard.workspaceId, user.id, ['OWNER', 'ADMIN']);
     if (input.workspaceId === dashboard.workspaceId) throw new RequestError('Choose a different workspace.', 409);
     await requireMembership(input.workspaceId, user.id, ['OWNER', 'ADMIN', 'EDITOR']);
-    const moved = await prisma.$transaction(async (transaction) => {
+    const moved = await runSerializableTransaction(prisma, async (transaction) => {
+      const current = await transaction.dashboard.findUnique({
+        where: { id: dashboard.id },
+        select: { id: true, workspaceId: true, name: true, scene: true, deletedAt: true },
+      });
+      if (!current || current.deletedAt || current.workspaceId !== dashboard.workspaceId) {
+        throw new RequestError('Dashboard changed elsewhere. Refresh and retry.', 412);
+      }
+      await validateInstalledPluginNodes(input.workspaceId, current.scene, transaction);
       const updated = await transaction.dashboard.update({
         where: { id: dashboard.id },
-        data: { workspaceId: input.workspaceId, slug: uniqueSlug(dashboard.name) },
+        data: { workspaceId: input.workspaceId, slug: uniqueSlug(current.name) },
       });
       await transaction.dashboardShare.updateMany({
         where: { dashboardId: dashboard.id, revokedAt: null },
@@ -1251,7 +1355,11 @@ export const registerWorkspaceRoutes = async (app, environment) => {
     const { token } = z.object({ token: z.string().min(30).max(100) }).parse(request.params);
     const share = await prisma.dashboardShare.findUnique({
       where: { tokenHash: tokenDigest(token) },
-      include: { dashboard: { include: { workspace: { select: { deletedAt: true, archivedAt: true } } } } },
+      include: { dashboard: { include: { workspace: { select: {
+        deletedAt: true,
+        archivedAt: true,
+        plugins: { select: { pluginId: true, version: true } },
+      } } } } },
     });
     if (
       !share || share.revokedAt || (share.expiresAt && share.expiresAt <= new Date()) ||
@@ -1265,6 +1373,10 @@ export const registerWorkspaceRoutes = async (app, environment) => {
       description: share.dashboard.description,
       scene: share.dashboard.scene,
       version: share.dashboard.version,
+      plugins: share.dashboard.workspace.plugins.flatMap((installed) => {
+        const plugin = widgetPluginCatalog.find((candidate) => candidate.id === installed.pluginId);
+        return plugin?.version === installed.version ? [plugin] : [];
+      }),
       permission: share.permission,
       expiresAt: share.expiresAt?.toISOString() ?? null,
     }, createRequestId(request.id)));
@@ -1303,7 +1415,8 @@ export const registerWorkspaceRoutes = async (app, environment) => {
       ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.scene ? { scene: input.scene } : {}),
     };
-    const updated = await prisma.$transaction(async (transaction) => {
+    const updated = await runSerializableTransaction(prisma, async (transaction) => {
+      await validateInstalledPluginNodes(share.dashboard.workspaceId, requestedScene, transaction);
       const result = await transaction.dashboard.updateMany({
         where: { id: share.dashboard.id, version: input.version, deletedAt: null },
         data,
@@ -1389,7 +1502,8 @@ export const registerWorkspaceRoutes = async (app, environment) => {
       ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.scene ? { scene: input.scene } : {}),
     };
-    const updated = await prisma.$transaction(async (transaction) => {
+    const updated = await runSerializableTransaction(prisma, async (transaction) => {
+      await validateInstalledPluginNodes(dashboard.workspaceId, requestedScene, transaction);
       const result = await transaction.dashboard.updateMany({
         where: { id: dashboard.id, version: input.version, deletedAt: null },
         data,

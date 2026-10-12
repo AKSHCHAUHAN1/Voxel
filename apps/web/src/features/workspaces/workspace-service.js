@@ -31,6 +31,10 @@ const uploadCoverImage = (workspaceId, file) => request(`/api/v1/workspaces/${wo
 });
 
 export const workspaceService = {
+  pluginCatalog: () => request('/api/v1/marketplace/plugins'),
+  plugins: (workspaceId) => request(`/api/v1/workspaces/${workspaceId}/plugins`),
+  installPlugin: (workspaceId, pluginId) => request(`/api/v1/workspaces/${workspaceId}/plugins`, { method: 'POST', body: JSON.stringify({ pluginId }) }),
+  uninstallPlugin: (workspaceId, pluginId) => request(`/api/v1/workspaces/${workspaceId}/plugins/${encodeURIComponent(pluginId)}`, { method: 'DELETE' }),
   files: (workspaceId) => request(`/api/v1/workspaces/${workspaceId}/files`),
   uploadFile,
   uploadCoverImage,
@@ -52,6 +56,11 @@ export const workspaceService = {
   useTemplate: (workspaceId, templateId, input) => request(`/api/v1/workspaces/${workspaceId}/templates/${templateId}/use`, { method: 'POST', body: JSON.stringify(input) }),
   createDashboard: (workspaceId, input) =>
     request(`/api/v1/workspaces/${workspaceId}/dashboards`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  importDashboard: (workspaceId, input) =>
+    request(`/api/v1/workspaces/${workspaceId}/dashboards/import`, {
       method: 'POST',
       body: JSON.stringify(input),
     }),

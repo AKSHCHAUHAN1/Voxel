@@ -10,10 +10,12 @@ const { prismaMock, userId } = vi.hoisted(() => ({
     workspace: { create: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     notification: { createMany: vi.fn() },
     dashboard: { findFirst: vi.fn(), create: vi.fn() },
+    dashboardVersion: { create: vi.fn() },
     dashboardComment: { findMany: vi.fn(), create: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     dashboardTemplate: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
     dashboardTemplateFavorite: { upsert: vi.fn(), deleteMany: vi.fn() },
     auditEvent: { create: vi.fn(), findMany: vi.fn() },
+    $transaction: vi.fn(),
   },
 }));
 
@@ -42,6 +44,7 @@ beforeEach(async () => {
   });
   prismaMock.workspaceMember.findMany.mockResolvedValue([]);
   prismaMock.auditEvent.create.mockResolvedValue({});
+  prismaMock.$transaction.mockImplementation(async (operation) => operation(prismaMock));
   app = Fastify({ logger: false });
   app.setErrorHandler((error, _request, reply) => reply.status(error instanceof ZodError ? 422 : error.statusCode || 500).send({ error: error.message }));
   await app.register(cookie);
@@ -197,6 +200,39 @@ describe('workspace template and activity routes', () => {
       },
     });
     expect(prismaMock.dashboard.create.mock.calls[0][0].data.scene).toEqual(scene);
+  });
+
+  it('imports a validated dashboard and its first history version atomically', async () => {
+    const scene = { schemaVersion: 2, nodes: [], connections: [] };
+    const createdAt = new Date('2026-10-11T10:00:00.000Z');
+    prismaMock.dashboard.create.mockResolvedValue({
+      id: dashboardId,
+      workspaceId,
+      ownerId: userId,
+      name: 'Imported operations (Imported)',
+      description: 'Saved layout',
+      status: 'DRAFT',
+      scene,
+      version: 1,
+      createdAt,
+      updatedAt: createdAt,
+      deletedAt: null,
+    });
+    prismaMock.dashboardVersion.create.mockResolvedValue({});
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/workspaces/${workspaceId}/dashboards/import`,
+      headers: { cookie: 'voxel_access=test-session' },
+      payload: { name: 'Imported operations (Imported)', description: 'Saved layout', scene },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().data).toMatchObject({ name: 'Imported operations (Imported)', scene, version: 1 });
+    expect(prismaMock.dashboard.create.mock.calls[0][0].data.scene).toEqual(scene);
+    expect(prismaMock.dashboardVersion.create).toHaveBeenCalledWith({
+      data: { dashboardId, version: 1, scene },
+    });
   });
 
   it('returns only member-safe fields in workspace activity', async () => {

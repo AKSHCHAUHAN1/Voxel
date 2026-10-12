@@ -57,6 +57,7 @@ model User {
   workspaceInvitesCreated WorkspaceInvite[] @relation("WorkspaceInviteCreator")
   dashboardSharesCreated DashboardShare[] @relation("DashboardShareCreator")
   dashboardTemplatesCreated DashboardTemplate[] @relation("DashboardTemplateCreator")
+  installedWorkspacePlugins WorkspacePlugin[] @relation("WorkspacePluginInstaller")
   dashboardTemplateFavorites DashboardTemplateFavorite[]
   dashboardComments DashboardComment[] @relation("DashboardCommentAuthor")
   resolvedDashboardComments DashboardComment[] @relation("DashboardCommentResolver")
@@ -129,6 +130,7 @@ model Workspace {
   invites     WorkspaceInvite[]
   templates   DashboardTemplate[]
   files       StoredFile[]
+  plugins     WorkspacePlugin[]
   storageUsedBytes  BigInt @default(0)
   storageQuotaBytes BigInt @default(1073741824)
 
@@ -148,6 +150,22 @@ model WorkspaceMember {
 
   @@unique([workspaceId, userId])
   @@index([userId])
+}
+
+model WorkspacePlugin {
+  id            String    @id @default(uuid()) @db.Uuid
+  workspaceId   String    @db.Uuid
+  pluginId      String
+  version       String
+  widgetTypes   String[]  @default([])
+  installedById String?   @db.Uuid
+  installedAt   DateTime  @default(now())
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  installedBy   User?     @relation("WorkspacePluginInstaller", fields: [installedById], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, pluginId])
+  @@index([pluginId, version])
+  @@index([installedById, installedAt])
 }
 
 model Dashboard {

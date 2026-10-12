@@ -1,4 +1,4 @@
-import { Component, useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { Component, memo, useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate, useParams, Link } from 'react-router-dom';
 import appIcon from '@/assets/app-icon.png';
@@ -51,7 +51,18 @@ import { useSettingsStore } from '@/store/settings-store';
 import { useNotificationStore } from '@/store/notification-store';
 import { VersionHistory } from './VersionHistory';
 import { useYjs } from './use-yjs';
-import { getWidgetDefinition, listWidgetDefinitions, validateWidgetConfiguration } from './widget-registry';
+import {
+  CANVAS_INNER_PADDING,
+  CANVAS_PADDING,
+  canvasPointToScreen,
+  getCanvasViewport,
+  pointerToCanvasPoint,
+  scrollOffsetForCanvasPoint,
+} from './canvas-geometry';
+import {
+  getWidgetDefinition,
+  useWidgetDefinitions, validateWidgetConfiguration,
+} from './widget-registry';
 import { CustomConfirmModal } from '@/components/feedback/CustomConfirmModal';
 
 const emptyScene = {
@@ -90,12 +101,14 @@ const sceneOf = (value) => {
     if (validWidth) normalized.customWidth = node.customWidth;
     else if (node.customWidth !== undefined) {
       delete normalized.customWidth;
-      normalized.invalidDimensions = { ...normalized.invalidDimensions, customWidth: node.customWidth };
+      normalized.invalidDimensions = { ...normalized.invalidDimensions, customWidth: node.customWidth,
+      };
     }
     if (validHeight) normalized.customHeight = node.customHeight;
     else if (node.customHeight !== undefined) {
       delete normalized.customHeight;
-      normalized.invalidDimensions = { ...normalized.invalidDimensions, customHeight: node.customHeight };
+      normalized.invalidDimensions = { ...normalized.invalidDimensions, customHeight: node.customHeight,
+      };
     }
     if (!isRecord) normalized.originalWidgetData = sourceNode;
     if (node.id != null && id !== node.id) normalized.originalWidgetId = node.id;
@@ -109,13 +122,14 @@ const sceneOf = (value) => {
     && typeof connection.fromId === 'string' && typeof connection.toId === 'string'
     && connection.fromId.length > 0 && connection.fromId.length <= 160
     && connection.toId.length > 0 && connection.toId.length <= 160
-    && (connection.style == null || (typeof connection.style === 'string' && connection.style.length <= 32))
+    && (connection.style == null || (typeof connection.style === 'string' && connection.style.length <= 32)),
   );
   const gridStyle = ['dots', 'lines', 'radial', 'blank'].includes(candidate.gridStyle) ? candidate.gridStyle : 'dots';
   const gridSize = Number.isFinite(candidate.gridSize) && candidate.gridSize >= 8 && candidate.gridSize <= 100 ? candidate.gridSize : 24;
   const gridOpacity = Number.isFinite(candidate.gridOpacity) && candidate.gridOpacity >= 0 && candidate.gridOpacity <= 0.5 ? candidate.gridOpacity : 0.08;
   const gridThickness = Number.isFinite(candidate.gridThickness) && candidate.gridThickness >= 0.25 && candidate.gridThickness <= 4 ? candidate.gridThickness : 1.2;
-  const gridColorPreset = ['slate', 'blue', 'violet', 'indigo', 'cyan', 'rose', 'emerald'].includes(candidate.gridColorPreset) ? candidate.gridColorPreset : 'violet';
+  const gridColorPreset = ['slate', 'blue', 'violet', 'indigo', 'cyan', 'rose', 'emerald'].includes(candidate.gridColorPreset,
+  ) ? candidate.gridColorPreset : 'violet';
   const hasInvalidGrid = (candidate.gridStyle != null && gridStyle !== candidate.gridStyle)
     || (candidate.gridSize != null && gridSize !== candidate.gridSize)
     || (candidate.gridOpacity != null && gridOpacity !== candidate.gridOpacity)
@@ -132,9 +146,13 @@ const sceneOf = (value) => {
     gridOpacity,
     gridThickness,
     gridColorPreset,
-    ...(hasInvalidGrid ? { originalGridConfiguration: { gridStyle: candidate.gridStyle, gridSize: candidate.gridSize, gridOpacity: candidate.gridOpacity, gridThickness: candidate.gridThickness, gridColorPreset: candidate.gridColorPreset } } : {}),
+    ...(hasInvalidGrid ? { originalGridConfiguration: { gridStyle: candidate.gridStyle, gridSize: candidate.gridSize, gridOpacity: candidate.gridOpacity, gridThickness: candidate.gridThickness, gridColorPreset: candidate.gridColorPreset,
+          },
+        } : {}),
     ...(candidate.schemaVersion != null && schemaVersion !== candidate.schemaVersion ? { originalSchemaVersion: candidate.schemaVersion } : {}),
-    ...(connections.length !== incomingConnections.length ? { originalInvalidConnections: incomingConnections.filter((connection) => !connections.includes(connection)) } : {}),
+    ...(connections.length !== incomingConnections.length ? { originalInvalidConnections: incomingConnections.filter((connection) => !connections.includes(connection),
+          ),
+        } : {}),
   };
 };
 
@@ -183,8 +201,6 @@ const textFonts = {
   medium: 'text-base font-medium',
   large: 'text-lg font-semibold',
 };
-
-const BUILTIN_WIDGETS = listWidgetDefinitions();
 
 const widgetIconComponents = {
   activity: Activity,
@@ -240,11 +256,14 @@ export default function EditorPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  const widgetDefinitions = useWidgetDefinitions();
+
   const dashboard = useQuery({
     queryKey: ['dashboard', dashboardId],
     queryFn: () => workspaceService.dashboard(dashboardId),
     enabled: Boolean(dashboardId),
   });
+  const currentUser = useQuery({ queryKey: ['auth', 'me'], queryFn: authService.me, retry: false });
   const canEditDashboard = ['OWNER', 'ADMIN', 'EDITOR'].includes(dashboard.data?.accessRole) && dashboard.data?.status !== 'ARCHIVED';
 
   useEffect(() => {
@@ -302,7 +321,8 @@ export default function EditorPage() {
 
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
-  }, [leftPanelWidth]);
+  }, [leftPanelWidth],
+  );
 
   const handleRightResizeStart = useCallback((e) => {
     e.preventDefault();
@@ -325,7 +345,8 @@ export default function EditorPage() {
 
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
-  }, [rightPanelWidth]);
+  }, [rightPanelWidth],
+  );
   const exportMenuRef = useRef(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
@@ -340,7 +361,7 @@ export default function EditorPage() {
   const handleSelectNode = useCallback((id, e) => {
     if (e && (e.metaKey || e.ctrlKey || e.shiftKey)) {
       setSelectedNodeIds((prev) =>
-        prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+        prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
       );
     } else {
       setSelectedNodeIds([id]);
@@ -360,7 +381,21 @@ export default function EditorPage() {
   const canUndo = useHistoryStore((s) => s.past.length > 0);
   const canRedo = useHistoryStore((s) => s.future.length > 0);
 
-  const { scene: yScene, updateScene, awareness, awarenessStates } = useYjs(dashboardId, dashboard.data?.scene);
+  const { scene: yScene, updateScene, awareness, awarenessStates,
+  } = useYjs(dashboardId, dashboard.data?.scene, currentUser.data);
+
+  const onlineCollaborators = useMemo(
+    () =>
+      awarenessStates
+        .filter(([, state]) => state.user?.id)
+        .map(([clientId, state]) => ({
+          clientId,
+          ...state.user,
+          isTyping: Boolean(state.typing),
+          viewport: state.viewport,
+        })),
+    [awarenessStates],
+  );
 
   const scene = useMemo(
     () => sceneOf(yScene || dashboard.data?.scene),
@@ -372,7 +407,8 @@ export default function EditorPage() {
     if (!focusNodeId || !scene.nodes.some((node) => node.id === focusNodeId)) return;
     setSelectedNodeIds([focusNodeId]);
     setRightPanelOpen(true);
-    window.requestAnimationFrame(() => document.getElementById(`node-card-${focusNodeId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' }));
+    window.requestAnimationFrame(() => document.getElementById(`node-card-${focusNodeId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' }),
+    );
     navigate(location.pathname, { replace: true, state: null });
   }, [location.pathname, location.state, navigate, scene.nodes]);
 
@@ -440,12 +476,16 @@ export default function EditorPage() {
           const nodesCenterY = innerPad + (minY + maxY) / 2;
 
           // Scroll to put that center in the middle of the viewport
-          targetScrollLeft = Math.max(0, Math.round(boardOriginScrollLeft + nodesCenterX - containerW / 2));
-          targetScrollTop  = Math.max(0, Math.round(boardOriginScrollTop  + nodesCenterY - containerH / 2));
+          targetScrollLeft = Math.max(0, Math.round(boardOriginScrollLeft + nodesCenterX - containerW / 2),
+          );
+          targetScrollTop  = Math.max(0, Math.round(boardOriginScrollTop  + nodesCenterY - containerH / 2),
+          );
         } else {
           // No nodes – center the board sheet origin + 400/300 default offset
-          targetScrollLeft = Math.max(0, Math.round(boardOriginScrollLeft + innerPad + 400 - containerW / 2));
-          targetScrollTop  = Math.max(0, Math.round(boardOriginScrollTop  + innerPad + 300 - containerH / 2));
+          targetScrollLeft = Math.max(0, Math.round(boardOriginScrollLeft + innerPad + 400 - containerW / 2),
+          );
+          targetScrollTop  = Math.max(0, Math.round(boardOriginScrollTop  + innerPad + 300 - containerH / 2),
+          );
         }
 
         container.scrollTo({
@@ -501,11 +541,15 @@ export default function EditorPage() {
         const maxY = Math.max(...nodes.map((n) => (n.y ?? 40) + getNodeHeight(n.type)));
         const nodesCenterX = innerPad + (minX + maxX) / 2;
         const nodesCenterY = innerPad + (minY + maxY) / 2;
-        container.scrollLeft = Math.max(0, Math.round(boardOriginScrollLeft + nodesCenterX - containerW / 2));
-        container.scrollTop  = Math.max(0, Math.round(boardOriginScrollTop  + nodesCenterY - containerH / 2));
+        container.scrollLeft = Math.max(0, Math.round(boardOriginScrollLeft + nodesCenterX - containerW / 2),
+        );
+        container.scrollTop  = Math.max(0, Math.round(boardOriginScrollTop  + nodesCenterY - containerH / 2),
+        );
       } else {
-        container.scrollLeft = Math.max(0, Math.round(boardOriginScrollLeft + innerPad + 400 - containerW / 2));
-        container.scrollTop  = Math.max(0, Math.round(boardOriginScrollTop  + innerPad + 300 - containerH / 2));
+        container.scrollLeft = Math.max(0, Math.round(boardOriginScrollLeft + innerPad + 400 - containerW / 2),
+        );
+        container.scrollTop  = Math.max(0, Math.round(boardOriginScrollTop  + innerPad + 300 - containerH / 2),
+        );
       }
     });
   }, [dashboard.data?.id]);
@@ -635,6 +679,8 @@ export default function EditorPage() {
   });
 
   const addNode = (type) => {
+    const definition = getWidgetDefinition(type);
+    if (!definition) throw new Error(`Widget type “${type}” is not registered.`);
     const existingNodes = scene.nodes || [];
 
     // Node size/height approximations for collision detection (must match CanvasNodeCard widthOf/getH)
@@ -642,17 +688,15 @@ export default function EditorPage() {
     const getW = (nodeOrSize) => typeof nodeOrSize === 'string'
       ? (widths[nodeOrSize] ?? 280)
       : (nodeOrSize.customWidth ?? widths[nodeOrSize.size] ?? 280);
-    const heights = { image: 240, chart: 220, table: 260, code: 220, metric: 160, timer: 160, status: 160, link: 160 };
+    const heights = { image: 240, chart: 220, table: 260, code: 220, metric: 160, timer: 160, status: 160, link: 160,
+    };
+    const rendererOf = (nodeOrType) =>
+      getWidgetDefinition(typeof nodeOrType === 'string' ? nodeOrType : nodeOrType.type)?.renderer;
     const getH = (nodeOrType) => typeof nodeOrType === 'string'
-      ? (heights[nodeOrType] ?? 180)
-      : (nodeOrType.customHeight ?? heights[nodeOrType.type] ?? 180);
+      ? (heights[rendererOf(nodeOrType)] ?? 180)
+      : (nodeOrType.customHeight ?? heights[rendererOf(nodeOrType)] ?? 180);
 
-    const incomingSize = {
-      note: 'wide', metric: 'medium', progress: 'medium', chart: 'medium',
-      status: 'small', logic: 'medium', image: 'medium', embed: 'wide',
-      table: 'wide', timer: 'medium', link: 'medium', divider: 'wide', code: 'wide',
-      display: 'medium',
-    }[type] ?? 'medium';
+    const incomingSize = definition.defaults.size || definition.defaultSize;
 
     const newW = getW(incomingSize);
     const newH = getH(type);
@@ -696,7 +740,7 @@ export default function EditorPage() {
           const cx = Math.max(40, minX + col * colW);
           const cy = Math.max(40, minY + row * rowH);
           // Distance of the candidate's center from the cluster center
-          const dist = Math.hypot((cx + newW / 2) - clusterCX, (cy + newH / 2) - clusterCY);
+          const dist = Math.hypot(cx + newW / 2 - clusterCX, cy + newH / 2 - clusterCY);
           candidates.push({ x: cx, y: cy, dist });
         }
       }
@@ -714,30 +758,19 @@ export default function EditorPage() {
 
     const { x, y } = findFreePosition();
 
-    const defaultTitle =
-      type === 'metric' ? 'New Metric' :
-      type === 'logic'  ? 'Formula Logic' :
-      type === 'display' ? 'Output Display' :
-      type === 'note'   ? 'Canvas Note' :
-      type === 'progress' ? 'Goal Progress' : 'New Node';
-
-    const defaultContent =
-      type === 'metric'   ? '100' :
-      type === 'note'     ? 'Add your project notes or documentation here.' :
-      type === 'progress' ? '50' : '0';
-
     const newNodeId = crypto.randomUUID();
     const newNodeObj = {
+      ...definition.defaults,
       id: newNodeId,
       type,
-      title: defaultTitle,
-      content: defaultContent,
+      title: definition.defaults.title || definition.title,
+      content: definition.defaults.content ?? '',
       size: incomingSize,
       x,
       y,
-      borderStyle: 'solid',
-      fontSize: 'regular',
-      color: 'slate',
+      borderStyle: definition.defaults.borderStyle || 'solid',
+      fontSize: definition.defaults.fontSize || 'regular',
+      color: definition.defaults.color || 'slate',
     };
 
     update({ ...scene, nodes: [...scene.nodes, newNodeObj] });
@@ -994,7 +1027,7 @@ export default function EditorPage() {
     const nextVisited = new Set(visited);
     nextVisited.add(node.id);
 
-    if (node.type === 'logic') {
+    if (getWidgetDefinition(node.type)?.renderer === 'logic') {
       return resolveMath(node, nextVisited).toString();
     }
 
@@ -1136,15 +1169,73 @@ export default function EditorPage() {
     const scrollContainer = gridRef.current;
     if (!scrollContainer) return;
     const rect = scrollContainer.getBoundingClientRect();
-    const x = e.clientX - rect.left + scrollContainer.scrollLeft;
-    const y = e.clientY - rect.top + scrollContainer.scrollTop;
-    awareness.setLocalStateField('cursor', { x, y });
-  }, [awareness]);
+    const point = pointerToCanvasPoint(
+        e.clientX,
+        e.clientY,
+        rect,
+        scrollContainer.scrollLeft,
+        scrollContainer.scrollTop,
+        zoom,
+      );
+      awareness.setLocalStateField('cursor', point);
+    },
+    [awareness, zoom],
+  );
 
   const handlePointerLeave = useCallback(() => {
     if (!awareness) return;
     awareness.setLocalStateField('cursor', null);
   }, [awareness]);
+
+  const handleViewportChange = useCallback(() => {
+    if (!awareness || !gridRef.current) return;
+    const viewport = gridRef.current;
+    const visibleCanvas = getCanvasViewport(
+      viewport.scrollLeft,
+      viewport.scrollTop,
+      viewport.clientWidth,
+      viewport.clientHeight,
+      zoom,
+    );
+    awareness.setLocalStateField(
+      'viewport',
+      Object.fromEntries(
+        Object.entries(visibleCanvas).map(([key, value]) => [key, Math.round(value)]),
+      ),
+    );
+  }, [awareness, zoom]);
+
+  useEffect(() => {
+    handleViewportChange();
+  }, [handleViewportChange, dashboard.isSuccess]);
+
+  const handleEditorFocus = useCallback(
+    (event) => {
+      if (!awareness) return;
+      const target = event.target;
+      const isTextEntry =
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.matches(
+            'input:not([type="checkbox"]):not([type="radio"]):not([type="button"]), textarea',
+          ));
+      awareness.setLocalStateField('typing', Boolean(isTextEntry));
+    },
+    [awareness],
+  );
+
+  const handleEditorBlur = useCallback((event) => {
+    if (!awareness) return;
+      const nextTarget = event.relatedTarget;
+      const remainsInTextEntry =
+        nextTarget instanceof HTMLElement &&
+        (nextTarget.isContentEditable ||
+          nextTarget.matches(
+            'input:not([type="checkbox"]):not([type="radio"]):not([type="button"]), textarea',
+          ));
+      awareness.setLocalStateField('typing', Boolean(remainsInTextEntry));
+  }, [awareness],
+  );
 
   const handleUndo = useCallback(() => {
     const prev = useHistoryStore.getState().undo(scene);
@@ -1206,7 +1297,7 @@ export default function EditorPage() {
     const idSet = new Set(idsToDelete);
     const nextNodes = scene.nodes.filter((n) => !idSet.has(n.id));
     const nextConnections = scene.connections.filter(
-      (c) => !idSet.has(c.fromId) && !idSet.has(c.toId)
+      (c) => !idSet.has(c.fromId) && !idSet.has(c.toId),
     );
     update({
       ...scene,
@@ -1223,14 +1314,16 @@ export default function EditorPage() {
       setSelectedNodeIds(scene.nodes.map((n) => n.id));
       useNotificationStore.getState().add(`Selected all ${scene.nodes.length} nodes.`, 'info');
     }
-  }, [scene?.nodes]);
+  }, [scene?.nodes],
+  );
 
   const alignSelectedNodes = (mode) => {
     if (!canEditDashboard || selectedNodeIds.length < 2) return;
     const selected = scene.nodes.filter((node) => selectedNodeIds.includes(node.id));
     const boxes = selected.map((node) => {
       const element = document.getElementById(`node-card-${node.id}`);
-      const width = element?.offsetWidth || node.customWidth || ({ small: 220, medium: 280, large: 340, wide: 440 }[node.size] || 280);
+      const width = element?.offsetWidth || node.customWidth ||
+        { small: 220, medium: 280, large: 340, wide: 440 }[node.size] || 280;
       const height = element?.offsetHeight || node.customHeight || 180;
       return {
         node,
@@ -1283,15 +1376,24 @@ export default function EditorPage() {
   };
 
   // Keyboard shortcut registrations
-  useShortcut('meta+z', handleUndo, { label: 'Undo change', category: 'Editor', allowInInput: true }, [scene]);
-  useShortcut('meta+shift+z', handleRedo, { label: 'Redo change', category: 'Editor', allowInInput: true }, [scene]);
-  useShortcut('meta+y', handleRedo, { label: 'Redo change', category: 'Editor', allowInInput: true }, [scene]);
-  useShortcut('meta+a', handleSelectAll, { label: 'Select all nodes', category: 'Editor' }, [scene?.nodes]);
-  useShortcut('meta+c', handleCopy, { label: 'Copy selected node(s)', category: 'Editor' }, [selectedNodeIds, scene]);
-  useShortcut('meta+v', handlePaste, { label: 'Paste copied node(s)', category: 'Editor' }, [scene]);
-  useShortcut('backspace', handleDeleteSelected, { label: 'Delete selected node(s)', category: 'Editor' }, [selectedNodeIds, scene]);
-  useShortcut('delete', handleDeleteSelected, { label: 'Delete selected node(s)', category: 'Editor' }, [selectedNodeIds, scene]);
-  useShortcut('meta+s', handleSave, { label: 'Save dashboard changes', category: 'Editor', allowInInput: true }, [yScene, scene]);
+  useShortcut('meta+z', handleUndo, { label: 'Undo change', category: 'Editor', allowInInput: true }, [scene],
+  );
+  useShortcut('meta+shift+z', handleRedo, { label: 'Redo change', category: 'Editor', allowInInput: true }, [scene],
+  );
+  useShortcut('meta+y', handleRedo, { label: 'Redo change', category: 'Editor', allowInInput: true }, [scene],
+  );
+  useShortcut('meta+a', handleSelectAll, { label: 'Select all nodes', category: 'Editor' }, [scene?.nodes,
+  ]);
+  useShortcut('meta+c', handleCopy, { label: 'Copy selected node(s)', category: 'Editor' }, [selectedNodeIds, scene,
+  ]);
+  useShortcut('meta+v', handlePaste, { label: 'Paste copied node(s)', category: 'Editor' }, [scene,
+  ]);
+  useShortcut('backspace', handleDeleteSelected, { label: 'Delete selected node(s)', category: 'Editor' }, [selectedNodeIds, scene],
+  );
+  useShortcut('delete', handleDeleteSelected, { label: 'Delete selected node(s)', category: 'Editor' }, [selectedNodeIds, scene],
+  );
+  useShortcut('meta+s', handleSave, { label: 'Save dashboard changes', category: 'Editor', allowInInput: true }, [yScene, scene],
+  );
   useShortcut('meta+=', handleZoomIn, { label: 'Zoom In', category: 'Editor' }, []);
   useShortcut('meta+-', handleZoomOut, { label: 'Zoom Out', category: 'Editor' }, []);
   useShortcut('meta+0', handleResetZoom, { label: 'Reset Zoom', category: 'Editor' }, []);
@@ -1328,12 +1430,10 @@ export default function EditorPage() {
         const nw = getW(n);
         const nh = getH(n);
         // AABB overlap check with gap buffer
-        return (
-          cx < nx + nw + gap &&
+        return cx < nx + nw + gap &&
           cx + cw + gap > nx &&
           cy < ny + nh + gap &&
-          cy + ch + gap > ny
-        );
+          cy + ch + gap > ny;
       });
     };
 
@@ -1360,7 +1460,7 @@ export default function EditorPage() {
         for (let col = -3; col <= 10; col++) {
           const cx = Math.max(40, minX + col * colW);
           const cy = Math.max(40, minY + row * rowH);
-          const dist = Math.hypot((cx + newW / 2) - clusterCX, (cy + newH / 2) - clusterCY);
+          const dist = Math.hypot(cx + newW / 2 - clusterCX, cy + newH / 2 - clusterCY);
           candidates.push({ x: cx, y: cy, dist });
         }
       }
@@ -1439,7 +1539,7 @@ export default function EditorPage() {
               return n;
             }),
           },
-          true
+          true,
         );
       });
     };
@@ -1477,8 +1577,10 @@ export default function EditorPage() {
       if (rafId) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
         const currentZoom = zoomRef.current || 1;
-        const width = Math.max(180, Math.round(initialWidth + (moveEvent.clientX - startX) / currentZoom));
-        const height = Math.max(100, Math.round(initialHeight + (moveEvent.clientY - startY) / currentZoom));
+        const width = Math.max(180, Math.round(initialWidth + (moveEvent.clientX - startX) / currentZoom),
+        );
+        const height = Math.max(100, Math.round(initialHeight + (moveEvent.clientY - startY) / currentZoom),
+        );
         updateNode(nodeId, { customWidth: width, customHeight: height }, true);
       });
     };
@@ -1522,7 +1624,7 @@ export default function EditorPage() {
     const current = sceneRef.current;
     const node = current.nodes.find((item) => item.id === nodeId);
     if (!node) return;
-    const step = event.shiftKey ? 50 : snapToGrid ? (current.gridSize || 24) : 10;
+    const step = event.shiftKey ? 50 : snapToGrid ? current.gridSize || 24 : 10;
     updateNode(nodeId, {
       x: (node.x ?? 40) + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0),
       y: (node.y ?? 40) + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0),
@@ -1558,7 +1660,10 @@ export default function EditorPage() {
     );
 
   return (
-    <section className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-slate-50 dark:bg-[#030509]">
+    <section className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-slate-50 dark:bg-[#030509]"
+      onFocusCapture={handleEditorFocus}
+      onBlurCapture={handleEditorBlur}
+    >
       <style>{`
         .no-scrollbars::-webkit-scrollbar {
           display: none;
@@ -1719,6 +1824,60 @@ export default function EditorPage() {
               <Save size={14} /> {save.isPending ? 'Saving…' : 'Save'}
             </button>
           )}
+
+          {onlineCollaborators.length > 0 && (
+            <div
+              role="group"
+              aria-label={`${onlineCollaborators.length} ${onlineCollaborators.length === 1 ? 'collaborator' : 'collaborators'} online`}
+              className="flex items-center pl-1"
+            >
+              {onlineCollaborators.slice(0, 4).map((collaborator, index) => {
+                const initials = (collaborator.name || 'Voxel member')
+                  .split(/\s+/)
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .map((part) => part[0])
+                  .join('')
+                  .toUpperCase();
+
+                const viewportTitle = collaborator.viewport
+                  ? `Viewing canvas around ${collaborator.viewport.x}, ${collaborator.viewport.y}`
+                  : '';
+                const presenceTitle = [
+                  collaborator.name || 'Voxel member',
+                  collaborator.isTyping ? 'Typing' : '',
+                  viewportTitle,
+                ]
+                  .filter(Boolean)
+                  .join(' · ');
+
+                return (
+                  <div
+                    key={collaborator.clientId}
+                    role="img"
+                    aria-label={presenceTitle}
+                    title={presenceTitle}
+                    className={`relative grid size-7 place-items-center overflow-hidden rounded-full border-2 border-white text-[9px] font-extrabold text-white shadow-sm dark:border-[#070b14] ${index > 0 ? '-ml-2' : ''}`}
+                    style={{ backgroundColor: collaborator.color || '#475569' }}
+                  >
+                    {collaborator.avatarUrl ? (
+                      <img src={collaborator.avatarUrl} alt="" className="size-full object-cover" />
+                    ) : (
+                      initials
+                    )}
+                    {collaborator.isTyping && (
+                      <span className="absolute bottom-0 right-0 size-2 rounded-full bg-amber-300 ring-1 ring-white dark:ring-[#070b14]" />
+                    )}
+                  </div>
+                );
+              })}
+              {onlineCollaborators.length > 4 && (
+                <span className="-ml-2 grid size-7 place-items-center rounded-full border-2 border-white bg-slate-200 text-[9px] font-bold text-slate-700 dark:border-[#070b14] dark:bg-slate-700 dark:text-slate-100">
+                  +{onlineCollaborators.length - 4}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
@@ -1749,8 +1908,9 @@ export default function EditorPage() {
             />
             {/* Tabs */}
             <div className="flex border-b border-slate-200/80 dark:border-white/10 p-1.5 gap-1 bg-slate-50/50 dark:bg-white/5">
-              {canEditDashboard && <>
-              <button
+              {canEditDashboard && (
+                <>
+                  <button
                 onClick={() => setLeftPanelTab('elements')}
                 className={`flex-1 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
                   leftPanelTab === 'elements'
@@ -1758,9 +1918,9 @@ export default function EditorPage() {
                     : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
                 }`}
               >
-                <Plus size={12} /> Elements
-              </button>
-              <button
+                    <Plus size={12} /> Elements
+                  </button>
+                  <button
                 onClick={() => setLeftPanelTab('templates')}
                 className={`flex-1 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
                   leftPanelTab === 'templates'
@@ -1768,9 +1928,9 @@ export default function EditorPage() {
                     : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
                 }`}
               >
-                <FolderOpen size={12} /> Presets
-              </button>
-              <button
+                    <FolderOpen size={12} /> Presets
+                  </button>
+                  <button
                 onClick={() => setLeftPanelTab('layers')}
                 className={`flex-1 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
                   leftPanelTab === 'layers'
@@ -1778,9 +1938,10 @@ export default function EditorPage() {
                     : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
                 }`}
               >
-                <Layers size={12} /> Layers
-              </button>
-              </>}
+                    <Layers size={12} /> Layers
+                  </button>
+                </>
+              )}
               <button
                 onClick={() => setLeftPanelTab('comments')}
                 className={`flex-1 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
@@ -1801,23 +1962,27 @@ export default function EditorPage() {
                     Click to Add Element
                   </span>
                   <div className="grid grid-cols-1 gap-2">
-                    {BUILTIN_WIDGETS.map((definition) => {
+                    {widgetDefinitions.map((definition) => {
                       const Icon = widgetIconComponents[definition.icon] || Layers;
-                      return <button
+                      return (
+                        <button
                         key={definition.type}
                         onClick={() => addNode(definition.type)}
                         className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5 hover:border-violet-500/40 hover:bg-violet-500/5 transition cursor-pointer text-left group"
                       >
-                        <div className="size-8 rounded-lg bg-white dark:bg-slate-800 grid place-items-center shadow-xs group-hover:scale-105 transition-transform shrink-0">
-                          <Icon className={widgetIconColors[definition.type] || 'text-violet-500'} size={16} />
-                        </div>
-                        <div>
-                          <div className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-tight">
-                            {definition.title}
+                          <div className="size-8 rounded-lg bg-white dark:bg-slate-800 grid place-items-center shadow-xs group-hover:scale-105 transition-transform shrink-0">
+                            <Icon className={widgetIconColors[definition.type] || 'text-violet-500'} size={16} />
                           </div>
-                          <div className="text-[10px] text-slate-400 mt-0.5">{definition.description}</div>
-                        </div>
-                      </button>
+                          <div>
+                            <div className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-tight">
+                              {definition.title}
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">
+                              {definition.description}
+                            </div>
+                          </div>
+                        </button>
+                      );
                     })}
                   </div>
                 </div>
@@ -1830,18 +1995,25 @@ export default function EditorPage() {
                   </span>
                   <div className="space-y-2">
                     {[
-                      { key: 'server', title: 'Server Monitor', desc: 'CPU, RAM, & Request load pipeline' },
-                      { key: 'business', title: 'Sales Performance', desc: 'Daily visitors, conversion & revenue' },
-                      { key: 'tasks', title: 'Sprint Backlog', desc: 'Task completion & velocity stats' },
-                      { key: 'devhub', title: 'Developer Hub', desc: 'PRs, CI builds & test coverage' },
-                      { key: 'ops', title: 'Operations Center', desc: 'Uptime SLA & active error metrics' },
+                      { key: 'server', title: 'Server Monitor', desc: 'CPU, RAM, & Request load pipeline',
+                      },
+                      { key: 'business', title: 'Sales Performance', desc: 'Daily visitors, conversion & revenue',
+                      },
+                      { key: 'tasks', title: 'Sprint Backlog', desc: 'Task completion & velocity stats',
+                      },
+                      { key: 'devhub', title: 'Developer Hub', desc: 'PRs, CI builds & test coverage',
+                      },
+                      { key: 'ops', title: 'Operations Center', desc: 'Uptime SLA & active error metrics',
+                      },
                     ].map((t) => (
                       <button
                         key={t.key}
                         onClick={() => loadPreset(t.key)}
                         className="w-full text-left p-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5 hover:border-violet-500/40 hover:bg-violet-500/10 transition cursor-pointer"
                       >
-                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200">{t.title}</div>
+                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                          {t.title}
+                        </div>
                         <div className="text-[10px] text-slate-400 mt-0.5">{t.desc}</div>
                       </button>
                     ))}
@@ -1867,7 +2039,10 @@ export default function EditorPage() {
 
                   {selectedNodeIds.length > 0 && (
                     <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-violet-500/10 border border-violet-500/20 text-xs font-bold text-violet-600 dark:text-violet-300 animate-fade-in">
-                      <span>{selectedNodeIds.length} {selectedNodeIds.length === 1 ? 'layer' : 'layers'} selected</span>
+                      <span>
+                        {selectedNodeIds.length} {selectedNodeIds.length === 1 ? 'layer' : 'layers'}{' '}
+                        selected
+                      </span>
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
@@ -2019,9 +2194,11 @@ export default function EditorPage() {
           {/* 360-degree Infinite Scrollable Container */}
           <div
             ref={gridRef}
-            className="w-full h-full overflow-auto relative p-[1200px] no-scrollbars flex-1"
+            className="w-full h-full overflow-auto relative no-scrollbars flex-1"
+            style={{ padding: CANVAS_PADDING }}
             onPointerMove={handlePointerMove}
             onPointerLeave={handlePointerLeave}
+            onScroll={handleViewportChange}
           >
             {/* The infinite board sheet */}
             <div
@@ -2086,7 +2263,9 @@ export default function EditorPage() {
               </svg>
 
               {/* Grid Layout Container */}
-              <div className="relative z-10 w-full h-full p-12">
+              <div className="relative z-10 w-full h-full"
+                style={{ padding: CANVAS_INNER_PADDING }}
+              >
                 {scene.nodes.length > 0 && (
                   <NodeGrid
                     nodes={scene.nodes}
@@ -2106,6 +2285,14 @@ export default function EditorPage() {
               </div>
             </div>
           </div>
+
+          <CanvasOverview
+            nodes={scene.nodes}
+            collaborators={awarenessStates.filter(([, state]) => state.user?.id && state.viewport)}
+            localClientId={awareness?.clientID}
+            zoom={zoom}
+            gridRef={gridRef}
+          />
 
           {/* Floating Canvas Zoom Controls */}
           <div className="absolute bottom-5 right-5 z-40 flex items-center gap-1.5 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white/90 dark:bg-[#0c101d]/90 backdrop-blur-xl p-1.5 shadow-xl select-none">
@@ -2231,7 +2418,9 @@ export default function EditorPage() {
                     </div>
 
                     <fieldset className="space-y-2">
-                      <legend className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Align selection</legend>
+                      <legend className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                        Align selection
+                      </legend>
                       <div className="grid grid-cols-3 gap-1.5">
                         {[
                           { id: 'left', label: 'Left' }, { id: 'center', label: 'Center' }, { id: 'right', label: 'Right' },
@@ -2264,8 +2453,10 @@ export default function EditorPage() {
                             key={id}
                             type="button"
                             onClick={() => {
-                              selectedNodeIds.forEach((nodeId) => updateNode(nodeId, { color: id }));
-                              useNotificationStore.getState().add(`Applied ${id} color to ${selectedNodeIds.length} nodes.`, 'info');
+                              selectedNodeIds.forEach((nodeId) => updateNode(nodeId, { color: id }),
+                              );
+                              useNotificationStore.getState().add(`Applied ${id} color to ${selectedNodeIds.length} nodes.`, 'info',
+                                );
                             }}
                             className={`size-6 rounded-full border border-white/20 transition hover:scale-110 cursor-pointer ${color}`}
                             title={`Set color to ${id}`}
@@ -2283,13 +2474,17 @@ export default function EditorPage() {
                         defaultValue=""
                         onChange={(e) => {
                           if (e.target.value) {
-                            selectedNodeIds.forEach((nodeId) => updateNode(nodeId, { borderStyle: e.target.value }));
-                            useNotificationStore.getState().add(`Applied ${e.target.value} border to ${selectedNodeIds.length} nodes.`, 'info');
+                            selectedNodeIds.forEach((nodeId) => updateNode(nodeId, { borderStyle: e.target.value }),
+                            );
+                            useNotificationStore.getState().add(`Applied ${e.target.value} border to ${selectedNodeIds.length} nodes.`, 'info',
+                              );
                           }
                         }}
                         className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900"
                       >
-                        <option value="" disabled>Apply Border Style to All...</option>
+                        <option value="" disabled>
+                          Apply Border Style to All...
+                        </option>
                         <option value="solid">Solid Line</option>
                         <option value="dashed">Dashed Border</option>
                         <option value="glow">Neon Glow</option>
@@ -2336,185 +2531,209 @@ export default function EditorPage() {
                 const selectedNode = scene.nodes.find((node) => node.id === selectedNodeId);
                 if (!selectedNode) return null;
                 const widgetDefinition = getWidgetDefinition(selectedNode.type);
+                const widgetRenderer = widgetDefinition?.renderer;
                 return (
                   <>
                     <div className="space-y-5 overflow-y-auto max-h-[calc(100vh-180px)] pb-4">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-white/5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 rounded px-1.5 py-0.5 uppercase tracking-wide">
-                        {selectedNode.type}
-                      </span>
-                      <h3 className="font-semibold text-sm">Inspector</h3>
-                    </div>
-                    <button
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-white/5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 rounded px-1.5 py-0.5 uppercase tracking-wide">
+                            {widgetDefinition?.title || selectedNode.type}
+                          </span>
+                          <h3 className="font-semibold text-sm">Inspector</h3>
+                        </div>
+                        <button
                       onClick={() => setSelectedNodeId(null)}
                       className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 cursor-pointer"
                     >
-                      <X size={16} />
-                    </button>
-                  </div>
+                          <X size={16} />
+                        </button>
+                      </div>
 
-                  <div className="space-y-4">
-                    {/* Title */}
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                        Label/Title
-                      </label>
-                      <input
+                      <div className="space-y-4">
+                        {/* Title */}
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                            Label/Title
+                          </label>
+                          <input
                         type="text"
                         maxLength={160}
                         value={selectedNode.title}
                         onChange={(e) => updateNode(selectedNode.id, { title: e.target.value })}
                         className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10"
                       />
-                    </div>
+                        </div>
 
-                    {/* Common fields: Value Source mode */}
-                    {selectedNode.type !== 'logic' && (
+                        {/* Common fields: Value Source mode */}
+                        {widgetRenderer !== 'logic' && (
                       <div className="space-y-1.5 pt-2">
-                        <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                          Value Source
-                        </label>
-                        <select
+                            <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                              Value Source
+                            </label>
+                            <select
                           value={selectedNode.valueSource || 'manual'}
                           onChange={(e) =>
                             updateNode(selectedNode.id, { valueSource: e.target.value })
                           }
                           className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900"
                         >
-                          <option value="manual">Manual Input</option>
-                          <option value="connections">Connected Inputs (Aggregation)</option>
-                        </select>
-                      </div>
+                              <option value="manual">Manual Input</option>
+                              <option value="connections">Connected Inputs (Aggregation)</option>
+                            </select>
+                          </div>
                     )}
 
-                    {selectedNode.type !== 'logic' &&
+                        {widgetRenderer !== 'logic' &&
                       selectedNode.valueSource === 'connections' && (
                         <div className="space-y-2 border border-violet-100 p-2.5 rounded-lg dark:border-white/5 bg-violet-50/20 dark:bg-violet-950/5">
-                          <div>
-                            <label className="text-[10px] font-bold text-violet-500 uppercase tracking-wider block mb-1">
-                              Aggregation Formula
-                            </label>
-                            <select
+                              <div>
+                                <label className="text-[10px] font-bold text-violet-500 uppercase tracking-wider block mb-1">
+                                  Aggregation Formula
+                                </label>
+                                <select
                               value={selectedNode.aggregationOperator || 'sum'}
                               onChange={(e) =>
-                                updateNode(selectedNode.id, { aggregationOperator: e.target.value })
+                                updateNode(selectedNode.id, { aggregationOperator: e.target.value,
+                                    })
                               }
                               className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900 text-violet-600 dark:text-violet-400 font-semibold"
                             >
-                              <option value="sum">Sum (+)</option>
-                              <option value="avg">Average (AVG)</option>
-                              <option value="prod">Product (×)</option>
-                              <option value="min">Minimum (MIN)</option>
-                              <option value="max">Maximum (MAX)</option>
-                            </select>
-                          </div>
+                                  <option value="sum">Sum (+)</option>
+                                  <option value="avg">Average (AVG)</option>
+                                  <option value="prod">Product (×)</option>
+                                  <option value="min">Minimum (MIN)</option>
+                                  <option value="max">Maximum (MAX)</option>
+                                </select>
+                              </div>
 
-                          {/* Display live inputs */}
-                          <div className="text-[10px] text-slate-400 space-y-1">
-                            <span className="font-semibold block text-slate-500">
-                              Incoming connections:
-                            </span>
-                            {(() => {
+                              {/* Display live inputs */}
+                              <div className="text-[10px] text-slate-400 space-y-1">
+                                <span className="font-semibold block text-slate-500">
+                                  Incoming connections:
+                                </span>
+                                {(() => {
                               const incoming = scene.connections.filter(
                                 (c) => c.toId === selectedNode.id,
                               );
                               if (incoming.length === 0) {
                                 return (
                                   <span className="italic block mt-1">
-                                    No connections. Draw an arrow from another node to link them.
-                                  </span>
+                                        No connections. Draw an arrow from another node to link
+                                        them.
+                                      </span>
                                 );
                               }
                               return (
                                 <ul className="list-disc list-inside space-y-0.5 font-mono">
-                                  {incoming.map((c, i) => {
+                                      {incoming.map((c, i) => {
                                     const src = scene.nodes.find((n) => n.id === c.fromId);
                                     return (
                                       <li key={i}>
-                                        {src ? `${src.title}: ` : 'Unknown Node: '}
-                                        <span className="text-violet-500 font-bold">
-                                          {src ? resolveNodeValue(src) : '0'}
-                                        </span>
-                                      </li>
+                                            {src ? `${src.title}: ` : 'Unknown Node: '}
+                                            <span className="text-violet-500 font-bold">
+                                              {src ? resolveNodeValue(src) : '0'}
+                                            </span>
+                                          </li>
                                     );
                                   })}
-                                </ul>
+                                    </ul>
                               );
                             })()}
-                          </div>
-                        </div>
+                              </div>
+                            </div>
                       )}
 
-                    {/* Widget-specific controls come from the registered configuration schema. */}
-                    {widgetDefinition ? (
+                        {/* Widget-specific controls come from the registered configuration schema. */}
+                        {widgetDefinition ? (
                       <div className="space-y-3">
-                        {widgetDefinition.fields.map((field) => {
+                            {widgetDefinition.fields.map((field) => {
                           const value = selectedNode[field.key] ?? '';
                           const controlClass = 'w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900';
                           const connectedValue = field.isValue && selectedNode.valueSource === 'connections';
                           return (
                             <label key={field.key} className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                              {field.label}
-                              {connectedValue ? (
+                                  {field.label}
+                                  {connectedValue ? (
                                 <div className="mt-1 rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs font-medium normal-case tracking-normal text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
-                                  Resolved from connections: <b>{resolveNodeValue(selectedNode)}</b>
-                                </div>
+                                      Resolved from connections:{' '}
+                                      <b>{resolveNodeValue(selectedNode)}</b>
+                                    </div>
                               ) : field.type === 'node-select' ? (
-                                <select value={value} onChange={(event) => updateNode(selectedNode.id, { [field.key]: event.target.value })} className={`${controlClass} mt-1 normal-case tracking-normal`}>
-                                  <option value="">Choose a widget…</option>
-                                  {scene.nodes.filter((node) => node.id !== selectedNode.id && node.type !== 'note').map((node) => <option key={node.id} value={node.id}>{node.title || node.type} · {node.type}</option>)}
-                                </select>
+                                <select value={value} onChange={(event) => updateNode(selectedNode.id, { [field.key]: event.target.value,
+                                        })} className={`${controlClass} mt-1 normal-case tracking-normal`}>
+                                      <option value="">Choose a widget…</option>
+                                      {scene.nodes.filter((node) => node.id !== selectedNode.id &&
+                                            getWidgetDefinition(node.type)?.renderer !== 'note',
+                                        ).map((node) => (
+                                          <option key={node.id} value={node.id}>
+                                            {node.title || node.type} · {node.type}
+                                          </option>))}
+                                    </select>
                               ) : field.type === 'select' ? (
-                                <select value={value || field.options[0]?.value || ''} onChange={(event) => updateNode(selectedNode.id, { [field.key]: event.target.value })} className={`${controlClass} mt-1 normal-case tracking-normal`}>
-                                  {field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                </select>
+                                <select value={value || field.options[0]?.value || ''} onChange={(event) => updateNode(selectedNode.id, { [field.key]: event.target.value,
+                                        })} className={`${controlClass} mt-1 normal-case tracking-normal`}>
+                                      {field.options.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                          {option.label}
+                                        </option>))}
+                                    </select>
                               ) : field.type === 'textarea' ? (
-                                <textarea value={value} maxLength={field.maxLength} rows={field.monospace ? 6 : 4} onChange={(event) => updateNode(selectedNode.id, { [field.key]: event.target.value })} className={`${controlClass} mt-1 resize-y normal-case tracking-normal ${field.monospace ? 'font-mono text-xs' : ''}`} />
+                                <textarea value={value} maxLength={field.maxLength} rows={field.monospace ? 6 : 4} onChange={(event) => updateNode(selectedNode.id, { [field.key]: event.target.value,
+                                        })} className={`${controlClass} mt-1 resize-y normal-case tracking-normal ${field.monospace ? 'font-mono text-xs' : ''}`} />
                               ) : (
-                                <input type={field.type === 'number' ? 'number' : field.type === 'url' ? 'url' : 'text'} inputMode={field.type === 'number-text' ? 'decimal' : undefined} min={field.min} max={field.max} maxLength={field.maxLength} value={value} placeholder={field.placeholder} onChange={(event) => updateNode(selectedNode.id, { [field.key]: field.type === 'number' ? (Number(event.target.value) || field.min) : event.target.value })} className={`${controlClass} mt-1 normal-case tracking-normal ${field.monospace ? 'font-mono text-xs' : ''}`} />
+                                <input type={field.type === 'number' ? 'number' : field.type === 'url' ? 'url' : 'text'} inputMode={field.type === 'number-text' ? 'decimal' : undefined} min={field.min} max={field.max} maxLength={field.maxLength} value={value} placeholder={field.placeholder} onChange={(event) => updateNode(selectedNode.id, { [field.key]: field.type === 'number' ? Number(event.target.value) || field.min
+                                              : event.target.value,
+                                        })} className={`${controlClass} mt-1 normal-case tracking-normal ${field.monospace ? 'font-mono text-xs' : ''}`} />
                               )}
-                              {field.help && <span className="mt-1 block font-normal normal-case tracking-normal text-slate-400">{field.help}</span>}
-                            </label>
+                                  {field.help && (
+                                    <span className="mt-1 block font-normal normal-case tracking-normal text-slate-400">
+                                      {field.help}
+                                    </span>
+                                  )}
+                                </label>
                           );
                         })}
-                      </div>
+                          </div>
                     ) : (
                       <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
-                        This widget type is not available in this version. Its saved data is preserved.
-                      </p>
+                            This widget type is not available in this version. Its saved data is
+                            preserved.
+                          </p>
                     )}
 
-                    {/* Sizing Tiers */}
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                        Grid Column Span
-                      </label>
-                      <select
+                        {/* Sizing Tiers */}
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                            Grid Column Span
+                          </label>
+                          <select
                         value={selectedNode.size}
-                        onChange={(e) => updateNode(selectedNode.id, { size: e.target.value, customWidth: null, customHeight: null })}
+                        onChange={(e) => updateNode(selectedNode.id, { size: e.target.value, customWidth: null, customHeight: null,
+                              })}
                         className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900"
                       >
-                        <option value="small">Small (3 cols - 1/4 Row)</option>
-                        <option value="medium">Medium (4 cols - 1/3 Row)</option>
-                        <option value="large">Large (6 cols - 1/2 Row)</option>
-                        <option value="wide">Wide (12 cols - Full Row)</option>
-                      </select>
-                    </div>
+                            <option value="small">Small (3 cols - 1/4 Row)</option>
+                            <option value="medium">Medium (4 cols - 1/3 Row)</option>
+                            <option value="large">Large (6 cols - 1/2 Row)</option>
+                            <option value="wide">Wide (12 cols - Full Row)</option>
+                          </select>
+                        </div>
 
-                    {/* Card Visual Customizations */}
-                    <div className="border-t border-slate-100 dark:border-white/5 pt-3 space-y-3">
-                      <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                        Design & Styles
-                      </h4>
+                        {/* Card Visual Customizations */}
+                        <div className="border-t border-slate-100 dark:border-white/5 pt-3 space-y-3">
+                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            Design & Styles
+                          </h4>
 
-                      {/* Theme color */}
-                      <div>
-                        <label className="text-[10px] block mb-1 text-slate-500">
-                          Color Palette
-                        </label>
-                        <div className="flex flex-wrap gap-1">
-                          {['slate', 'violet', 'emerald', 'rose', 'amber', 'indigo', 'cyan'].map(
+                          {/* Theme color */}
+                          <div>
+                            <label className="text-[10px] block mb-1 text-slate-500">
+                              Color Palette
+                            </label>
+                            <div className="flex flex-wrap gap-1">
+                              {['slate', 'violet', 'emerald', 'rose', 'amber', 'indigo', 'cyan',
+                              ].map(
                             (color) => (
                               <button
                                 key={color}
@@ -2542,68 +2761,69 @@ export default function EditorPage() {
                                 }}
                                 title={color}
                               />
-                            ),
-                          )}
-                        </div>
-                      </div>
+                            ))}
+                            </div>
+                          </div>
 
-                      {/* Borders */}
-                      <div>
-                        <label className="text-[10px] block mb-1 text-slate-500">
-                          Border Style
-                        </label>
-                        <select
+                          {/* Borders */}
+                          <div>
+                            <label className="text-[10px] block mb-1 text-slate-500">
+                              Border Style
+                            </label>
+                            <select
                           value={selectedNode.borderStyle || 'solid'}
                           onChange={(e) =>
                             updateNode(selectedNode.id, { borderStyle: e.target.value })
                           }
                           className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none dark:border-white/10 dark:bg-slate-900"
                         >
-                          <option value="solid">Solid Line</option>
-                          <option value="dashed">Dashed Line</option>
-                          <option value="glow">Neon Glow</option>
-                        </select>
-                      </div>
+                              <option value="solid">Solid Line</option>
+                              <option value="dashed">Dashed Line</option>
+                              <option value="glow">Neon Glow</option>
+                            </select>
+                          </div>
 
-                      {/* Fonts */}
-                      <div>
-                        <label className="text-[10px] block mb-1 text-slate-500">Font Size</label>
-                        <select
+                          {/* Fonts */}
+                          <div>
+                            <label className="text-[10px] block mb-1 text-slate-500">
+                              Font Size
+                            </label>
+                            <select
                           value={selectedNode.fontSize || 'regular'}
                           onChange={(e) =>
                             updateNode(selectedNode.id, { fontSize: e.target.value })
                           }
                           className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none dark:border-white/10 dark:bg-slate-900"
                         >
-                          <option value="regular">Regular</option>
-                          <option value="medium">Medium</option>
-                          <option value="large">Large Header</option>
-                        </select>
-                      </div>
-                    </div>
+                              <option value="regular">Regular</option>
+                              <option value="medium">Medium</option>
+                              <option value="large">Large Header</option>
+                            </select>
+                          </div>
+                        </div>
 
-                    {/* Connect to another node */}
-                    <div className="border-t border-slate-100 dark:border-white/5 pt-3">
-                      <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
-                        <LinkIcon size={12} /> Connecting Lines
-                      </h4>
+                        {/* Connect to another node */}
+                        <div className="border-t border-slate-100 dark:border-white/5 pt-3">
+                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                            <LinkIcon size={12} /> Connecting Lines
+                          </h4>
 
-                      <div className="space-y-2">
-                        <div className="flex gap-1.5">
-                          <select
+                          <div className="space-y-2">
+                            <div className="flex gap-1.5">
+                              <select
                             id="connect-select"
                             className="flex-1 rounded-lg border border-slate-200 bg-transparent px-2.5 py-1.5 text-xs focus:outline-none dark:border-white/10 dark:bg-slate-900"
                           >
-                            <option value="">Connect to node...</option>
-                            {scene.nodes
+                                <option value="">Connect to node...</option>
+                                {scene.nodes
                               .filter((n) => n.id !== selectedNode.id)
                               .map((n) => (
                                 <option key={n.id} value={n.id}>
-                                  {n.title}
-                                </option>
+                                      {n.title}
+                                    </option>
                               ))}
-                          </select>
-                          <button
+                              </select>
+                              <button
                             onClick={() => {
                               const select = document.getElementById('connect-select');
                               if (select && select.value) {
@@ -2613,13 +2833,13 @@ export default function EditorPage() {
                             }}
                             className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white cursor-pointer hover:bg-violet-500"
                           >
-                            Add
-                          </button>
-                        </div>
+                                Add
+                              </button>
+                            </div>
 
-                        {/* List existing connections */}
-                        <div className="max-h-24 overflow-y-auto space-y-1.5 pt-1">
-                          {scene.connections
+                            {/* List existing connections */}
+                            <div className="max-h-24 overflow-y-auto space-y-1.5 pt-1">
+                              {scene.connections
                             .map((c, i) => ({ ...c, index: i }))
                             .filter(
                               (c) => c.fromId === selectedNode.id || c.toId === selectedNode.id,
@@ -2633,34 +2853,34 @@ export default function EditorPage() {
                                   key={c.index}
                                   className="flex items-center justify-between text-[11px] bg-slate-50 dark:bg-white/5 rounded px-2 py-1"
                                 >
-                                  <span className="truncate text-slate-500">
-                                    Connected to <b>{otherNode.title}</b>
-                                  </span>
-                                  <button
+                                      <span className="truncate text-slate-500">
+                                        Connected to <b>{otherNode.title}</b>
+                                      </span>
+                                      <button
                                     onClick={() => deleteConnection(c.index)}
                                     className="text-slate-400 hover:text-rose-500 cursor-pointer"
                                     title="Remove connection"
                                   >
-                                    <Trash2 size={12} />
-                                  </button>
-                                </div>
+                                        <Trash2 size={12} />
+                                      </button>
+                                    </div>
                               );
                             })}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                </div>
 
-                <div className="border-t border-slate-100 pt-4 dark:border-white/5 mt-5 lg:mt-0">
-                  <button
+                    <div className="border-t border-slate-100 pt-4 dark:border-white/5 mt-5 lg:mt-0">
+                      <button
                     onClick={() => deleteNode(selectedNode.id)}
                     className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-500 cursor-pointer shadow-lg shadow-rose-600/10"
                   >
-                    Delete Node
-                  </button>
-                </div>
-              </>
+                        Delete Node
+                      </button>
+                    </div>
+                  </>
             );
           })()
         ) : (
@@ -2773,12 +2993,20 @@ export default function EditorPage() {
                     </span>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="p-2.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-center">
-                        <div className="text-base font-extrabold text-slate-900 dark:text-white font-mono">{scene.nodes.length}</div>
-                        <div className="text-[9px] text-slate-400 uppercase font-bold">Total Nodes</div>
+                        <div className="text-base font-extrabold text-slate-900 dark:text-white font-mono">
+                          {scene.nodes.length}
+                        </div>
+                        <div className="text-[9px] text-slate-400 uppercase font-bold">
+                          Total Nodes
+                        </div>
                       </div>
                       <div className="p-2.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-center">
-                        <div className="text-base font-extrabold text-slate-900 dark:text-white font-mono">{scene.connections.length}</div>
-                        <div className="text-[9px] text-slate-400 uppercase font-bold">Connections</div>
+                        <div className="text-base font-extrabold text-slate-900 dark:text-white font-mono">
+                          {scene.connections.length}
+                        </div>
+                        <div className="text-[9px] text-slate-400 uppercase font-bold">
+                          Connections
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2803,35 +3031,198 @@ export default function EditorPage() {
 
       {/* Render Remote Cursors */}
       {awarenessStates
-        .filter(([clientId, state]) => clientId !== awareness?.clientID && state.user && state.cursor)
-        .map(([clientId, state]) => (
-          <div
-            key={clientId}
-            className="absolute z-[100] pointer-events-none flex flex-col items-start"
-            style={{
-              left: state.cursor.x,
-              top: state.cursor.y,
-              transform: 'translate(-2px, -2px)',
-            }}
-          >
-            {/* Custom SVG Mouse Pointer */}
-            <svg width="24" height="24" viewBox="0 0 24 24" fill={state.user.color} xmlns="http://www.w3.org/2000/svg" style={{ filter: 'drop-shadow(0px 2px 4px rgba(0,0,0,0.15))' }}>
-              <path d="M4.321 2.302L20.407 10.963C21.411 11.503 21.282 12.983 20.198 13.355L13.916 15.513L11.758 21.795C11.386 22.879 9.906 23.008 9.366 22.004L0.705 5.918C0.218 5.021 1.025 4.053 1.961 4.472L4.321 2.302Z" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+        .filter(
+          ([clientId, state]) => clientId !== awareness?.clientID && state.user && state.cursor,
+        )
+        .map(([clientId, state]) => {
+          const viewport = gridRef.current;
+          if (!viewport) return null;
+          const bounds = viewport.getBoundingClientRect();
+          const position = canvasPointToScreen(
+            state.cursor,
+            bounds,
+            viewport.scrollLeft,
+            viewport.scrollTop,
+            zoom,
+          );
+
+          return (
             <div
-              className="mt-1 ml-4 px-2 py-1 text-[10px] font-bold text-white rounded shadow-sm whitespace-nowrap"
-              style={{ backgroundColor: state.user.color }}
+              key={clientId}
+              className="absolute z-[100] pointer-events-none flex flex-col items-start"
+              style={{ left: position.x, top: position.y, transform: 'translate(-2px, -2px)' }}
             >
-              {state.user.name}
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill={state.user.color}
+                xmlns="http://www.w3.org/2000/svg"
+                style={{ filter: 'drop-shadow(0px 2px 4px rgba(0,0,0,0.15))' }}
+              >
+                <path
+                  d="M4.321 2.302L20.407 10.963C21.411 11.503 21.282 12.983 20.198 13.355L13.916 15.513L11.758 21.795C11.386 22.879 9.906 23.008 9.366 22.004L0.705 5.918C0.218 5.021 1.025 4.053 1.961 4.472L4.321 2.302Z"
+                  stroke="white"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <div
+                className="mt-1 ml-4 px-2 py-1 text-[10px] font-bold text-white rounded shadow-sm whitespace-nowrap"
+                style={{ backgroundColor: state.user.color }}
+              >
+                {state.user.name}
+                {state.typing ? ' · typing' : ''}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
     </section>
   );
 }
 
+const CanvasOverview = memo(
+  function CanvasOverview({ nodes, collaborators, localClientId, zoom, gridRef }) {
+    const dimensions = useMemo(() => {
+      const nodeBounds = nodes.map((node) => {
+        const width =
+          node.customWidth ??
+          ({ small: 220, medium: 280, large: 340, wide: 440 }[node.size] || 280);
+        const height =
+          node.customHeight ??
+          ({ image: 240, chart: 220, table: 260, code: 220, metric: 160 }[node.type] || 180);
+        return { x: node.x ?? 40, y: node.y ?? 40, width, height };
+      });
+      const viewportBounds = collaborators.map(([, state]) => ({
+        x: state.viewport.x,
+        y: state.viewport.y,
+        width: state.viewport.width,
+        height: state.viewport.height,
+      }));
+      const bounds = [...nodeBounds, ...viewportBounds];
+      const minX = Math.min(0, ...bounds.map((item) => item.x));
+      const minY = Math.min(0, ...bounds.map((item) => item.y));
+      const maxX = Math.max(2400, ...bounds.map((item) => item.x + item.width));
+      const maxY = Math.max(1800, ...bounds.map((item) => item.y + item.height));
+      const padding = 160;
+
+      return {
+        minX: minX - padding,
+        minY: minY - padding,
+        width: Math.max(1200, maxX - minX + padding * 2),
+        height: Math.max(900, maxY - minY + padding * 2),
+      };
+    }, [nodes, collaborators]);
+
+    const handleOverviewClick = (event) => {
+      event.stopPropagation();
+      const viewport = gridRef.current;
+      const map = event.currentTarget.querySelector('svg');
+      if (!viewport || !map) return;
+
+      const rect = map.getBoundingClientRect();
+      const x = dimensions.minX + ((event.clientX - rect.left) / rect.width) * dimensions.width;
+      const y = dimensions.minY + ((event.clientY - rect.top) / rect.height) * dimensions.height;
+      viewport.scrollTo({
+        ...scrollOffsetForCanvasPoint({ x, y }, viewport.clientWidth, viewport.clientHeight, zoom),
+        behavior: 'smooth',
+      });
+    };
+
+    return (
+      <button
+        type="button"
+        onClick={handleOverviewClick}
+        aria-label={`Canvas overview. ${collaborators.length} ${collaborators.length === 1 ? 'person is' : 'people are'} viewing. Click to move the canvas.`}
+        className="absolute bottom-20 right-4 z-30 w-44 rounded-xl border border-slate-200 bg-white/95 p-2 text-left shadow-xl backdrop-blur transition hover:border-violet-400 dark:border-white/10 dark:bg-[#0c101d]/95 lg:bottom-5 lg:right-40"
+      >
+        <span className="mb-1.5 block text-[9px] font-extrabold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+          Canvas overview · {collaborators.length} online
+        </span>
+        <svg
+          viewBox={`${dimensions.minX} ${dimensions.minY} ${dimensions.width} ${dimensions.height}`}
+          preserveAspectRatio="none"
+          className="h-24 w-full overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-900"
+          aria-hidden="true"
+        >
+          {nodes.map((node) => {
+            const width =
+              node.customWidth ??
+              ({ small: 220, medium: 280, large: 340, wide: 440 }[node.size] || 280);
+            const height =
+              node.customHeight ??
+              ({ image: 240, chart: 220, table: 260, code: 220, metric: 160 }[node.type] || 180);
+            return (
+              <rect
+                key={node.id}
+                x={node.x ?? 40}
+                y={node.y ?? 40}
+                width={width}
+                height={height}
+                rx="24"
+                fill="#64748b"
+                fillOpacity="0.42"
+              />
+            );
+          })}
+          {collaborators.map(([clientId, state]) => {
+            const viewport = state.viewport;
+            const isLocal = clientId === localClientId;
+            const color = state.user.color || '#64748b';
+            return (
+              <rect
+                key={clientId}
+                x={viewport.x}
+                y={viewport.y}
+                width={viewport.width}
+                height={viewport.height}
+                rx="16"
+                fill={color}
+                fillOpacity={isLocal ? '0.14' : '0.08'}
+                stroke={color}
+                strokeWidth={isLocal ? '30' : '20'}
+                vectorEffect="non-scaling-stroke"
+              />
+            );
+          })}
+        </svg>
+      </button>
+    );
+  },
+  (previous, next) => {
+    if (
+      previous.nodes !== next.nodes ||
+      previous.localClientId !== next.localClientId ||
+      previous.zoom !== next.zoom ||
+      previous.gridRef !== next.gridRef ||
+      previous.collaborators.length !== next.collaborators.length
+    )
+      return false;
+
+    return previous.collaborators.every(([clientId, state], index) => {
+      const [nextClientId, nextState] = next.collaborators[index];
+      const oldViewport = state.viewport;
+      const newViewport = nextState.viewport;
+      const oldUser = state.user;
+      const newUser = nextState.user;
+      return (
+        clientId === nextClientId &&
+        oldViewport.x === newViewport.x &&
+        oldViewport.y === newViewport.y &&
+        oldViewport.width === newViewport.width &&
+        oldViewport.height === newViewport.height &&
+        oldUser.id === newUser.id &&
+        oldUser.name === newUser.name &&
+        oldUser.color === newUser.color
+      );
+    });
+  },
+);
+
 // --- FREEFORM GRID SETUP ---
-function NodeGrid({ nodes, selectedNodeIds = [], selectedNodeId, onSelectNode, resolveNodeValue, onDragStart, onResizeStart, onKeyboardMove, updateNode, canEdit, awarenessStates, localClientId }) {
+function NodeGrid({ nodes, selectedNodeIds = [], selectedNodeId, onSelectNode, resolveNodeValue, onDragStart, onResizeStart, onKeyboardMove, updateNode, canEdit, awarenessStates, localClientId,
+}) {
   const remoteSelections = useMemo(() => {
     if (!awarenessStates) return {};
     const selections = {};
@@ -2885,21 +3276,30 @@ class WidgetErrorBoundary extends Component {
     const { node, onSelectNode, children } = this.props;
     if (!this.state.failed) return children;
     return (
-      <article id={`node-card-${node.id}`} role="alert" style={{ position: 'absolute', left: `${node.x ?? 40}px`, top: `${node.y ?? 40}px`, width: `${node.customWidth ?? 280}px`, minHeight: '140px' }} className="rounded-2xl border border-rose-300 bg-rose-50 p-5 text-rose-900 shadow-lg dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-100">
+      <article id={`node-card-${node.id}`} role="alert" style={{ position: 'absolute', left: `${node.x ?? 40}px`, top: `${node.y ?? 40}px`, width: `${node.customWidth ?? 280}px`, minHeight: '140px',
+        }} className="rounded-2xl border border-rose-300 bg-rose-50 p-5 text-rose-900 shadow-lg dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-100">
         <p className="text-sm font-bold">Widget couldn’t render</p>
-        <p className="mt-1 text-xs leading-5">The rest of the dashboard is still available. Open its properties to repair or remove this widget.</p>
-        <button type="button" onClick={(event) => onSelectNode(node.id, event)} className="mt-3 rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-semibold hover:bg-rose-100 dark:border-rose-800 dark:hover:bg-rose-900/40">Open widget properties</button>
+        <p className="mt-1 text-xs leading-5">
+          The rest of the dashboard is still available. Open its properties to repair or remove this
+          widget.
+        </p>
+        <button type="button" onClick={(event) => onSelectNode(node.id, event)} className="mt-3 rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-semibold hover:bg-rose-100 dark:border-rose-800 dark:hover:bg-rose-900/40">
+          Open widget properties
+        </button>
       </article>
     );
   }
 }
 
 // --- CANVAS CARD COMPONENT ---
-function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveNodeValue, onDragStart, onResizeStart, onKeyboardMove, updateNode, canEdit }) {
+function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveNodeValue, onDragStart, onResizeStart, onKeyboardMove, updateNode, canEdit,
+}) {
   const displayValue = resolveNodeValue(node);
   const nodeDefinition = getWidgetDefinition(node.type);
   const NodeIcon = widgetIconComponents[nodeDefinition?.icon] || Layers;
-  const nodeIcon = <NodeIcon size={18} className={widgetIconColors[node.type] || 'text-slate-500'} />;
+  const nodeIcon = (
+    <NodeIcon size={18} className={widgetIconColors[node.type] || 'text-slate-500'} />
+  );
 
   // Glow classes for visual border style options
   const borderStyles = {
@@ -2916,12 +3316,12 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
 
   // Sparkline coordinates math helper
   const parsedSparkPoints = useMemo(() => {
-    if (node.type !== 'chart') return [];
+    if (nodeDefinition?.renderer !== 'chart') return [];
     return displayValue
       .split(',')
       .map((val) => parseFloat(val.trim()))
       .filter((n) => !isNaN(n));
-  }, [displayValue, node.type]);
+  }, [displayValue, nodeDefinition?.renderer]);
 
   const widthOf = (size) => {
     switch (size) {
@@ -2996,14 +3396,14 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
         className="flex items-center justify-between border-b border-black/5 dark:border-white/5 pb-2.5 mb-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
       >
         <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
-          {nodeIcon} {node.type}
+          {nodeIcon} {nodeDefinition?.title || node.type}
         </span>
       </div>
 
       {/* --- RENDERING CARD CONTENT DYNAMICALLY --- */}
 
       {/* 1. Note */}
-      {node.type === 'note' && (
+      {nodeDefinition?.renderer === 'note' && (
         <div className="space-y-2">
           <h2 className={`${textFonts[node.fontSize || 'regular']} font-bold`}>{node.title}</h2>
           <p className="max-w-2xl whitespace-pre-wrap text-sm leading-6 text-slate-500 dark:text-slate-400">
@@ -3013,7 +3413,7 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
       )}
 
       {/* 2. Metric */}
-      {node.type === 'metric' && (
+      {nodeDefinition?.renderer === 'metric' && (
         <div className="space-y-1">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
             {node.title}
@@ -3022,21 +3422,29 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
             {node.unit && <span className="text-2xl font-semibold opacity-60">{node.unit}</span>}
             <span className="text-4xl font-extrabold tracking-tight font-mono">{displayValue}</span>
           </div>
-          <span className="text-[10px] text-slate-400 block mt-2">Sample value · no data source connected</span>
+          <span className="text-[10px] text-slate-400 block mt-2">
+            Sample value · no data source connected
+          </span>
         </div>
       )}
 
-      {node.type === 'display' && (
+      {nodeDefinition?.renderer === 'display' && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{node.title}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            {node.title}
+          </p>
           <div className="text-4xl font-extrabold tracking-tight font-mono">{displayValue}</div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">{node.description || 'KPI summary'}</p>
-          <span className="text-[10px] text-slate-400">Sample value · no data source connected</span>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {node.description || 'KPI summary'}
+          </p>
+          <span className="text-[10px] text-slate-400">
+            Sample value · no data source connected
+          </span>
         </div>
       )}
 
       {/* 3. Progress Goal Bar */}
-      {node.type === 'progress' &&
+      {nodeDefinition?.renderer === 'progress' &&
         (() => {
           const current = parseFloat(displayValue) || 0;
           const target = node.target || 100;
@@ -3067,7 +3475,7 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
         })()}
 
       {/* 4. SVG Sparkline Chart */}
-      {node.type === 'chart' &&
+      {nodeDefinition?.renderer === 'chart' &&
         (() => {
           const points = parsedSparkPoints;
           const max = points.length ? Math.max(...points) : 1;
@@ -3123,7 +3531,7 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
         })()}
 
       {/* 5. Status Indicator */}
-      {node.type === 'status' &&
+      {nodeDefinition?.renderer === 'status' &&
         (() => {
           const isSuccess = node.statusColor === 'success';
           const isWarning = node.statusColor === 'warning';
@@ -3154,7 +3562,9 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
                   <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">
                     {displayValue || 'Status'}
                   </h3>
-                  <span className="text-[10px] text-slate-400">Status set in widget properties</span>
+                  <span className="text-[10px] text-slate-400">
+                    Status set in widget properties
+                  </span>
                 </div>
               </div>
             </div>
@@ -3162,7 +3572,7 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
         })()}
 
       {/* 6. Math Logic Calculation Node */}
-      {node.type === 'logic' &&
+      {nodeDefinition?.renderer === 'logic' &&
         (() => {
           const mathResult = parseFloat(displayValue) || 0;
           return (
@@ -3182,17 +3592,23 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
           );
         })()}
       {/* 7. Image */}
-      {node.type === 'image' && (
+      {nodeDefinition?.renderer === 'image' && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{node.title}</p>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            {node.title}
+          </p>
           <div className="w-full h-32 rounded-lg overflow-hidden bg-slate-100 dark:bg-white/5 relative">
-            <span className="absolute inset-0 grid place-items-center text-xs text-slate-400">Image unavailable</span>
+            <span className="absolute inset-0 grid place-items-center text-xs text-slate-400">
+              Image unavailable
+            </span>
             <img
               src={safeImageUrl(node.imageUrl)}
               alt={node.title}
               referrerPolicy="no-referrer"
               className="h-full w-full"
-              style={{ objectFit: ['cover', 'contain', 'fill', 'none', 'scale-down'].includes(node.objectFit) ? node.objectFit : 'cover' }}
+              style={{ objectFit: ['cover', 'contain', 'fill', 'none', 'scale-down'].includes(node.objectFit,
+                ) ? node.objectFit : 'cover',
+              }}
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
               }}
@@ -3202,59 +3618,71 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
       )}
 
       {/* 8. Embed */}
-      {node.type === 'embed' && (
+      {nodeDefinition?.renderer === 'embed' && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{node.title}</p>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            {node.title}
+          </p>
           <div className="w-full h-32 rounded-lg overflow-hidden bg-slate-100 dark:bg-white/5 relative">
-            {safeExternalUrl(node.embedUrl) ? <iframe
+            {safeExternalUrl(node.embedUrl) ? (
+              <iframe
               src={safeExternalUrl(node.embedUrl)}
               title={node.title}
               className="w-full h-full border-0"
               sandbox="allow-scripts allow-forms allow-popups"
               referrerPolicy="no-referrer"
-            /> : <p className="p-3 text-xs text-slate-500">Use an HTTP or HTTPS URL to embed content.</p>}
+            />
+            ) : (
+              <p className="p-3 text-xs text-slate-500">
+                Use an HTTP or HTTPS URL to embed content.
+              </p>
+            )}
           </div>
         </div>
       )}
 
       {/* 9. Table */}
-      {node.type === 'table' && (() => {
-        const cols = (node.columns || '').split(',').map(c => c.trim()).filter(Boolean);
-        const rows = (node.rows || '').split('\n').map(r => r.split(',').map(c => c.trim()));
+      {nodeDefinition?.renderer === 'table' && (() => {
+        const cols = (node.columns || '').split(',').map((c) => c.trim()).filter(Boolean);
+        const rows = (node.rows || '').split('\n').map((r) => r.split(',').map((c) => c.trim()));
         return (
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{node.title}</p>
-            <div className="w-full overflow-x-auto rounded-lg border border-slate-200/50 dark:border-white/5 no-scrollbars">
-              <table className="w-full text-[11px] text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-slate-400 border-b border-slate-200/50 dark:border-white/5">
-                    {cols.map((col, idx) => (
-                      <th key={idx} className="px-2 py-1.5 font-bold uppercase tracking-wider">{col}</th>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                {node.title}
+              </p>
+              <div className="w-full overflow-x-auto rounded-lg border border-slate-200/50 dark:border-white/5 no-scrollbars">
+                <table className="w-full text-[11px] text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-slate-400 border-b border-slate-200/50 dark:border-white/5">
+                      {cols.map((col, idx) => (
+                      <th key={idx} className="px-2 py-1.5 font-bold uppercase tracking-wider">
+                          {col}
+                        </th>
                     ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                  {rows.map((row, rIdx) => (
-                    <tr key={rIdx} className="hover:bg-slate-50/50 dark:hover:bg-white/5">
-                      {row.map((cell, cIdx) => (
-                        <td key={cIdx} className="px-2 py-1.5 truncate max-w-[120px]">{cell}</td>
-                      ))}
                     </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                    {rows.map((row, rIdx) => (
+                    <tr key={rIdx} className="hover:bg-slate-50/50 dark:hover:bg-white/5">
+                        {row.map((cell, cIdx) => (
+                        <td key={cIdx} className="px-2 py-1.5 truncate max-w-[120px]">
+                            {cell}
+                          </td>
+                      ))}
+                      </tr>
                   ))}
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
         );
       })()}
 
       {/* 10. Timer */}
-      {node.type === 'timer' && (
-        <TimerNode node={node} updateNode={updateNode} />
-      )}
+      {nodeDefinition?.renderer === 'timer' && <TimerNode node={node} updateNode={updateNode} />}
 
       {/* 11. Link Card */}
-      {node.type === 'link' && (
+      {nodeDefinition?.renderer === 'link' && (
         <a
           href={safeExternalUrl(node.url) || undefined}
           target="_blank"
@@ -3264,28 +3692,37 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
           className={`block group/link space-y-2 ${safeExternalUrl(node.url) ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
         >
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide group-hover/link:text-violet-600 dark:group-hover/link:text-violet-400 transition-colors">{node.title}</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide group-hover/link:text-violet-600 dark:group-hover/link:text-violet-400 transition-colors">
+              {node.title}
+            </p>
             <LinkIcon size={12} className="text-slate-400 group-hover/link:translate-x-0.5 transition-transform" />
           </div>
           <div className="p-2.5 rounded-lg border border-slate-200/50 dark:border-white/5 bg-slate-50/50 dark:bg-white/5 hover:bg-slate-100/50 transition-colors">
-            <p className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate">{node.url}</p>
+            <p className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate">
+              {node.url}
+            </p>
             <p className="text-[10px] text-slate-400 mt-1 line-clamp-2">{node.description}</p>
           </div>
         </a>
       )}
 
       {/* 12. Divider */}
-      {node.type === 'divider' && (
+      {nodeDefinition?.renderer === 'divider' && (
         <div className="py-2.5">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">{node.title}</p>
-          <div className="w-full border-t border-slate-300 dark:border-white/10" style={{ borderTopStyle: ['solid', 'dashed', 'dotted', 'double'].includes(node.dividerStyle) ? node.dividerStyle : 'solid' }} />
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">
+            {node.title}
+          </p>
+          <div className="w-full border-t border-slate-300 dark:border-white/10" style={{ borderTopStyle: ['solid', 'dashed', 'dotted', 'double'].includes(node.dividerStyle) ? node.dividerStyle : 'solid',
+            }} />
         </div>
       )}
 
       {/* 13. Code Block */}
-      {node.type === 'code' && (
+      {nodeDefinition?.renderer === 'code' && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{node.title}</p>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            {node.title}
+          </p>
           <pre className="p-2.5 rounded-lg bg-slate-900 text-slate-100 text-[10px] font-mono overflow-x-auto leading-relaxed border border-white/5">
             <code>{node.code}</code>
           </pre>
@@ -3294,7 +3731,9 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
       {!nodeDefinition && (
         <div role="status" className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-100">
           <p className="text-xs font-bold">Unsupported widget type</p>
-          <p className="text-[10px] leading-4">Its saved data is preserved. This widget can’t run in the current Voxel version.</p>
+          <p className="text-[10px] leading-4">
+            Its saved data is preserved. This widget can’t run in the current Voxel version.
+          </p>
         </div>
       )}
       {canEdit && isSelected && (
@@ -3312,8 +3751,10 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
             const width = node.customWidth ?? bounds.width;
             const height = node.customHeight ?? bounds.height;
             updateNode(node.id, {
-              customWidth: Math.max(180, width + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0)),
-              customHeight: Math.max(100, height + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0)),
+              customWidth: Math.max(180, width + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0),
+              ),
+              customHeight: Math.max(100, height + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0),
+              ),
             });
           }}
           className="absolute -bottom-2 -right-2 z-50 grid size-6 cursor-nwse-resize place-items-center rounded-lg border border-indigo-300 bg-white text-indigo-600 shadow-md hover:bg-indigo-50 dark:border-indigo-500/50 dark:bg-slate-900 dark:text-indigo-300"
@@ -3325,7 +3766,8 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
   );
 }
 
-function DashboardCommentsPanel({ dashboardId, workspaceId, accessRole, dashboardStatus, selectedNodeIds, onFocusNodes }) {
+function DashboardCommentsPanel({ dashboardId, workspaceId, accessRole, dashboardStatus, selectedNodeIds, onFocusNodes,
+}) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState('');
   const [editingId, setEditingId] = useState(null);
@@ -3395,7 +3837,8 @@ function DashboardCommentsPanel({ dashboardId, workspaceId, accessRole, dashboar
   });
 
   const errorMessage = create.error?.message || update.error?.message || remove.error?.message || resolution.error?.message;
-  const formatDate = (value) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+  const formatDate = (value) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value),
+    );
   const startEditing = (comment) => {
     setEditingId(comment.id);
     setEditBody(comment.body);
@@ -3408,7 +3851,9 @@ function DashboardCommentsPanel({ dashboardId, workspaceId, accessRole, dashboar
       <div className="flex items-start justify-between gap-2">
         <div>
           <h2 className="text-xs font-extrabold text-slate-900 dark:text-white">Discussion</h2>
-          <p className="mt-1 text-[10px] leading-relaxed text-slate-500">Comments are visible to everyone with dashboard access.</p>
+          <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+            Comments are visible to everyone with dashboard access.
+          </p>
         </div>
         <button type="button" onClick={() => void comments.refetch()} disabled={comments.isFetching} aria-label="Refresh comments" className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-violet-600 disabled:opacity-50 dark:hover:bg-white/5">
           <RefreshCw size={13} className={comments.isFetching ? 'animate-spin' : ''} />
@@ -3433,7 +3878,9 @@ function DashboardCommentsPanel({ dashboardId, workspaceId, accessRole, dashboar
           }}
           className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs dark:border-white/10 dark:bg-slate-900/70"
         >
-          <label className="sr-only" htmlFor="dashboard-comment-draft">Write a comment</label>
+          <label className="sr-only" htmlFor="dashboard-comment-draft">
+            Write a comment
+          </label>
           <textarea
             id="dashboard-comment-draft"
             rows={3}
@@ -3444,10 +3891,15 @@ function DashboardCommentsPanel({ dashboardId, workspaceId, accessRole, dashboar
             className="w-full resize-y bg-transparent text-xs leading-relaxed text-slate-800 outline-none placeholder:text-slate-400 dark:text-slate-100"
           />
           <div className="mt-1 flex min-h-6 items-center justify-between gap-2">
-            <span className="text-[9px] text-slate-400">Use @email to notify a workspace teammate.</span>
-            {selectedNodeIds.length > 0 && <button type="button" onClick={() => setAttachSelection((attached) => !attached)} className={`inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[9px] font-bold ${attachSelection ? 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5'}`}>
-              <LocateFixed size={11} /> {attachSelection ? `Attached ${selectedNodeIds.length} node${selectedNodeIds.length === 1 ? '' : 's'}` : `Attach selection (${selectedNodeIds.length})`}
-            </button>}
+            <span className="text-[9px] text-slate-400">
+              Use @email to notify a workspace teammate.
+            </span>
+            {selectedNodeIds.length > 0 && (
+              <button type="button" onClick={() => setAttachSelection((attached) => !attached)} className={`inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[9px] font-bold ${attachSelection ? 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5'}`}>
+                <LocateFixed size={11} />{' '}
+                {attachSelection ? `Attached ${selectedNodeIds.length} node${selectedNodeIds.length === 1 ? '' : 's'}` : `Attach selection (${selectedNodeIds.length})`}
+              </button>
+            )}
           </div>
           <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2 dark:border-white/5">
             <span className="text-[9px] text-slate-400">{draft.length}/4000</span>
@@ -3462,16 +3914,26 @@ function DashboardCommentsPanel({ dashboardId, workspaceId, accessRole, dashboar
         </div>
       )}
 
-      {errorMessage && <p role="alert" className="rounded-lg bg-rose-50 px-2.5 py-2 text-[10px] leading-relaxed text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">{errorMessage}</p>}
+      {errorMessage && (
+        <p role="alert" className="rounded-lg bg-rose-50 px-2.5 py-2 text-[10px] leading-relaxed text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
+          {errorMessage}
+        </p>
+      )}
 
       {comments.isPending ? (
         <div className="space-y-3" aria-label="Loading comments">
-          {[0, 1].map((index) => <div key={index} className="animate-pulse space-y-2 rounded-xl border border-slate-100 p-3 dark:border-white/5"><div className="h-3 w-2/5 rounded bg-slate-100 dark:bg-white/10" /><div className="h-8 rounded bg-slate-100 dark:bg-white/10" /></div>)}
+          {[0, 1].map((index) => (
+            <div key={index} className="animate-pulse space-y-2 rounded-xl border border-slate-100 p-3 dark:border-white/5">
+              <div className="h-3 w-2/5 rounded bg-slate-100 dark:bg-white/10" />
+              <div className="h-8 rounded bg-slate-100 dark:bg-white/10" />
+            </div>))}
         </div>
       ) : comments.isError ? (
         <div role="status" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-[10px] text-rose-700 dark:border-rose-500/20 dark:bg-rose-950/20 dark:text-rose-300">
           <p>Comments could not be loaded.</p>
-          <button type="button" onClick={() => void comments.refetch()} className="mt-2 font-bold underline">Try again</button>
+          <button type="button" onClick={() => void comments.refetch()} className="mt-2 font-bold underline">
+            Try again
+          </button>
         </div>
       ) : comments.data?.length ? (
         <ol className="space-y-3">
@@ -3486,12 +3948,18 @@ function DashboardCommentsPanel({ dashboardId, workspaceId, accessRole, dashboar
                   {comment.author?.avatarUrl ? (
                     <img src={comment.author.avatarUrl} alt="" className="size-7 shrink-0 rounded-full object-cover" />
                   ) : (
-                    <span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full bg-violet-100 text-[9px] font-extrabold text-violet-700 dark:bg-violet-500/20 dark:text-violet-300">{initials || 'FM'}</span>
+                    <span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full bg-violet-100 text-[9px] font-extrabold text-violet-700 dark:bg-violet-500/20 dark:text-violet-300">
+                      {initials || 'FM'}
+                    </span>
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
-                      <span className="truncate text-[10px] font-bold text-slate-800 dark:text-slate-100">{comment.author?.displayName || 'Former member'}</span>
-                      <time className="text-[9px] text-slate-400" dateTime={comment.createdAt}>{formatDate(comment.createdAt)}</time>
+                      <span className="truncate text-[10px] font-bold text-slate-800 dark:text-slate-100">
+                        {comment.author?.displayName || 'Former member'}
+                      </span>
+                      <time className="text-[9px] text-slate-400" dateTime={comment.createdAt}>
+                        {formatDate(comment.createdAt)}
+                      </time>
                     </div>
                     {comment.deletedAt ? (
                       <p className="mt-2 text-[10px] italic text-slate-400">Comment removed</p>
@@ -3499,64 +3967,136 @@ function DashboardCommentsPanel({ dashboardId, workspaceId, accessRole, dashboar
                       <form onSubmit={(event) => { event.preventDefault(); const body = editBody.trim(); if (body && !update.isPending) update.mutate({ commentId: comment.id, body }); }} className="mt-2 space-y-2">
                         <textarea autoFocus rows={3} maxLength={4000} value={editBody} onChange={(event) => { setEditBody(event.target.value); update.reset(); }} className="w-full resize-y rounded-lg border border-violet-300 bg-white p-2 text-xs leading-relaxed outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-violet-500/30 dark:bg-slate-950" aria-label="Edit comment" />
                         <div className="flex justify-end gap-1.5">
-                          <button type="button" onClick={() => { setEditingId(null); setEditBody(''); }} className="rounded-lg px-2 py-1 text-[10px] font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5">Cancel</button>
-                          <button type="submit" disabled={!editBody.trim() || update.isPending} className="rounded-lg bg-violet-600 px-2.5 py-1 text-[10px] font-bold text-white disabled:opacity-45">{update.isPending ? 'Saving…' : 'Save'}</button>
+                          <button type="button" onClick={() => { setEditingId(null); setEditBody(''); }} className="rounded-lg px-2 py-1 text-[10px] font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5">
+                            Cancel
+                          </button>
+                          <button type="submit" disabled={!editBody.trim() || update.isPending} className="rounded-lg bg-violet-600 px-2.5 py-1 text-[10px] font-bold text-white disabled:opacity-45">
+                            {update.isPending ? 'Saving…' : 'Save'}
+                          </button>
                         </div>
                       </form>
                     ) : (
-                      <p className="mt-2 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">{comment.body}</p>
+                      <p className="mt-2 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+                        {comment.body}
+                      </p>
                     )}
-                    {comment.anchor?.nodeIds?.length > 0 && <button type="button" onClick={() => onFocusNodes(comment.anchor.nodeIds)} className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-md bg-cyan-50 px-2 py-1 text-[9px] font-bold text-cyan-700 hover:bg-cyan-100 dark:bg-cyan-500/10 dark:text-cyan-200 dark:hover:bg-cyan-500/20">
-                      <LocateFixed size={11} /> <span className="truncate">{comment.anchor.label || (comment.anchor.type === 'node' ? 'Attached node' : `${comment.anchor.nodeIds.length} attached nodes`)}</span>
-                    </button>}
-                    {comment.resolvedAt && <p className="mt-2 inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 dark:text-emerald-300"><CheckCircle2 size={12} /> Resolved{comment.resolvedBy?.displayName ? ` by ${comment.resolvedBy.displayName}` : ''}</p>}
+                    {comment.anchor?.nodeIds?.length > 0 && (
+                      <button type="button" onClick={() => onFocusNodes(comment.anchor.nodeIds)} className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-md bg-cyan-50 px-2 py-1 text-[9px] font-bold text-cyan-700 hover:bg-cyan-100 dark:bg-cyan-500/10 dark:text-cyan-200 dark:hover:bg-cyan-500/20">
+                        <LocateFixed size={11} />{' '}
+                        <span className="truncate">
+                          {comment.anchor.label || (comment.anchor.type === 'node' ? 'Attached node' : `${comment.anchor.nodeIds.length} attached nodes`)}
+                        </span>
+                      </button>
+                    )}
+                    {comment.resolvedAt && (
+                      <p className="mt-2 inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 dark:text-emerald-300">
+                        <CheckCircle2 size={12} /> Resolved
+                        {comment.resolvedBy?.displayName ? ` by ${comment.resolvedBy.displayName}` : ''}
+                      </p>
+                    )}
                     {canManageComment && editingId !== comment.id && (
                       <div className="mt-2 flex items-center justify-end gap-2">
                         {confirmDeleteId === comment.id ? (
                           <>
-                            <span className="mr-auto text-[9px] text-slate-500">Remove this comment?</span>
-                            <button type="button" onClick={() => setConfirmDeleteId(null)} className="text-[9px] font-semibold text-slate-500">Cancel</button>
-                            <button type="button" onClick={() => remove.mutate(comment.id)} disabled={remove.isPending} className="text-[9px] font-bold text-rose-600 disabled:opacity-50 dark:text-rose-300">{remove.isPending ? 'Removing…' : 'Remove'}</button>
+                            <span className="mr-auto text-[9px] text-slate-500">
+                              Remove this comment?
+                            </span>
+                            <button type="button" onClick={() => setConfirmDeleteId(null)} className="text-[9px] font-semibold text-slate-500">
+                              Cancel
+                            </button>
+                            <button type="button" onClick={() => remove.mutate(comment.id)} disabled={remove.isPending} className="text-[9px] font-bold text-rose-600 disabled:opacity-50 dark:text-rose-300">
+                              {remove.isPending ? 'Removing…' : 'Remove'}
+                            </button>
                           </>
                         ) : (
                           <>
-                            {isAuthor && <button type="button" onClick={() => startEditing(comment)} aria-label="Edit your comment" className="rounded p-1 text-slate-400 hover:bg-violet-50 hover:text-violet-600 dark:hover:bg-violet-500/10"><Pencil size={11} /></button>}
-                            <button type="button" onClick={() => { setConfirmDeleteId(comment.id); remove.reset(); }} aria-label={isAuthor ? 'Remove your comment' : 'Moderate comment'} className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"><Trash2 size={11} /></button>
+                            {isAuthor && (
+                              <button type="button" onClick={() => startEditing(comment)} aria-label="Edit your comment" className="rounded p-1 text-slate-400 hover:bg-violet-50 hover:text-violet-600 dark:hover:bg-violet-500/10">
+                                <Pencil size={11} />
+                              </button>
+                            )}
+                            <button type="button" onClick={() => { setConfirmDeleteId(comment.id); remove.reset(); }} aria-label={isAuthor ? 'Remove your comment' : 'Moderate comment'} className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10">
+                              <Trash2 size={11} />
+                            </button>
                           </>
                         )}
                       </div>
                     )}
                     <div className="mt-2 flex items-center justify-end gap-2">
-                      {canComment && !comment.resolvedAt && !comment.deletedAt && <button type="button" onClick={() => { setReplyToId(replyToId === comment.id ? null : comment.id); setReplyDraft(''); create.reset(); }} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-bold text-slate-500 hover:bg-slate-100 hover:text-violet-600 dark:hover:bg-white/5"><CornerDownRight size={11} /> Reply{comment.replies?.length ? ` · ${comment.replies.length}` : ''}</button>}
-                      {canResolveThread && <button type="button" onClick={() => resolution.mutate({ commentId: comment.id, resolved: !comment.resolvedAt })} disabled={resolution.isPending} className={`inline-flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-bold ${comment.resolvedAt ? 'text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5' : 'text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-500/10'}`}>
-                        <CheckCircle2 size={11} /> {comment.resolvedAt ? 'Reopen' : 'Resolve'}
-                      </button>}
+                      {canComment && !comment.resolvedAt && !comment.deletedAt && (
+                        <button type="button" onClick={() => { setReplyToId(replyToId === comment.id ? null : comment.id); setReplyDraft(''); create.reset(); }} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-bold text-slate-500 hover:bg-slate-100 hover:text-violet-600 dark:hover:bg-white/5">
+                          <CornerDownRight size={11} /> Reply
+                          {comment.replies?.length ? ` · ${comment.replies.length}` : ''}
+                        </button>
+                      )}
+                      {canResolveThread && (
+                        <button type="button" onClick={() => resolution.mutate({ commentId: comment.id, resolved: !comment.resolvedAt,
+                            })} disabled={resolution.isPending} className={`inline-flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-bold ${comment.resolvedAt ? 'text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5' : 'text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-500/10'}`}>
+                          <CheckCircle2 size={11} /> {comment.resolvedAt ? 'Reopen' : 'Resolve'}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
-                {comment.replies?.length > 0 && <ol className="ml-9 mt-3 space-y-2 border-l border-slate-200 pl-3 dark:border-white/10">
-                  {comment.replies.map((reply) => <li key={reply.id} className="rounded-lg bg-slate-50/80 px-2.5 py-2 dark:bg-white/[0.025]">
-                    <div className="flex items-baseline justify-between gap-2"><span className="truncate text-[9px] font-bold text-slate-700 dark:text-slate-200">{reply.author?.displayName || 'Former member'}</span><time className="shrink-0 text-[8px] text-slate-400" dateTime={reply.createdAt}>{formatDate(reply.createdAt)}</time></div>
-                    {reply.deletedAt ? <p className="mt-1 text-[10px] italic text-slate-400">Reply removed</p> : <p className="mt-1 whitespace-pre-wrap break-words text-[10px] leading-relaxed text-slate-600 dark:text-slate-300">{reply.body}</p>}
-                  </li>)}
-                </ol>}
-                {replyToId === comment.id && canComment && !comment.resolvedAt && <form onSubmit={(event) => { event.preventDefault(); const body = replyDraft.trim(); if (body && !create.isPending) create.mutate({ body, parentId: comment.id }); }} className="ml-9 mt-3 rounded-lg border border-slate-200 bg-white p-2 dark:border-white/10 dark:bg-slate-950">
-                  <label className="sr-only" htmlFor={`reply-${comment.id}`}>Write a reply</label>
-                  <textarea id={`reply-${comment.id}`} autoFocus rows={2} maxLength={4000} value={replyDraft} onChange={(event) => { setReplyDraft(event.target.value); create.reset(); }} placeholder="Write a reply… Use @email to notify a teammate." className="w-full resize-y bg-transparent text-[10px] leading-relaxed outline-none placeholder:text-slate-400" />
-                  <div className="flex justify-end gap-1.5 border-t border-slate-100 pt-2 dark:border-white/5"><button type="button" onClick={() => { setReplyToId(null); setReplyDraft(''); }} className="rounded-md px-2 py-1 text-[9px] font-semibold text-slate-500">Cancel</button><button type="submit" disabled={!replyDraft.trim() || create.isPending} className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2 py-1 text-[9px] font-bold text-white disabled:opacity-45"><Send size={10} />{create.isPending ? 'Sending…' : 'Reply'}</button></div>
-                </form>}
+                {comment.replies?.length > 0 && (
+                  <ol className="ml-9 mt-3 space-y-2 border-l border-slate-200 pl-3 dark:border-white/10">
+                    {comment.replies.map((reply) => (
+                      <li key={reply.id} className="rounded-lg bg-slate-50/80 px-2.5 py-2 dark:bg-white/[0.025]">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="truncate text-[9px] font-bold text-slate-700 dark:text-slate-200">
+                            {reply.author?.displayName || 'Former member'}
+                          </span>
+                          <time className="shrink-0 text-[8px] text-slate-400" dateTime={reply.createdAt}>
+                            {formatDate(reply.createdAt)}
+                          </time>
+                        </div>
+                        {reply.deletedAt ? (
+                          <p className="mt-1 text-[10px] italic text-slate-400">Reply removed</p>
+                        ) : (
+                          <p className="mt-1 whitespace-pre-wrap break-words text-[10px] leading-relaxed text-slate-600 dark:text-slate-300">
+                            {reply.body}
+                          </p>
+                        )}
+                      </li>))}
+                  </ol>
+                )}
+                {replyToId === comment.id && canComment && !comment.resolvedAt && (
+                  <form onSubmit={(event) => { event.preventDefault(); const body = replyDraft.trim(); if (body && !create.isPending) create.mutate({ body, parentId: comment.id }); }} className="ml-9 mt-3 rounded-lg border border-slate-200 bg-white p-2 dark:border-white/10 dark:bg-slate-950">
+                    <label className="sr-only" htmlFor={`reply-${comment.id}`}>
+                      Write a reply
+                    </label>
+                    <textarea id={`reply-${comment.id}`} autoFocus rows={2} maxLength={4000} value={replyDraft} onChange={(event) => { setReplyDraft(event.target.value); create.reset(); }} placeholder="Write a reply… Use @email to notify a teammate." className="w-full resize-y bg-transparent text-[10px] leading-relaxed outline-none placeholder:text-slate-400" />
+                    <div className="flex justify-end gap-1.5 border-t border-slate-100 pt-2 dark:border-white/5">
+                      <button type="button" onClick={() => { setReplyToId(null); setReplyDraft(''); }} className="rounded-md px-2 py-1 text-[9px] font-semibold text-slate-500">
+                        Cancel
+                      </button>
+                      <button type="submit" disabled={!replyDraft.trim() || create.isPending} className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2 py-1 text-[9px] font-bold text-white disabled:opacity-45">
+                        <Send size={10} />
+                        {create.isPending ? 'Sending…' : 'Reply'}
+                      </button>
+                    </div>
+                  </form>
+                )}
               </li>
             );
           })}
         </ol>
       ) : (
         <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center dark:border-white/10">
-          <span className="mx-auto grid size-9 place-items-center rounded-xl bg-violet-50 text-violet-500 dark:bg-violet-500/10 dark:text-violet-300"><MessageSquare size={16} /></span>
-          <p className="mt-3 text-[11px] font-bold text-slate-700 dark:text-slate-200">Start the discussion</p>
-          <p className="mt-1 text-[10px] leading-relaxed text-slate-500">Share context, ask a question, or leave a note for your team.</p>
+          <span className="mx-auto grid size-9 place-items-center rounded-xl bg-violet-50 text-violet-500 dark:bg-violet-500/10 dark:text-violet-300">
+            <MessageSquare size={16} />
+          </span>
+          <p className="mt-3 text-[11px] font-bold text-slate-700 dark:text-slate-200">
+            Start the discussion
+          </p>
+          <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+            Share context, ask a question, or leave a note for your team.
+          </p>
         </div>
       )}
-      {!comments.isPending && !comments.isError && (comments.data?.length || 0) >= 200 && <p className="text-center text-[9px] text-slate-400">Showing the latest 200 comments.</p>}
+      {!comments.isPending && !comments.isError && (comments.data?.length || 0) >= 200 && (
+        <p className="text-center text-[9px] text-slate-400">Showing the latest 200 comments.</p>
+      )}
     </section>
   );
 }
@@ -3569,9 +4109,15 @@ function CanvasEmpty({ onAdd }) {
         <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-500/20">
           <Sparkles size={22} className="animate-pulse" />
         </span>
-        <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">This dashboard has no nodes yet</h2>
+        <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">
+          This dashboard has no nodes yet
+        </h2>
         <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300 font-medium">
-          Choose an element from the <strong className="font-extrabold text-violet-600 dark:text-violet-400">Elements</strong> panel on the left, load a template from <strong className="font-extrabold text-violet-600 dark:text-violet-400">Presets</strong>, or click below to start designing.
+          Choose an element from the{' '}
+          <strong className="font-extrabold text-violet-600 dark:text-violet-400">Elements</strong>{' '}
+          panel on the left, load a template from{' '}
+          <strong className="font-extrabold text-violet-600 dark:text-violet-400">Presets</strong>,
+          or click below to start designing.
         </p>
         <div className="pt-2">
           <button
@@ -3588,7 +4134,7 @@ function CanvasEmpty({ onAdd }) {
 
 // --- NODE PICKER DIALOG ---
 function NodePicker({ onClose, onAdd }) {
-  const options = BUILTIN_WIDGETS;
+  const options = useWidgetDefinitions();
 
   return (
     <div
@@ -3617,21 +4163,25 @@ function NodePicker({ onClose, onAdd }) {
         <div className="mt-5 grid gap-3 sm:grid-cols-2 max-h-[380px] overflow-y-auto pr-1">
           {options.map((definition) => {
             const Icon = widgetIconComponents[definition.icon] || Layers;
-            return <button
+            return (
+              <button
               key={definition.type}
               onClick={() => onAdd(definition.type)}
               className="flex items-start gap-3 rounded-2xl border border-slate-200 p-4 text-left hover:border-violet-300 hover:bg-violet-500/5 cursor-pointer dark:border-white/10 dark:hover:border-violet-500/20"
             >
-              <span className={`grid size-10 place-items-center rounded-xl shrink-0 bg-violet-500/10 ${widgetIconColors[definition.type] || 'text-violet-500'}`}>
-                <Icon size={20} />
-              </span>
-              <div>
-                <b className="text-sm font-bold text-slate-900 dark:text-white">{definition.title}</b>
-                <span className="mt-1 block text-xs leading-relaxed text-slate-400">
-                  {definition.description}
+                <span className={`grid size-10 place-items-center rounded-xl shrink-0 bg-violet-500/10 ${widgetIconColors[definition.type] || 'text-violet-500'}`}>
+                  <Icon size={20} />
                 </span>
-              </div>
-            </button>
+                <div>
+                  <b className="text-sm font-bold text-slate-900 dark:text-white">
+                    {definition.title}
+                  </b>
+                  <span className="mt-1 block text-xs leading-relaxed text-slate-400">
+                    {definition.description}
+                  </span>
+                </div>
+              </button>
+            );
           })}
         </div>
       </div>
