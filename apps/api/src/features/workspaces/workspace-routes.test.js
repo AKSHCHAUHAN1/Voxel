@@ -7,6 +7,7 @@ const { prismaMock, userId } = vi.hoisted(() => ({
   userId: '1b0e3ced-1d40-4a2a-a819-59c2250872bd',
   prismaMock: {
     workspaceMember: { findUnique: vi.fn(), findMany: vi.fn() },
+    workspace: { create: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     notification: { createMany: vi.fn() },
     dashboard: { findFirst: vi.fn(), create: vi.fn() },
     dashboardComment: { findMany: vi.fn(), create: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
@@ -53,6 +54,48 @@ afterEach(async () => {
 });
 
 describe('workspace template and activity routes', () => {
+  it('creates workspaces with JSON-safe storage counters and keeps the audit event', async () => {
+    const createdAt = new Date('2026-10-12T10:00:00.000Z');
+    prismaMock.workspace.create.mockResolvedValue({
+      id: workspaceId,
+      ownerId: userId,
+      name: 'Launch team',
+      slug: 'launch-team-12345678',
+      description: null,
+      icon: 'grid',
+      accentColor: 'violet',
+      coverImageUrl: null,
+      storageUsedBytes: 0n,
+      storageQuotaBytes: 1073741824n,
+      createdAt,
+      updatedAt: createdAt,
+      archivedAt: null,
+      deletedAt: null,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/workspaces',
+      headers: { cookie: 'voxel_access=test-session' },
+      payload: { name: 'Launch team' },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().data).toMatchObject({
+      id: workspaceId,
+      name: 'Launch team',
+      storageUsedBytes: 0,
+      storageQuotaBytes: 1073741824,
+      createdAt: createdAt.toISOString(),
+      updatedAt: createdAt.toISOString(),
+    });
+    expect(prismaMock.auditEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        after: expect.objectContaining({ storageUsedBytes: '0', storageQuotaBytes: '1073741824' }),
+      }),
+    }));
+  });
+
   it('rejects malformed widget rows before they can be saved', async () => {
     const response = await app.inject({
       method: 'PATCH',

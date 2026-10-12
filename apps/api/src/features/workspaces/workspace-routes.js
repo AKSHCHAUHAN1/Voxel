@@ -92,6 +92,9 @@ const uniqueSlug = (value) =>
   `${slugify(value) || 'untitled'}-${crypto.randomUUID().slice(0, 8)}`;
 const createOpaqueToken = () => randomBytes(32).toString('base64url');
 const tokenDigest = (token) => createHash('sha256').update(token).digest('hex');
+const jsonSafeValue = (value) => JSON.parse(JSON.stringify(value, (_key, item) => (
+  typeof item === 'bigint' ? item.toString() : item
+)));
 const canonicalJson = (value) => {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
   if (value && typeof value === 'object') {
@@ -138,8 +141,8 @@ const recordAuditEvent = async ({
         action,
         resourceType,
         resourceId,
-        before: before ? JSON.parse(JSON.stringify(before)) : undefined,
-        after: after ? JSON.parse(JSON.stringify(after)) : undefined,
+        before: before ? jsonSafeValue(before) : undefined,
+        after: after ? jsonSafeValue(after) : undefined,
         ipAddress: request?.ip || null,
         userAgent: request?.headers?.['user-agent'] || null,
       },
@@ -160,6 +163,21 @@ const serializeDashboard = (dashboard) => ({
   createdAt: dashboard.createdAt.toISOString(),
   updatedAt: dashboard.updatedAt.toISOString(),
   deletedAt: dashboard.deletedAt?.toISOString() ?? null,
+});
+const serializeWorkspace = (workspace) => ({
+  id: workspace.id,
+  name: workspace.name,
+  slug: workspace.slug,
+  description: workspace.description,
+  icon: workspace.icon,
+  accentColor: workspace.accentColor,
+  coverImageUrl: workspace.coverImageUrl,
+  storageUsedBytes: Number(workspace.storageUsedBytes),
+  storageQuotaBytes: Number(workspace.storageQuotaBytes),
+  createdAt: workspace.createdAt.toISOString(),
+  updatedAt: workspace.updatedAt.toISOString(),
+  archivedAt: workspace.archivedAt?.toISOString() ?? null,
+  deletedAt: workspace.deletedAt?.toISOString() ?? null,
 });
 const serializeTemplate = (template, userId) => ({
   id: template.id,
@@ -260,7 +278,7 @@ export const registerWorkspaceRoutes = async (app, environment) => {
       request,
     });
 
-    return reply.status(201).send(success(workspace, createRequestId(request.id)));
+    return reply.status(201).send(success(serializeWorkspace(workspace), createRequestId(request.id)));
   });
 
   app.patch('/api/v1/workspaces/:workspaceId/preferences', async (request, reply) => {
@@ -301,7 +319,7 @@ export const registerWorkspaceRoutes = async (app, environment) => {
       after: { sourceWorkspaceId: source.id },
       request,
     });
-    return reply.status(201).send(success(duplicate, createRequestId(request.id)));
+    return reply.status(201).send(success(serializeWorkspace(duplicate), createRequestId(request.id)));
   });
 
   app.post('/api/v1/workspaces/:workspaceId/leave', async (request, reply) => {
@@ -1432,7 +1450,7 @@ export const registerWorkspaceRoutes = async (app, environment) => {
       request,
     });
 
-    return reply.send(success(updated, createRequestId(request.id)));
+    return reply.send(success(serializeWorkspace(updated), createRequestId(request.id)));
   });
 
   app.post('/api/v1/workspaces/:workspaceId/archive', async (request, reply) => {
