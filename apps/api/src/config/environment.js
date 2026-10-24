@@ -9,6 +9,7 @@ const environmentSchema = z.object({
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
   SESSION_SECRET: z.string().min(32),
+  MFA_ENCRYPTION_KEY: z.string().default(''),
   GOOGLE_CLIENT_ID: z.string().default(''),
   GOOGLE_CLIENT_SECRET: z.string().default(''),
   VOXEL_STORAGE_ENDPOINT: z.string().url().optional(),
@@ -31,6 +32,9 @@ const environmentSchema = z.object({
     environment.VOXEL_STORAGE_SECRET_KEY,
   ].every(Boolean),
   { message: 'Production requires complete S3-compatible object storage configuration.' },
+).refine(
+  (environment) => environment.NODE_ENV !== 'production' || environment.MFA_ENCRYPTION_KEY.length >= 32,
+  { message: 'Production requires a stable MFA_ENCRYPTION_KEY of at least 32 characters.' },
 ).refine(
   (environment) => environment.NODE_ENV !== 'production' || [
     environment.VOXEL_EMAIL_DELIVERY_URL,

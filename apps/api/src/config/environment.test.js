@@ -6,6 +6,7 @@ const baseEnvironment = {
   DATABASE_URL: 'postgresql://voxel:secret@db.voxel.example:5432/voxel',
   REDIS_URL: 'redis://redis.voxel.example:6379',
   SESSION_SECRET: 'a-production-secret-that-is-at-least-thirty-two-characters-long',
+  MFA_ENCRYPTION_KEY: 'a-stable-production-mfa-encryption-key-at-least-32-characters-long',
 };
 
 describe('environment security requirements', () => {
@@ -27,5 +28,22 @@ describe('environment security requirements', () => {
       VOXEL_EMAIL_DELIVERY_TOKEN: 'secret',
       VOXEL_EMAIL_FROM: 'noreply@voxel.example',
     })).toThrow(/HTTPS/);
+  });
+
+  it('requires a stable separate encryption key for TOTP secrets in production', () => {
+    expect(() => parseEnvironment({
+      ...baseEnvironment,
+      MFA_ENCRYPTION_KEY: '',
+      NODE_ENV: 'production',
+      VOXEL_STORAGE_ENDPOINT: 'https://assets.voxel.example',
+      VOXEL_STORAGE_BUCKET: 'voxel-assets',
+      VOXEL_STORAGE_REGION: 'us-east-1',
+      VOXEL_STORAGE_ACCESS_KEY: 'access',
+      VOXEL_STORAGE_SECRET_KEY: 'secret',
+      VOXEL_EMAIL_DELIVERY_URL: 'https://mail.voxel.example/send',
+      VOXEL_EMAIL_DELIVERY_TOKEN: 'secret',
+      VOXEL_EMAIL_FROM: 'noreply@voxel.example',
+    }))
+      .toThrow(/stable MFA_ENCRYPTION_KEY/);
   });
 });

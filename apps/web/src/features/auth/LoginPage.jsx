@@ -32,6 +32,8 @@ export function LoginPage() {
 
   // Mode: 'signin' | 'signup'
   const [mode, setMode] = useState(searchParams.get('mode') === 'signup' ? 'signup' : 'signin');
+  const [mfaChallengeRequired, setMfaChallengeRequired] = useState(searchParams.get('mfa') === 'required');
+  const [mfaCode, setMfaCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
   // Form State
@@ -108,7 +110,14 @@ export function LoginPage() {
         useNotificationStore.getState().clearAll();
         useNotificationStore.getState().add(`Account created for ${email}. Welcome to Voxel!`, 'success');
       } else {
-        await authService.login({ email, password });
+        const result = await authService.login({ email, password });
+        if (result.mfaRequired) {
+          setMfaChallengeRequired(true);
+          setMfaCode('');
+          const returnTo = searchParams.get('returnTo');
+          navigate(returnTo ? `/login?mfa=required&returnTo=${encodeURIComponent(returnTo)}` : '/login?mfa=required', { replace: true });
+          return;
+        }
         useNotificationStore.getState().clearAll();
         useNotificationStore.getState().add(`Signed in successfully as ${email}`, 'success');
         useNotificationStore.getState().add(`New authentication session active on ${getDeviceOSString()}`, 'info');
@@ -120,6 +129,31 @@ export function LoginPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleMfaSubmit = async (event) => {
+    event.preventDefault();
+    try {
+      setLoading(true);
+      setErrorMsg('');
+      await authService.verifyMfa(mfaCode.trim());
+      useNotificationStore.getState().clearAll();
+      useNotificationStore.getState().add('Signed in with two-factor authentication.', 'success');
+      const returnTo = searchParams.get('returnTo');
+      navigate(returnTo?.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/workspaces');
+    } catch (error) {
+      setErrorMsg(error.message || 'That code is invalid or has expired. Try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancelMfa = async () => {
+    await authService.cancelMfa().catch(() => {});
+    setMfaChallengeRequired(false);
+    setMfaCode('');
+    setErrorMsg('');
+    navigate('/login', { replace: true });
   };
 
   const handleResendVerification = async () => {
@@ -239,7 +273,7 @@ export function LoginPage() {
           </p>
 
           {/* Mode Switcher Tabs */}
-          <div className="flex rounded-2xl bg-slate-200/80 dark:bg-white/5 p-1 mb-6 border border-slate-300/50 dark:border-white/10">
+          {!mfaChallengeRequired && <div className="flex rounded-2xl bg-slate-200/80 dark:bg-white/5 p-1 mb-6 border border-slate-300/50 dark:border-white/10">
             <button
               type="button"
               onClick={() => {
@@ -272,10 +306,10 @@ export function LoginPage() {
             >
               <UserPlus size={14} /> Create Account
             </button>
-          </div>
+          </div>}
 
           <h2 className="text-2xl font-extrabold tracking-tight text-slate-950 dark:text-white">
-            {mode === 'signup' ? 'Create your Voxel account' : 'Sign in to your workspace'}
+            {mfaChallengeRequired ? 'Verify it’s you' : mode === 'signup' ? 'Create your Voxel account' : 'Sign in to your workspace'}
           </h2>
 
           <AnimatePresence mode="wait">
@@ -305,7 +339,31 @@ export function LoginPage() {
           )}
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="mt-5 space-y-3.5">
+          {mfaChallengeRequired ? (
+            <form onSubmit={handleMfaSubmit} className="mt-5 space-y-4">
+              <div className="flex items-start gap-3 rounded-2xl border border-violet-200 bg-violet-50/70 p-4 dark:border-violet-500/20 dark:bg-violet-500/5">
+                <ShieldCheck size={18} className="mt-0.5 shrink-0 text-violet-600 dark:text-violet-300" />
+                <p className="text-xs leading-5 text-slate-700 dark:text-slate-300">Enter the six digit code from your authenticator app, or use one of your recovery codes.</p>
+              </div>
+              <label htmlFor="mfa-signin-code" className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Authenticator or recovery code</label>
+              <input
+                id="mfa-signin-code"
+                autoFocus
+                autoComplete="one-time-code"
+                inputMode="text"
+                required
+                maxLength={32}
+                value={mfaCode}
+                onChange={(event) => setMfaCode(event.target.value)}
+                placeholder="000000"
+                className="w-full rounded-xl border border-slate-200 bg-white/80 px-3.5 py-3 text-center font-mono text-lg tracking-[.2em] outline-none ring-violet-500 focus:ring-2 dark:border-white/10 dark:bg-white/5 dark:text-white"
+              />
+              <button type="submit" disabled={loading || mfaCode.trim().length < 6} className="mt-2 w-full rounded-xl bg-violet-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-violet-600/25 transition hover:bg-violet-500 disabled:opacity-60">
+                {loading ? 'Verifying…' : 'Verify and sign in'}
+              </button>
+              <button type="button" onClick={handleCancelMfa} disabled={loading} className="w-full py-2 text-xs font-bold text-slate-500 underline underline-offset-2 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white">Use a different account</button>
+            </form>
+          ) : <form onSubmit={handleSubmit} className="mt-5 space-y-3.5">
             {mode === 'signup' && (
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
@@ -397,20 +455,20 @@ export function LoginPage() {
                 </>
               )}
             </button>
-          </form>
+          </form>}
 
           {/* Divider */}
-          <div className="relative my-5">
+          {!mfaChallengeRequired && <div className="relative my-5">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-slate-200 dark:border-white/10" />
             </div>
             <div className="relative flex justify-center text-[10px] uppercase tracking-wider font-extrabold text-slate-400">
               <span className="bg-white/80 dark:bg-[#0c111e] px-2.5">Or continue with</span>
             </div>
-          </div>
+          </div>}
 
           {/* Social / SSO Buttons */}
-          <div className="space-y-2">
+          {!mfaChallengeRequired && <div className="space-y-2">
             <a
               href={authService.loginUrl()}
               className="w-full inline-flex items-center justify-center gap-3 rounded-xl border border-slate-200/90 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 shadow-sm transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 cursor-pointer"
@@ -432,7 +490,7 @@ export function LoginPage() {
             >
               Log in as Guest User
             </button>}
-          </div>
+          </div>}
         </div>
       </motion.section>
     </main>

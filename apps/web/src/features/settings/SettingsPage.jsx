@@ -32,6 +32,7 @@ import { useHistoryStore } from '@/store/history-store';
 import { getDeviceOSString } from '@/utils/device-info';
 import { authService } from '@/features/auth/auth-service';
 import { workspaceService } from '@/features/workspaces/workspace-service';
+import { TwoFactorSettingsCard } from './TwoFactorSettingsCard';
 
 const LANGUAGES = [
   'English (US)',
@@ -1474,14 +1475,6 @@ export default function SettingsPage() {
                           />
                         </div>
 
-                        <div className="mt-3 flex items-center justify-between rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3.5 dark:border-white/10 dark:bg-white/5">
-                          <div>
-                            <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Two-Factor Authentication (2FA)</div>
-                            <div className="text-[11px] text-slate-500">Authenticator setup will be available in a future release.</div>
-                          </div>
-                          <span className="rounded-full bg-slate-200 px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-wider text-slate-600 dark:bg-white/10 dark:text-slate-400">Coming soon</span>
-                        </div>
-
                         <button
                           type="submit"
                           className="rounded-xl bg-violet-600 px-4.5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-violet-500 cursor-pointer"
@@ -1490,6 +1483,8 @@ export default function SettingsPage() {
                         </button>
                       </form>
                     </div>
+
+                    <TwoFactorSettingsCard addToast={addToast} />
 
                     {/* Active Sessions */}
                     <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 dark:border-white/10 dark:bg-slate-900/60 shadow-sm space-y-4">

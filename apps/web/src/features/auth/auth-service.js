@@ -26,6 +26,13 @@ export const authService = {
     }),
   resendEmailVerification: (email) => request('/api/v1/auth/email-verification/resend', { method: 'POST', body: JSON.stringify({ email }) }),
   verifyEmail: (token) => request('/api/v1/auth/email-verification/verify', { method: 'POST', body: JSON.stringify({ token }) }),
+  mfaStatus: () => request('/api/v1/auth/mfa'),
+  startTotpSetup: (currentPassword) => request('/api/v1/auth/mfa/totp/setup', { method: 'POST', body: JSON.stringify({ currentPassword }) }),
+  confirmTotpSetup: (code) => request('/api/v1/auth/mfa/totp/confirm', { method: 'POST', body: JSON.stringify({ code }) }),
+  rotateMfaRecoveryCodes: (code) => request('/api/v1/auth/mfa/recovery-codes', { method: 'POST', body: JSON.stringify({ code }) }),
+  disableTotp: (input) => request('/api/v1/auth/mfa/disable', { method: 'POST', body: JSON.stringify(input) }),
+  verifyMfa: (code) => request('/api/v1/auth/mfa/verify', { method: 'POST', body: JSON.stringify({ code }) }),
+  cancelMfa: () => request('/api/v1/auth/mfa/cancel', { method: 'POST', body: JSON.stringify({}) }),
   login: ({ email, password }) =>
     request('/api/v1/auth/login', {
       method: 'POST',

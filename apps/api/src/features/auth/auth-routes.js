@@ -29,6 +29,10 @@ const emailVerificationSchema = z.object({ token: z.string().min(40).max(100) })
 const resendVerificationSchema = z.object({
   email: z.string().trim().email().transform((email) => email.toLowerCase()),
 });
+const mfaCodeSchema = z.object({ code: z.string().trim().min(6).max(32) });
+const mfaSetupSchema = z.object({ currentPassword: z.string().max(128).optional() });
+const mfaDisableSchema = z.object({ code: z.string().trim().max(32).optional(), currentPassword: z.string().max(128).optional() })
+  .refine((input) => input.code || input.currentPassword, 'An authenticator code or current password is required.');
 
 const profileUpdateSchema = z.object({
   displayName: z.string().trim().min(2).max(80).optional(),
@@ -56,6 +60,7 @@ const preferencesSchema = z.object({
 
 const ACCESS_COOKIE = 'voxel_access';
 const REFRESH_COOKIE = 'voxel_refresh';
+const MFA_COOKIE = 'voxel_mfa_challenge';
 const accessCookieAge = 15 * 60;
 const refreshCookieAge = 30 * 24 * 60 * 60;
 
@@ -81,6 +86,16 @@ const applySessionCookies = (reply, tokens, environment) => {
     secure,
     path: '/api/v1/auth',
     maxAge: refreshCookieAge,
+  });
+};
+
+const applyMfaChallengeCookie = (reply, challengeToken, environment) => {
+  reply.setCookie(MFA_COOKIE, challengeToken, {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: environment.NODE_ENV === 'production',
+    path: '/api/v1/auth',
+    maxAge: 5 * 60,
   });
 };
 
@@ -126,6 +141,10 @@ export const registerAuthRoutes = async (app, environment) => {
           ip: request.ip,
           ...(request.headers['user-agent'] ? { userAgent: request.headers['user-agent'] } : {}),
         });
+        if (tokens.mfaRequired) {
+          applyMfaChallengeCookie(reply, tokens.challengeToken, environment);
+          return reply.redirect(`${environment.VOXEL_PUBLIC_APP_URL}/login?mfa=required`);
+        }
         applySessionCookies(reply, tokens, environment);
         return reply.redirect(`${environment.VOXEL_PUBLIC_APP_URL}/workspaces`);
       } catch (error) {
@@ -194,6 +213,10 @@ export const registerAuthRoutes = async (app, environment) => {
       ...(request.headers['user-agent'] ? { userAgent: request.headers['user-agent'] } : {}),
     });
 
+    if (result.mfaRequired) {
+      applyMfaChallengeCookie(reply, result.challengeToken, environment);
+      return reply.send(success({ mfaRequired: true }, createRequestId(request.id)));
+    }
     applySessionCookies(reply, result, environment);
     return reply.send(
       success(
@@ -204,6 +227,63 @@ export const registerAuthRoutes = async (app, environment) => {
         createRequestId(request.id),
       ),
     );
+  });
+
+  app.post('/api/v1/auth/mfa/verify', { config: { rateLimit: { max: 8, timeWindow: '5 minutes' } } }, async (request, reply) => {
+    const challengeToken = request.cookies[MFA_COOKIE];
+    if (!challengeToken) throw new AuthenticationError('A valid sign-in challenge is required.');
+    const { code } = mfaCodeSchema.parse(request.body);
+    const result = await authService.completeMfaChallenge(challengeToken, code, {
+      ip: request.ip,
+      ...(request.headers['user-agent'] ? { userAgent: request.headers['user-agent'] } : {}),
+    });
+    reply.clearCookie(MFA_COOKIE, { path: '/api/v1/auth' });
+    applySessionCookies(reply, result, environment);
+    return reply.send(success({ authenticated: true, user: result.user }, createRequestId(request.id)));
+  });
+
+  app.post('/api/v1/auth/mfa/cancel', async (_request, reply) => {
+    reply.clearCookie(MFA_COOKIE, { path: '/api/v1/auth' });
+    return reply.send(success({ cancelled: true }, createRequestId(_request.id)));
+  });
+
+  app.get('/api/v1/auth/mfa', async (request, reply) => {
+    const context = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+    if (!context) throw new AuthenticationError('Authentication is required.');
+    const status = await authService.getMfaStatus(context.user.id);
+    return reply.send(success(status, createRequestId(request.id)));
+  });
+
+  app.post('/api/v1/auth/mfa/totp/setup', async (request, reply) => {
+    const context = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+    if (!context) throw new AuthenticationError('Authentication is required.');
+    const { currentPassword } = mfaSetupSchema.parse(request.body ?? {});
+    const setup = await authService.startTotpSetup(context.user.id, context.sessionId, currentPassword);
+    return reply.send(success(setup, createRequestId(request.id)));
+  });
+
+  app.post('/api/v1/auth/mfa/totp/confirm', { config: { rateLimit: { max: 8, timeWindow: '5 minutes' } } }, async (request, reply) => {
+    const context = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+    if (!context) throw new AuthenticationError('Authentication is required.');
+    const { code } = mfaCodeSchema.parse(request.body);
+    const result = await authService.confirmTotpSetup(context.user.id, context.sessionId, code);
+    return reply.send(success(result, createRequestId(request.id)));
+  });
+
+  app.post('/api/v1/auth/mfa/recovery-codes', { config: { rateLimit: { max: 5, timeWindow: '5 minutes' } } }, async (request, reply) => {
+    const context = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+    if (!context) throw new AuthenticationError('Authentication is required.');
+    const { code } = mfaCodeSchema.parse(request.body);
+    const result = await authService.rotateMfaRecoveryCodes(context.user.id, code);
+    return reply.send(success(result, createRequestId(request.id)));
+  });
+
+  app.post('/api/v1/auth/mfa/disable', { config: { rateLimit: { max: 5, timeWindow: '5 minutes' } } }, async (request, reply) => {
+    const context = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+    if (!context) throw new AuthenticationError('Authentication is required.');
+    const input = mfaDisableSchema.parse(request.body);
+    const result = await authService.disableTotp(context.user.id, context.sessionId, input);
+    return reply.send(success(result, createRequestId(request.id)));
   });
 
   app.post('/api/v1/auth/refresh', async (request, reply) => {
@@ -252,6 +332,7 @@ export const registerAuthRoutes = async (app, environment) => {
     await authService.revokeAccessSession(accessToken);
     reply.clearCookie(ACCESS_COOKIE, { path: '/' });
     reply.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
+    reply.clearCookie(MFA_COOKIE, { path: '/api/v1/auth' });
     return reply.status(204).send();
   });
 
