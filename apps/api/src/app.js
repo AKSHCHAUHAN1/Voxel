@@ -14,6 +14,7 @@ import { registerWorkspaceRoutes } from './features/workspaces/workspace-routes.
 import { registerNotificationRoutes } from './features/notifications/notification-routes.js';
 import { registerFileRoutes } from './features/files/file-routes.js';
 import { registerPluginRoutes } from './features/plugins/plugin-routes.js';
+import { registerSearchRoutes } from './features/search/search-routes.js';
 import { failure, success } from './lib/api-response.js';
 
 const toRequestId = (value) => createRequestId(value);
@@ -137,6 +138,7 @@ export const buildApp = async (environment) => {
   await registerFileRoutes(app, environment);
   await registerWorkspaceRoutes(app, environment);
   await registerPluginRoutes(app, environment);
+  await registerSearchRoutes(app, environment);
   app.addHook('onClose', async () => prisma.$disconnect());
 
   return app;

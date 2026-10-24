@@ -93,6 +93,7 @@ export function AppShell() {
   const [showGuestLogoutModal, setShowGuestLogoutModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const normalizedSearch = searchQuery.trim().toLowerCase();
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   // Theme state and bubble animation state
   const theme = useThemeStore((state) => state.theme);
   const setTheme = useThemeStore((state) => state.setTheme);
@@ -247,6 +248,11 @@ export function AppShell() {
     allowInInput: true,
   });
 
+  useShortcut('shift+?', () => setCommandOpen(true), {
+    label: 'Show keyboard shortcuts',
+    category: 'General',
+  });
+
   // Close search dropdown, notifications, and user profile menu outside click
   useEffect(() => {
     const handleOutsideClick = (e) => {
@@ -284,72 +290,20 @@ export function AppShell() {
     toggleThemeWithRipple(e, theme, setTheme);
   };
 
-  // Fetch dashboards for search index
-  const dashboardsQueries = useQuery({
-    queryKey: ['all-dashboards', workspaces.data?.map(w => w.id)],
-    queryFn: async () => {
-      if (!workspaces.data) return [];
-      const all = [];
-      for (const ws of workspaces.data) {
-        try {
-          const results = await workspaceService.dashboards(ws.id);
-          if (Array.isArray(results)) all.push(...results.map((dashboard) => ({ ...dashboard, workspaceName: ws.name })));
-        } catch (_e) {
-          // ignore
-        }
-      }
-      return all;
-    },
-    enabled: Boolean(workspaces.data),
-    staleTime: 60_000,
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedSearch(normalizedSearch), 220);
+    return () => window.clearTimeout(timeout);
+  }, [normalizedSearch]);
+
+  const globalSearchQuery = useQuery({
+    queryKey: ['global-search', user?.id, debouncedSearch],
+    queryFn: () => workspaceService.search(debouncedSearch),
+    enabled: searchDropdownOpen && Boolean(user?.id) && debouncedSearch === normalizedSearch && debouncedSearch.length > 1,
+    staleTime: 15_000,
   });
-
-  const templatesQueries = useQuery({
-    queryKey: ['all-templates', workspaces.data?.map((workspace) => workspace.id)],
-    queryFn: async () => {
-      const results = await Promise.all((workspaces.data || []).map(async (workspace) => {
-        const templates = await workspaceService.templates(workspace.id).catch(() => []);
-        return templates.map((template) => ({ ...template, workspaceName: workspace.name }));
-      }));
-      return results.flat();
-    },
-    enabled: normalizedSearch.length > 1 && Boolean(workspaces.data),
-    staleTime: 60_000,
-  });
-
-  const membersQueries = useQuery({
-    queryKey: ['all-workspace-members', workspaces.data?.map((workspace) => workspace.id)],
-    queryFn: async () => {
-      const results = await Promise.all((workspaces.data || []).map(async (workspace) => {
-        const members = await workspaceService.members(workspace.id).catch(() => []);
-        return members.map((member) => ({ ...member, workspaceId: workspace.id, workspaceName: workspace.name }));
-      }));
-      return results.flat();
-    },
-    enabled: normalizedSearch.length > 1 && Boolean(workspaces.data),
-    staleTime: 60_000,
-  });
-
-  const filteredDashboards = dashboardsQueries.data
-    ? dashboardsQueries.data.filter((dashboard) => `${dashboard.name} ${dashboard.description || ''} ${dashboard.workspaceName || ''}`.toLowerCase().includes(normalizedSearch))
-    : [];
-
-  const filteredWorkspaces = workspaces.data
-    ? workspaces.data.filter((workspace) => `${workspace.name} ${workspace.description || ''}`.toLowerCase().includes(normalizedSearch))
-    : [];
-
-  const filteredWidgets = normalizedSearch.length > 1 && dashboardsQueries.data
-    ? dashboardsQueries.data.flatMap((dashboard) => (dashboard.scene?.nodes || [])
-      .map((node) => ({ ...node, dashboardId: dashboard.id, dashboardName: dashboard.name, workspaceId: dashboard.workspaceId, workspaceName: dashboard.workspaceName }))
-      .filter((node) => [node.title, node.type, node.content, node.description, node.code, node.url, node.rows, node.dashboardName].filter((value) => value != null).map(String).join(' ').toLowerCase().includes(normalizedSearch)))
-      .slice(0, 8)
-    : [];
-  const filteredTemplates = templatesQueries.data
-    ? templatesQueries.data.filter((template) => `${template.name} ${template.description || ''} ${template.category} ${(template.tags || []).join(' ')} ${template.workspaceName}`.toLowerCase().includes(normalizedSearch)).slice(0, 8)
-    : [];
-  const filteredMembers = membersQueries.data
-    ? membersQueries.data.filter((member) => `${member.user?.displayName || ''} ${member.user?.email || ''} ${member.workspaceName}`.toLowerCase().includes(normalizedSearch)).slice(0, 8)
-    : [];
+  const searchResults = debouncedSearch === normalizedSearch && globalSearchQuery.data?.query === debouncedSearch
+    ? globalSearchQuery.data
+    : null;
 
   const globalCommands = normalizedSearch ? [
     ...(workspaces.data || []).filter((workspace) => ['OWNER', 'ADMIN', 'EDITOR'].includes(workspace.role)).map((workspace) => ({
@@ -550,29 +504,36 @@ export function AppShell() {
                   </div>
                 ) : (
                   <>
-                    {filteredWorkspaces.length > 0 && <SearchResultSection title="Workspaces">
-                      {filteredWorkspaces.slice(0, 6).map((workspace) => <SearchResultButton key={workspace.id} icon={Boxes} title={workspace.name} detail={workspace.description || 'Workspace'} onClick={() => { navigate(`/workspaces/${workspace.id}/dashboards`); setSearchDropdownOpen(false); }} />)}
+                    {searchResults?.workspaces.length > 0 && <SearchResultSection title="Workspaces">
+                      {searchResults.workspaces.map((workspace) => <SearchResultButton key={workspace.id} icon={Boxes} title={workspace.name} detail={workspace.description || 'Workspace'} onClick={() => { navigate(`/workspaces/${workspace.id}/dashboards`); setSearchDropdownOpen(false); }} />)}
                     </SearchResultSection>}
-                    {filteredDashboards.length > 0 && <SearchResultSection title="Dashboards">
-                      {filteredDashboards.slice(0, 8).map((dashboard) => <SearchResultButton key={dashboard.id} icon={PanelsTopLeft} title={dashboard.name} detail={dashboard.workspaceName} onClick={() => { navigate(`/workspaces/${dashboard.workspaceId}/dashboards/${dashboard.id}`); setSearchDropdownOpen(false); }} />)}
+                    {searchResults?.dashboards.length > 0 && <SearchResultSection title="Dashboards">
+                      {searchResults.dashboards.map((dashboard) => <SearchResultButton key={dashboard.id} icon={PanelsTopLeft} title={dashboard.name} detail={dashboard.workspaceName} onClick={() => { navigate(`/workspaces/${dashboard.workspaceId}/dashboards/${dashboard.id}`); setSearchDropdownOpen(false); }} />)}
                     </SearchResultSection>}
-                    {filteredWidgets.length > 0 && <SearchResultSection title="Widgets">
-                      {filteredWidgets.map((widget) => <SearchResultButton key={`${widget.dashboardId}:${widget.id}`} icon={Puzzle} title={widget.title || widget.type || 'Untitled widget'} detail={`${widget.type || 'Widget'} · ${widget.dashboardName} · ${widget.workspaceName}`} onClick={() => { navigate(`/workspaces/${widget.workspaceId}/dashboards/${widget.dashboardId}`, { state: { focusNodeId: widget.id } }); setSearchDropdownOpen(false); }} />)}
+                    {searchResults?.widgets.length > 0 && <SearchResultSection title="Widgets">
+                      {searchResults.widgets.map((widget) => <SearchResultButton key={`${widget.dashboardId}:${widget.id}`} icon={Puzzle} title={widget.title || widget.type || 'Untitled widget'} detail={`${widget.type || 'Widget'} · ${widget.dashboardName} · ${widget.workspaceName}`} onClick={() => { navigate(`/workspaces/${widget.workspaceId}/dashboards/${widget.dashboardId}`, { state: { focusNodeId: widget.id } }); setSearchDropdownOpen(false); }} />)}
                     </SearchResultSection>}
-                    {filteredTemplates.length > 0 && <SearchResultSection title="Templates">
-                      {filteredTemplates.map((template) => <SearchResultButton key={`${template.workspaceId}:${template.id}`} icon={Bookmark} title={template.name} detail={`${template.category || 'Template'} · ${template.workspaceName}`} onClick={() => { navigate(`/workspaces/${template.workspaceId}/dashboards`, { state: { showTemplates: true } }); setSearchDropdownOpen(false); }} />)}
+                    {searchResults?.templates.length > 0 && <SearchResultSection title="Templates">
+                      {searchResults.templates.map((template) => <SearchResultButton key={`${template.workspaceId}:${template.id}`} icon={Bookmark} title={template.name} detail={`${template.category || 'Template'} · ${template.workspaceName}`} onClick={() => { navigate(`/workspaces/${template.workspaceId}/dashboards`, { state: { showTemplates: true } }); setSearchDropdownOpen(false); }} />)}
                     </SearchResultSection>}
-                    {filteredMembers.length > 0 && <SearchResultSection title="Members">
-                      {filteredMembers.map((member) => <SearchResultButton key={`${member.workspaceId}:${member.id}`} icon={Users} title={member.user?.displayName || member.user?.email || 'Workspace member'} detail={`${member.workspaceName} · ${member.role.toLowerCase()}`} onClick={() => { navigate('/settings', { state: { settingsTab: 'workspace', workspaceId: member.workspaceId, memberSearch: member.user?.displayName || member.user?.email || '' } }); setSearchDropdownOpen(false); }} />)}
+                    {searchResults?.members.length > 0 && <SearchResultSection title="Members">
+                      {searchResults.members.map((member) => <SearchResultButton key={`${member.workspaceId}:${member.id}`} icon={Users} title={member.user?.displayName || member.user?.email || 'Workspace member'} detail={`${member.workspaceName} · ${member.role.toLowerCase()}`} onClick={() => { navigate('/settings', { state: { settingsTab: 'workspace', workspaceId: member.workspaceId, memberSearch: member.user?.displayName || member.user?.email || '' } }); setSearchDropdownOpen(false); }} />)}
                     </SearchResultSection>}
                     {globalCommands.length > 0 && <SearchResultSection title="Actions">
                       {globalCommands.map((command) => <SearchResultButton key={command.id} icon={command.icon} title={command.label} onClick={command.run} />)}
                     </SearchResultSection>}
-                    {filteredWorkspaces.length === 0 && filteredDashboards.length === 0 && filteredWidgets.length === 0 && filteredTemplates.length === 0 && filteredMembers.length === 0 && globalCommands.length === 0 && (
+                    {normalizedSearch.length > 1 && (debouncedSearch !== normalizedSearch || globalSearchQuery.isFetching) && (
                       <p className="px-3 py-4 text-xs text-slate-400">
-                        {workspaces.isPending || dashboardsQueries.isPending || (normalizedSearch.length > 1 && (templatesQueries.isFetching || membersQueries.isFetching)) ? 'Searching…' : `No results for “${searchQuery.trim()}”.`}
+                        Searching…
                       </p>
                     )}
+                    {globalSearchQuery.isError && debouncedSearch === normalizedSearch && (
+                      <button type="button" onClick={() => globalSearchQuery.refetch()} className="mx-3 my-2 rounded-lg border border-rose-200 px-3 py-2 text-left text-[11px] font-semibold text-rose-600 dark:border-rose-400/20 dark:text-rose-300">Search is unavailable. Try again.</button>
+                    )}
+                    {debouncedSearch === normalizedSearch && !globalSearchQuery.isFetching && !globalSearchQuery.isError && searchResults && searchResults.workspaces.length === 0 && searchResults.dashboards.length === 0 && searchResults.widgets.length === 0 && searchResults.templates.length === 0 && searchResults.members.length === 0 && globalCommands.length === 0 && (
+                      <p className="px-3 py-4 text-xs text-slate-400">No results for “{searchQuery.trim()}”.</p>
+                    )}
+                    {normalizedSearch.length === 1 && <p className="px-3 py-4 text-xs text-slate-400">Type one more character to search.</p>}
                   </>
                 )}
               </div>
@@ -783,7 +744,7 @@ export function AppShell() {
         </div>
       )}
       {/* Command Palette */}
-      <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} onLogout={handleLogoutClick} />
+      <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} onLogout={handleLogoutClick} userId={user?.id} />
 
       {/* Guest Logout Warning Modal */}
       <CustomConfirmModal

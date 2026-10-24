@@ -51,6 +51,7 @@ import { useSettingsStore } from '@/store/settings-store';
 import { useNotificationStore } from '@/store/notification-store';
 import { VersionHistory } from './VersionHistory';
 import { useYjs } from './use-yjs';
+import { cloneCanvasClipboard, createCanvasClipboard } from './canvas-clipboard';
 import {
   CANVAS_INNER_PADDING,
   CANVAS_PADDING,
@@ -377,6 +378,8 @@ export default function EditorPage() {
     onConfirm: null,
   });
   const gridRef = useRef(null);
+  const panDragRef = useRef(null);
+  const suppressCanvasClickRef = useRef(false);
 
   const canUndo = useHistoryStore((s) => s.past.length > 0);
   const canRedo = useHistoryStore((s) => s.future.length > 0);
@@ -557,6 +560,21 @@ export default function EditorPage() {
   const { autosaveEnabled, autosaveInterval, snapToGrid } = useSettingsStore();
 
   const [zoom, setZoom] = useState(1);
+  const [spacePanActive, setSpacePanActive] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+
+  useEffect(() => {
+    const releaseSpacePan = (event) => {
+      if (event.code === 'Space') setSpacePanActive(false);
+    };
+    const clearSpacePanOnBlur = () => setSpacePanActive(false);
+    window.addEventListener('keyup', releaseSpacePan);
+    window.addEventListener('blur', clearSpacePanOnBlur);
+    return () => {
+      window.removeEventListener('keyup', releaseSpacePan);
+      window.removeEventListener('blur', clearSpacePanOnBlur);
+    };
+  }, []);
 
   const handleZoomIn = useCallback(() => {
     setZoom((prev) => Math.min(2.0, parseFloat((prev + 0.1).toFixed(2))));
@@ -1187,6 +1205,48 @@ export default function EditorPage() {
     awareness.setLocalStateField('cursor', null);
   }, [awareness]);
 
+  const handleCanvasPanStart = useCallback((event) => {
+    if (!spacePanActive || event.button !== 0 || !gridRef.current) return;
+    const viewport = gridRef.current;
+    event.preventDefault();
+    event.stopPropagation();
+    panDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: viewport.scrollLeft,
+      scrollTop: viewport.scrollTop,
+    };
+    suppressCanvasClickRef.current = false;
+    viewport.setPointerCapture?.(event.pointerId);
+    setIsPanning(true);
+  }, [spacePanActive]);
+
+  const handleCanvasPointerMove = useCallback((event) => {
+    const drag = panDragRef.current;
+    const viewport = gridRef.current;
+    if (drag && viewport && drag.pointerId === event.pointerId) {
+      const deltaX = event.clientX - drag.startX;
+      const deltaY = event.clientY - drag.startY;
+      if (Math.hypot(deltaX, deltaY) > 3) suppressCanvasClickRef.current = true;
+      viewport.scrollLeft = drag.scrollLeft - deltaX;
+      viewport.scrollTop = drag.scrollTop - deltaY;
+      event.preventDefault();
+      return;
+    }
+    handlePointerMove(event);
+  }, [handlePointerMove]);
+
+  const handleCanvasPanEnd = useCallback((event) => {
+    const drag = panDragRef.current;
+    if (!drag || (event.pointerId != null && drag.pointerId !== event.pointerId)) return;
+    const viewport = gridRef.current;
+    if (viewport?.hasPointerCapture?.(drag.pointerId)) viewport.releasePointerCapture(drag.pointerId);
+    panDragRef.current = null;
+    setIsPanning(false);
+    window.setTimeout(() => { suppressCanvasClickRef.current = false; }, 0);
+  }, []);
+
   const handleViewportChange = useCallback(() => {
     if (!awareness || !gridRef.current) return;
     const viewport = gridRef.current;
@@ -1238,61 +1298,78 @@ export default function EditorPage() {
   );
 
   const handleUndo = useCallback(() => {
+    if (!canEditDashboard) return;
     const prev = useHistoryStore.getState().undo(scene);
     if (prev) {
       updateScene(prev);
     }
-  }, [scene, updateScene]);
+  }, [canEditDashboard, scene, updateScene]);
 
   const handleRedo = useCallback(() => {
+    if (!canEditDashboard) return;
     const next = useHistoryStore.getState().redo(scene);
     if (next) {
       updateScene(next);
     }
-  }, [scene, updateScene]);
+  }, [canEditDashboard, scene, updateScene]);
 
-  const copiedNodesRef = useRef([]);
+  const copiedSceneRef = useRef({ nodes: [], connections: [] });
+
+  const storeSelectedClipboard = (notify = true) => {
+    if (selectedNodeIds.length === 0) return false;
+    const clipboard = createCanvasClipboard(scene.nodes, scene.connections, selectedNodeIds);
+    if (clipboard.nodes.length === 0) return false;
+    copiedSceneRef.current = clipboard;
+    try {
+      localStorage.setItem('voxel_dashboard_clipboard', JSON.stringify(clipboard));
+      localStorage.setItem('voxel_copied_nodes', JSON.stringify(clipboard.nodes));
+    } catch (_error) {
+      // The in-memory clipboard remains available when browser storage is disabled.
+    }
+    if (notify) useNotificationStore.getState().add(`Copied ${clipboard.nodes.length} ${clipboard.nodes.length === 1 ? 'node' : 'nodes'}.`, 'info');
+    return true;
+  };
 
   const handleCopy = () => {
-    if (selectedNodeIds.length === 0) return;
-    const selected = scene.nodes.filter((n) => selectedNodeIds.includes(n.id));
-    if (selected.length > 0) {
-      copiedNodesRef.current = selected;
-      localStorage.setItem('voxel_copied_nodes', JSON.stringify(selected));
-      useNotificationStore.getState().add(`Copied ${selected.length} ${selected.length === 1 ? 'node' : 'nodes'}.`, 'info');
-    }
+    storeSelectedClipboard();
   };
 
   const handlePaste = () => {
-    let rawList = copiedNodesRef.current;
-    if (!rawList || rawList.length === 0) {
+    if (!canEditDashboard) return;
+    let clipboard = copiedSceneRef.current;
+    if (!clipboard.nodes || clipboard.nodes.length === 0) {
       try {
-        const stored = localStorage.getItem('voxel_copied_nodes') || localStorage.getItem('voxel_copied_node');
+        const stored = localStorage.getItem('voxel_dashboard_clipboard');
         if (stored) {
           const parsed = JSON.parse(stored);
-          rawList = Array.isArray(parsed) ? parsed : [parsed];
+          clipboard = Array.isArray(parsed)
+            ? { nodes: parsed, connections: [] }
+            : {
+              nodes: Array.isArray(parsed?.nodes) ? parsed.nodes : [],
+              connections: Array.isArray(parsed?.connections) ? parsed.connections : [],
+            };
+        } else {
+          const legacy = localStorage.getItem('voxel_copied_nodes') || localStorage.getItem('voxel_copied_node');
+          const parsed = legacy ? JSON.parse(legacy) : [];
+          clipboard = { nodes: Array.isArray(parsed) ? parsed : [parsed], connections: [] };
         }
       } catch (_err) {
         // ignore
       }
     }
-    if (!rawList || rawList.length === 0) return;
-    const newNodes = rawList.map((raw) => ({
-      ...raw,
-      id: crypto.randomUUID(),
-      x: (raw.x ?? 100) + 30,
-      y: (raw.y ?? 100) + 30,
-    }));
+    const { nodes: newNodes, connections: newConnections } = cloneCanvasClipboard(clipboard);
+    if (newNodes.length === 0) return;
     update({
       ...scene,
       nodes: [...scene.nodes, ...newNodes],
+      connections: [...scene.connections, ...newConnections],
     });
     setSelectedNodeIds(newNodes.map((n) => n.id));
     useNotificationStore.getState().add(`Pasted ${newNodes.length} ${newNodes.length === 1 ? 'node' : 'nodes'}.`, 'info');
   };
 
   const handleDeleteSelected = useCallback(() => {
-    if (selectedNodeIds.length === 0) return;
+    if (!canEditDashboard || selectedNodeIds.length === 0) return;
     const idsToDelete = [...selectedNodeIds];
     const idSet = new Set(idsToDelete);
     const nextNodes = scene.nodes.filter((n) => !idSet.has(n.id));
@@ -1306,7 +1383,26 @@ export default function EditorPage() {
     });
     setSelectedNodeIds([]);
     useNotificationStore.getState().add(`Deleted ${idsToDelete.length} ${idsToDelete.length === 1 ? 'node' : 'nodes'}.`, 'info');
-  }, [selectedNodeIds, scene, update]);
+  }, [canEditDashboard, selectedNodeIds, scene, update]);
+
+  const handleCut = () => {
+    if (!canEditDashboard || !storeSelectedClipboard(false)) return;
+    handleDeleteSelected();
+  };
+
+  const handleDuplicateSelected = () => {
+    if (!canEditDashboard || selectedNodeIds.length === 0) return;
+    const clipboard = createCanvasClipboard(scene.nodes, scene.connections, selectedNodeIds);
+    const { nodes: duplicates, connections } = cloneCanvasClipboard(clipboard);
+    if (duplicates.length === 0) return;
+    update({
+      ...scene,
+      nodes: [...scene.nodes, ...duplicates],
+      connections: [...scene.connections, ...connections],
+    });
+    setSelectedNodeIds(duplicates.map((node) => node.id));
+    useNotificationStore.getState().add(`Duplicated ${duplicates.length} ${duplicates.length === 1 ? 'node' : 'nodes'}.`, 'info');
+  };
 
   const handleSelectAll = useCallback((e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -1353,9 +1449,53 @@ export default function EditorPage() {
   };
 
   const handleSave = () => {
-    if (yScene) {
+    if (canEditDashboard && yScene && draft && !save.isPending) {
       save.mutate(scene);
     }
+  };
+
+  const handleNewDashboard = async () => {
+    if (!canEditDashboard) {
+      useNotificationStore.getState().add('You need workspace editor access to create a dashboard.', 'warning');
+      return;
+    }
+    if (save.isPending) {
+      useNotificationStore.getState().add('Wait for the current save to finish before leaving this dashboard.', 'warning');
+      return;
+    }
+    try {
+      if (draft) await save.mutateAsync(scene);
+      navigate(`/workspaces/${workspaceId}/dashboards`, { state: { openCreateDashboard: true } });
+    } catch (error) {
+      useNotificationStore.getState().add(error.message || 'Dashboard changes could not be saved.', 'warning');
+    }
+  };
+
+  const handleSaveAs = async () => {
+    if (!canEditDashboard) {
+      useNotificationStore.getState().add('You need workspace editor access to create a dashboard copy.', 'warning');
+      return;
+    }
+    if (save.isPending) {
+      useNotificationStore.getState().add('Wait for the current save to finish before creating a copy.', 'warning');
+      return;
+    }
+    try {
+      if (draft) await save.mutateAsync(scene);
+      const copy = await workspaceService.duplicateDashboard(dashboardId);
+      await queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'dashboards'] });
+      useNotificationStore.getState().add(`Created “${copy.name}”.`, 'success');
+      navigate(`/workspaces/${workspaceId}/dashboards/${copy.id}`);
+    } catch (error) {
+      useNotificationStore.getState().add(error.message || 'Dashboard copy could not be created.', 'warning');
+    }
+  };
+
+  const handleToggleGrid = () => {
+    if (!canEditDashboard) return;
+    const gridStyle = scene.gridStyle === 'blank' ? 'dots' : 'blank';
+    update({ ...scene, gridStyle });
+    useNotificationStore.getState().add(gridStyle === 'blank' ? 'Canvas grid hidden.' : 'Canvas grid shown.', 'info');
   };
 
   const handleRestoreVersion = (ver) => {
@@ -1388,12 +1528,19 @@ export default function EditorPage() {
   ]);
   useShortcut('meta+v', handlePaste, { label: 'Paste copied node(s)', category: 'Editor' }, [scene,
   ]);
+  useShortcut('meta+x', handleCut, { label: 'Cut selected node(s)', category: 'Editor' }, [selectedNodeIds, scene, canEditDashboard]);
+  useShortcut('meta+d', handleDuplicateSelected, { label: 'Duplicate selected node(s)', category: 'Editor' }, [selectedNodeIds, scene, canEditDashboard]);
   useShortcut('backspace', handleDeleteSelected, { label: 'Delete selected node(s)', category: 'Editor' }, [selectedNodeIds, scene],
   );
   useShortcut('delete', handleDeleteSelected, { label: 'Delete selected node(s)', category: 'Editor' }, [selectedNodeIds, scene],
   );
   useShortcut('meta+s', handleSave, { label: 'Save dashboard changes', category: 'Editor', allowInInput: true }, [yScene, scene],
   );
+  useShortcut('meta+n', handleNewDashboard, { label: 'Create a new dashboard', category: 'Editor' }, [workspaceId, canEditDashboard, draft, save.isPending, scene]);
+  useShortcut('meta+shift+s', handleSaveAs, { label: 'Save dashboard as a copy', category: 'Editor' }, [dashboardId, workspaceId, canEditDashboard, draft, save.isPending, scene]);
+  useShortcut(' ', () => setSpacePanActive(true), { label: 'Pan canvas (hold Space)', category: 'Editor' });
+  useShortcut('f', handleRepositionCanvas, { label: 'Fit canvas', category: 'Editor' }, []);
+  useShortcut('g', handleToggleGrid, { label: 'Toggle canvas grid', category: 'Editor' }, [scene, canEditDashboard]);
   useShortcut('meta+=', handleZoomIn, { label: 'Zoom In', category: 'Editor' }, []);
   useShortcut('meta+-', handleZoomOut, { label: 'Zoom Out', category: 'Editor' }, []);
   useShortcut('meta+0', handleResetZoom, { label: 'Reset Zoom', category: 'Editor' }, []);
@@ -2178,7 +2325,13 @@ export default function EditorPage() {
         )}
 
         <main
-          onClick={() => setSelectedNodeIds([])}
+          onClick={() => {
+            if (suppressCanvasClickRef.current) {
+              suppressCanvasClickRef.current = false;
+              return;
+            }
+            setSelectedNodeIds([]);
+          }}
           className="flex-1 overflow-hidden relative bg-slate-50 dark:bg-[#030509] min-h-[500px] z-10"
           style={gridStyleInline}
         >
@@ -2194,9 +2347,12 @@ export default function EditorPage() {
           {/* 360-degree Infinite Scrollable Container */}
           <div
             ref={gridRef}
-            className="w-full h-full overflow-auto relative no-scrollbars flex-1"
+            className={`w-full h-full overflow-auto relative no-scrollbars flex-1 ${isPanning ? 'cursor-grabbing' : spacePanActive ? 'cursor-grab' : ''}`}
             style={{ padding: CANVAS_PADDING }}
-            onPointerMove={handlePointerMove}
+            onPointerDownCapture={handleCanvasPanStart}
+            onPointerMove={handleCanvasPointerMove}
+            onPointerUp={handleCanvasPanEnd}
+            onPointerCancel={handleCanvasPanEnd}
             onPointerLeave={handlePointerLeave}
             onScroll={handleViewportChange}
           >

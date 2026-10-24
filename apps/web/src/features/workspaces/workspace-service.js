@@ -31,6 +31,7 @@ const uploadCoverImage = (workspaceId, file) => request(`/api/v1/workspaces/${wo
 });
 
 export const workspaceService = {
+  search: (query) => request(`/api/v1/search?q=${encodeURIComponent(query)}`),
   pluginCatalog: () => request('/api/v1/marketplace/plugins'),
   plugins: (workspaceId) => request(`/api/v1/workspaces/${workspaceId}/plugins`),
   installPlugin: (workspaceId, pluginId) => request(`/api/v1/workspaces/${workspaceId}/plugins`, { method: 'POST', body: JSON.stringify({ pluginId }) }),

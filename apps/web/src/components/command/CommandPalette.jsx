@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Search,
@@ -14,6 +14,7 @@ import {
   Keyboard,
   Home,
   Layers,
+  Users,
 } from 'lucide-react';
 import { useThemeStore } from '@/store/theme-store';
 import { useNotificationStore } from '@/store/notification-store';
@@ -21,19 +22,57 @@ import { workspaceService } from '@/features/workspaces/workspace-service';
 import { authService } from '@/features/auth/auth-service';
 import { getAllShortcuts, formatCombo } from '@/lib/keyboard';
 
+const RECENT_PAGES_KEY = 'voxel-recent-pages';
+const RECENT_PAGE_PATH = /^\/(?:settings|workspaces(?:\/[0-9a-f-]+(?:\/dashboards(?:\/[0-9a-f-]+)?)?)?)$/i;
+const EMPTY_LIST = [];
+
+function readRecentPages(userId) {
+  try {
+    const key = `${RECENT_PAGES_KEY}:${userId || 'anonymous'}`;
+    const pages = JSON.parse(window.localStorage.getItem(key) || '[]');
+    return Array.isArray(pages)
+      ? pages.filter((page) => page && RECENT_PAGE_PATH.test(page.path) && typeof page.label === 'string').slice(0, 8)
+      : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function getPageLabel(path, workspaces, currentDashboard) {
+  if (path === '/settings') return { label: 'Open Settings', category: 'Navigation' };
+  if (path === '/workspaces') return { label: 'Open Workspaces', category: 'Navigation' };
+
+  const match = path.match(/^\/workspaces\/([0-9a-f-]+)\/dashboards(?:\/([0-9a-f-]+))?$/i);
+  if (!match) return null;
+
+  const [, workspaceId, dashboardId] = match;
+  if (!workspaces.some((workspace) => workspace.id === workspaceId)) return null;
+  if (dashboardId) {
+    return currentDashboard?.id === dashboardId && currentDashboard.workspaceId === workspaceId
+      ? { label: `Open dashboard: ${currentDashboard.name}`, category: 'Dashboards' }
+      : null;
+  }
+
+  const workspace = workspaces.find((item) => item.id === workspaceId);
+  return workspace
+    ? { label: `Open workspace: ${workspace.name}`, category: 'Workspaces' }
+    : null;
+}
+
 /**
  * CommandPalette — ⌘K global command launcher.
  *
- * Provides fuzzy search across:
- * - Navigation (pages, workspaces, dashboards)
- * - Actions (create workspace, toggle theme, logout)
- * - Keyboard shortcuts reference
+ * Searches navigation, workspaces, dashboards, widgets, templates, members,
+ * actions, recent pages, and the keyboard shortcut reference.
  */
-export function CommandPalette({ open, onClose, onLogout }) {
+export function CommandPalette({ open, onClose, onLogout, userId }) {
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [recentPagesState, setRecentPagesState] = useState(() => ({ userId, pages: readRecentPages(userId) }));
   const inputRef = useRef(null);
   const listRef = useRef(null);
+  const location = useLocation();
   const navigate = useNavigate();
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
@@ -45,19 +84,54 @@ export function CommandPalette({ open, onClose, onLogout }) {
     enabled: open,
     staleTime: 30_000,
   });
-  const dashboards = useQuery({
-    queryKey: ['all-dashboards', workspaces.data?.map((workspace) => workspace.id)],
-    queryFn: async () => {
-      if (!workspaces.data) return [];
-      const results = await Promise.all(workspaces.data.map(async (workspace) => {
-        const dashboardsInWorkspace = await workspaceService.dashboards(workspace.id).catch(() => []);
-        return dashboardsInWorkspace.map((dashboard) => ({ ...dashboard, workspaceName: workspace.name }));
-      }));
-      return results.flat();
-    },
-    enabled: open && Boolean(workspaces.data),
+  const normalizedQuery = query.trim().toLowerCase();
+  const currentDashboardId = location.pathname.match(/^\/workspaces\/[0-9a-f-]+\/dashboards\/([0-9a-f-]+)$/i)?.[1];
+  const currentDashboard = useQuery({
+    queryKey: ['dashboard', currentDashboardId],
+    queryFn: () => workspaceService.dashboard(currentDashboardId),
+    enabled: open && Boolean(currentDashboardId),
     staleTime: 60_000,
   });
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedQuery(normalizedQuery), 220);
+    return () => window.clearTimeout(timeout);
+  }, [normalizedQuery]);
+  const search = useQuery({
+    queryKey: ['global-search', userId, debouncedQuery],
+    queryFn: () => workspaceService.search(debouncedQuery),
+    enabled: open && Boolean(userId) && debouncedQuery === normalizedQuery && debouncedQuery.length > 1,
+    staleTime: 15_000,
+  });
+  const searchResults = debouncedQuery === normalizedQuery && search.data?.query === debouncedQuery
+    ? search.data
+    : null;
+  const workspacesList = workspaces.data || EMPTY_LIST;
+  const recentPages = recentPagesState.userId === userId ? recentPagesState.pages : readRecentPages(userId);
+  const availableRecentPages = useMemo(() => workspaces.data
+    ? recentPages.filter((page) => {
+      const match = page.path.match(/^\/workspaces\/([0-9a-f-]+)\//i);
+      return !match || workspacesList.some((workspace) => workspace.id === match[1]);
+    })
+    : recentPages, [recentPages, workspaces.data, workspacesList]);
+
+  useEffect(() => {
+    const currentPage = getPageLabel(location.pathname, workspacesList, currentDashboard.data);
+    if (!currentPage) return;
+
+    setRecentPagesState((previousState) => {
+      const previous = previousState.userId === userId ? previousState.pages : readRecentPages(userId);
+      const next = [
+        { path: location.pathname, ...currentPage },
+        ...previous.filter((page) => page.path !== location.pathname),
+      ].slice(0, 8);
+      try {
+        window.localStorage.setItem(`${RECENT_PAGES_KEY}:${userId || 'anonymous'}`, JSON.stringify(next));
+      } catch (_error) {
+        // Recent navigation is a convenience; storage may be unavailable in private browsing.
+      }
+      return { userId, pages: next };
+    });
+  }, [location.pathname, workspacesList, currentDashboard.data, userId]);
 
   // Build command list
   const commands = useMemo(() => {
@@ -98,8 +172,20 @@ export function CommandPalette({ open, onClose, onLogout }) {
         });
       });
     }
-    if (dashboards.data && Array.isArray(dashboards.data)) {
-      dashboards.data.forEach((dashboard) => {
+    // Recently opened destinations
+    availableRecentPages.forEach((page) => {
+      items.push({
+        id: `recent-${page.path}`,
+        label: page.label,
+        category: 'Recently Opened',
+        icon: page.path === '/settings' ? Settings : page.category === 'Dashboards' ? LayoutDashboard : Layers,
+        action: () => { navigate(page.path); onClose(); },
+      });
+    });
+
+    // Search results are loaded for the current query; the palette does not download every dashboard scene.
+    if (searchResults) {
+      searchResults.dashboards.forEach((dashboard) => {
         items.push({
           id: `dashboard-${dashboard.id}`,
           label: `Open dashboard: ${dashboard.name}`,
@@ -107,6 +193,46 @@ export function CommandPalette({ open, onClose, onLogout }) {
           icon: LayoutDashboard,
           suffix: dashboard.workspaceName,
           action: () => { navigate(`/workspaces/${dashboard.workspaceId}/dashboards/${dashboard.id}`); onClose(); },
+        });
+      });
+      searchResults.widgets.forEach((widget) => {
+        items.push({
+          id: `widget-${widget.dashboardId}-${widget.id}`,
+          label: `Open widget: ${widget.title || widget.type || 'Untitled widget'}`,
+          category: 'Widgets',
+          icon: Layers,
+          suffix: `${widget.dashboardName} · ${widget.workspaceName}`,
+          action: () => {
+            navigate(`/workspaces/${widget.workspaceId}/dashboards/${widget.dashboardId}`, { state: { focusNodeId: widget.id } });
+            onClose();
+          },
+        });
+      });
+      searchResults.templates.forEach((template) => {
+        items.push({
+          id: `template-${template.workspaceId}-${template.id}`,
+          label: `Open template: ${template.name}`,
+          category: 'Templates',
+          icon: Layers,
+          suffix: template.workspaceName,
+          action: () => {
+            navigate(`/workspaces/${template.workspaceId}/dashboards`, { state: { showTemplates: true } });
+            onClose();
+          },
+        });
+      });
+      searchResults.members.forEach((member) => {
+        const memberName = member.user?.displayName || member.user?.email || 'Workspace member';
+        items.push({
+          id: `member-${member.workspaceId}-${member.id}`,
+          label: `Open member: ${memberName}`,
+          category: 'Members',
+          icon: Users,
+          suffix: member.workspaceName,
+          action: () => {
+            navigate('/settings', { state: { settingsTab: 'workspace', workspaceId: member.workspaceId, memberSearch: memberName } });
+            onClose();
+          },
         });
       });
     }
@@ -118,6 +244,30 @@ export function CommandPalette({ open, onClose, onLogout }) {
       category: 'Actions',
       icon: Plus,
       action: () => { navigate('/workspaces', { state: { openCreateWorkspace: true } }); onClose(); },
+    });
+    workspacesList.filter((workspace) => ['OWNER', 'ADMIN', 'EDITOR'].includes(workspace.role)).forEach((workspace) => {
+      items.push({
+        id: `action-create-dashboard-${workspace.id}`,
+        label: `Create dashboard in ${workspace.name}`,
+        category: 'Actions',
+        icon: Plus,
+        action: () => {
+          navigate(`/workspaces/${workspace.id}/dashboards`, { state: { openCreateDashboard: true } });
+          onClose();
+        },
+      });
+    });
+    workspacesList.filter((workspace) => ['OWNER', 'ADMIN'].includes(workspace.role)).forEach((workspace) => {
+      items.push({
+        id: `action-invite-member-${workspace.id}`,
+        label: `Invite member to ${workspace.name}`,
+        category: 'Actions',
+        icon: Users,
+        action: () => {
+          navigate('/settings', { state: { settingsTab: 'workspace', workspaceId: workspace.id, openInvite: true } });
+          onClose();
+        },
+      });
     });
     items.push({
       id: 'action-theme',
@@ -157,17 +307,16 @@ export function CommandPalette({ open, onClose, onLogout }) {
     });
 
     return items;
-  }, [workspaces.data, dashboards.data, theme, navigate, onClose, setTheme]);
+  }, [workspacesList, availableRecentPages, searchResults, theme, navigate, onClose, setTheme]);
 
   // Fuzzy filter
   const filtered = useMemo(() => {
     if (!query.trim()) return commands;
-    const q = query.toLowerCase();
-    return commands.filter(
-      (cmd) =>
-        cmd.label.toLowerCase().includes(q) ||
-        cmd.category.toLowerCase().includes(q),
-    );
+    const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+    return commands.filter((cmd) => {
+      const searchableText = `${cmd.label} ${cmd.category} ${cmd.suffix || ''}`.toLowerCase();
+      return tokens.every((token) => searchableText.includes(token));
+    });
   }, [commands, query]);
 
   // Reset selection when query or list changes
@@ -209,6 +358,8 @@ export function CommandPalette({ open, onClose, onLogout }) {
   };
 
   if (!open) return null;
+
+  const searching = normalizedQuery.length > 1 && (debouncedQuery !== normalizedQuery || search.isFetching);
 
   // Group by category for display
   const groups = {};
@@ -255,7 +406,11 @@ export function CommandPalette({ open, onClose, onLogout }) {
         <div ref={listRef} className="max-h-80 overflow-y-auto overscroll-contain p-1.5">
           {filtered.length === 0 && (
             <div className="px-3 py-8 text-center text-sm text-slate-400">
-              No results for &ldquo;{query}&rdquo;
+              {searching ? 'Searching…' : search.isError ? (
+                <button type="button" onClick={() => search.refetch()} className="font-semibold text-rose-600 dark:text-rose-300">
+                  Search is unavailable. Try again.
+                </button>
+              ) : `No results for “${query}”`}
             </div>
           )}
           {groupEntries.map(([category, items]) => (
