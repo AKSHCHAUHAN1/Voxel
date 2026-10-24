@@ -114,6 +114,21 @@ const canonicalJson = (value) => {
   }
   return JSON.stringify(value);
 };
+const sceneForReadOnlyShare = (scene) => {
+  if (!scene || !Array.isArray(scene.nodes)) return scene;
+  return {
+    ...scene,
+    nodes: scene.nodes.map((node) => {
+      if (!node || typeof node !== 'object' || !['workspace-file', 'rest-api'].includes(node.valueSource)) return node;
+      const safeNode = { ...node };
+      delete safeNode.dataSourceFileId;
+      delete safeNode.dataSourceUrl;
+      delete safeNode.dataSourceField;
+      delete safeNode.dataRefreshInterval;
+      return safeNode;
+    }),
+  };
+};
 
 const requireUser = async (request, auth) => {
   const user = await auth.getAuthenticatedUser(request.cookies.voxel_access);
@@ -1371,7 +1386,7 @@ export const registerWorkspaceRoutes = async (app, environment) => {
       id: share.dashboard.id,
       name: share.dashboard.name,
       description: share.dashboard.description,
-      scene: share.dashboard.scene,
+      scene: share.permission === 'VIEW' ? sceneForReadOnlyShare(share.dashboard.scene) : share.dashboard.scene,
       version: share.dashboard.version,
       plugins: share.dashboard.workspace.plugins.flatMap((installed) => {
         const plugin = widgetPluginCatalog.find((candidate) => candidate.id === installed.pluginId);

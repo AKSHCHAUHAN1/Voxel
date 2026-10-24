@@ -85,7 +85,7 @@ const workspaceDataRefreshIntervals = [
   { value: 300_000, label: 'Every 5 minutes' },
 ];
 const isWorkspaceDataFile = (file) => /\.(csv|json)$/i.test(file?.name || '');
-const isWorkspaceDataAccessError = (query) => query?.isError && [401, 403, 404].includes(query.error?.statusCode);
+const isWorkspaceDataAccessError = (query) => query?.isError && [401, 403, 404, 422].includes(query.error?.statusCode);
 const usableWorkspaceData = (query) => isWorkspaceDataAccessError(query) ? undefined : query?.data;
 
 const sceneOf = (value) => {
@@ -469,15 +469,65 @@ export default function EditorPage() {
       retry: (failureCount, error) => ![401, 403, 404].includes(error?.statusCode) && failureCount < 1,
     })),
   });
+  const restDataNodes = useMemo(
+    () => scene.nodes.filter((node) => (
+      node.valueSource === 'rest-api'
+      && workspaceDataRenderers.has(getWidgetDefinition(node.type)?.renderer)
+      && typeof node.dataSourceUrl === 'string'
+      && node.dataSourceUrl.trim().length > 0
+    )),
+    [scene.nodes],
+  );
+  const restDataUrls = useMemo(
+    () => [...new Set(restDataNodes.map((node) => node.dataSourceUrl.trim()))],
+    [restDataNodes],
+  );
+  const refreshIntervalsByRestUrl = useMemo(() => {
+    const intervals = new Map();
+    restDataNodes.forEach((node) => {
+      const interval = Number(node.dataRefreshInterval);
+      if (!Number.isFinite(interval) || interval <= 0) return;
+      const url = node.dataSourceUrl.trim();
+      const previous = intervals.get(url);
+      intervals.set(url, previous ? Math.min(previous, interval) : interval);
+    });
+    return intervals;
+  }, [restDataNodes]);
+  const restDataQueries = useQueries({
+    queries: restDataUrls.map((url) => ({
+      queryKey: ['dashboard-rest-data', dashboardId, url],
+      queryFn: async () => {
+        const response = await workspaceService.restData(dashboardId, url);
+        return { kind: 'json', value: response.value };
+      },
+      enabled: Boolean(dashboardId),
+      staleTime: 30_000,
+      refetchInterval: refreshIntervalsByRestUrl.get(url) || false,
+      refetchIntervalInBackground: false,
+      retry: (failureCount, error) => ![401, 403, 404, 422].includes(error?.statusCode) && failureCount < 1,
+    })),
+  });
+  const restDataQueryByUrl = new Map(restDataUrls.map((url, index) => [url, restDataQueries[index]]));
   const workspaceDataQueryByFileId = new Map(workspaceDataFileIds.map((fileId, index) => [
     fileId,
     { file: workspaceFilesById.get(fileId), query: workspaceDataQueries[index] },
   ]));
   const getWorkspaceDataState = (node) => {
+    if (node.valueSource === 'rest-api') {
+      const url = String(node.dataSourceUrl || '').trim();
+      return {
+        kind: 'rest',
+        url,
+        file: null,
+        query: url ? restDataQueryByUrl.get(url) : null,
+        notConfigured: !url,
+      };
+    }
     if (node.valueSource !== 'workspace-file' || !node.dataSourceFileId) return null;
     const state = workspaceDataQueryByFileId.get(node.dataSourceFileId);
-    if (state?.file) return state;
+    if (state?.file) return { ...state, kind: 'file' };
     return {
+      kind: 'file',
       file: null,
       query: null,
       fileListLoading: workspaceFilesQuery.isPending,
@@ -1159,6 +1209,16 @@ export default function EditorPage() {
       const sourceState = getWorkspaceDataState(node);
       const sourceData = usableWorkspaceData(sourceState?.query);
       if (sourceState?.file && sourceData) {
+        const renderer = getWidgetDefinition(node.type)?.renderer || node.type;
+        return valueFromWorkspaceData(sourceData, { ...node, type: renderer }) ?? '';
+      }
+      return '';
+    }
+
+    if (node.valueSource === 'rest-api') {
+      const sourceState = getWorkspaceDataState(node);
+      const sourceData = usableWorkspaceData(sourceState?.query);
+      if (sourceState?.url && sourceData) {
         const renderer = getWidgetDefinition(node.type)?.renderer || node.type;
         return valueFromWorkspaceData(sourceData, { ...node, type: renderer }) ?? '';
       }
@@ -2840,6 +2900,7 @@ export default function EditorPage() {
                               <option value="manual">Manual Input</option>
                               <option value="connections">Connected Inputs (Aggregation)</option>
                               {workspaceDataRenderers.has(widgetRenderer) && <option value="workspace-file">Workspace File (CSV or JSON)</option>}
+                              {workspaceDataRenderers.has(widgetRenderer) && <option value="rest-api">Public REST API (JSON)</option>}
                             </select>
                           </div>
                     )}
@@ -2955,6 +3016,17 @@ export default function EditorPage() {
                           </section>
                         )}
 
+                        {workspaceDataRenderers.has(widgetRenderer) && selectedNode.valueSource === 'rest-api' && (
+                          <RestDataSourceInspector
+                            node={selectedNode}
+                            renderer={widgetRenderer}
+                            query={selectedDataQuery}
+                            sourceData={selectedSourceData}
+                            canEdit={canEditDashboard}
+                            onUpdate={(patch) => updateNode(selectedNode.id, patch)}
+                          />
+                        )}
+
                         {widgetRenderer !== 'logic' &&
                       selectedNode.valueSource === 'connections' && (
                         <div className="space-y-2 border border-violet-100 p-2.5 rounded-lg dark:border-white/5 bg-violet-50/20 dark:bg-violet-950/5">
@@ -3022,9 +3094,9 @@ export default function EditorPage() {
                           const value = selectedNode[field.key] ?? '';
                           const controlClass = 'w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900';
                           const connectedValue = field.isValue && selectedNode.valueSource === 'connections';
-                          const workspaceFileValue = field.isValue && selectedNode.valueSource === 'workspace-file';
+                          const workspaceFileValue = field.isValue && ['workspace-file', 'rest-api'].includes(selectedNode.valueSource);
                           const suppliedTableField = widgetRenderer === 'table'
-                            && selectedNode.valueSource === 'workspace-file'
+                            && ['workspace-file', 'rest-api'].includes(selectedNode.valueSource)
                             && ['columns', 'rows'].includes(field.key);
                           if (suppliedTableField) return null;
                           return (
@@ -3037,7 +3109,7 @@ export default function EditorPage() {
                                     </div>
                               ) : workspaceFileValue ? (
                                 <div className="mt-1 rounded-lg border border-violet-200/70 bg-violet-50/70 p-2.5 text-xs font-medium normal-case tracking-normal text-slate-700 dark:border-violet-500/20 dark:bg-violet-500/5 dark:text-slate-300">
-                                  Resolved from workspace file: <b>{resolveNodeValue(selectedNode) || (selectedDataQuery?.isPending ? 'Loading…' : 'No value loaded')}</b>
+                                  Resolved from {selectedNode.valueSource === 'rest-api' ? 'REST endpoint' : 'workspace file'}: <b>{resolveNodeValue(selectedNode) || (selectedDataQuery?.isPending ? 'Loading…' : 'No value loaded')}</b>
                                 </div>
                               ) : field.type === 'node-select' ? (
                                 <select value={value} onChange={(event) => updateNode(selectedNode.id, { [field.key]: event.target.value,
@@ -3601,6 +3673,93 @@ const CanvasOverview = memo(
 );
 
 // --- FREEFORM GRID SETUP ---
+function RestDataSourceInspector({ node, renderer, query, sourceData, canEdit, onUpdate }) {
+  const [endpointDraft, setEndpointDraft] = useState(node.dataSourceUrl || '');
+  const savedEndpoint = String(node.dataSourceUrl || '').trim();
+
+  useEffect(() => {
+    setEndpointDraft(node.dataSourceUrl || '');
+  }, [node.id, node.dataSourceUrl]);
+
+  const endpointChanged = endpointDraft.trim() !== savedEndpoint;
+  const endpointConfigured = Boolean(savedEndpoint);
+  const inputClass = 'mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-violet-500 disabled:opacity-60 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200';
+  const endpointStatus = !endpointConfigured ? 'Add a public endpoint to connect this widget.'
+    : query?.isError && sourceData ? 'Refresh failed; showing the last successful response.'
+      : query?.isError ? query.error?.message || 'The endpoint could not be loaded.'
+        : query?.isPending ? 'Loading REST response…'
+          : query?.isFetching ? 'Refreshing REST response…'
+            : sourceData ? 'JSON response ready.'
+              : 'Waiting for the endpoint response…';
+
+  return (
+    <section className="space-y-3 rounded-xl border border-violet-200/70 bg-violet-50/50 p-3 dark:border-violet-500/20 dark:bg-violet-500/5" aria-label="Public REST data source">
+      <div>
+        <label htmlFor={`rest-endpoint-${node.id}`} className="text-[10px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-300">Public HTTPS JSON endpoint</label>
+        <input
+          id={`rest-endpoint-${node.id}`}
+          type="url"
+          maxLength={2048}
+          autoComplete="off"
+          value={endpointDraft}
+          disabled={!canEdit}
+          onChange={(event) => setEndpointDraft(event.target.value)}
+          placeholder="https://api.example.com/metrics"
+          className={inputClass}
+        />
+        <p className="mt-1 text-[10px] leading-4 text-slate-500 dark:text-slate-400">Public JSON only. Authentication, URL tokens, redirects, private addresses, and non-HTTPS endpoints are blocked.</p>
+        {canEdit && endpointChanged && (
+          <button type="button" onClick={() => onUpdate({ dataSourceUrl: endpointDraft.trim() })} disabled={!endpointDraft.trim()} className="mt-2 rounded-lg bg-violet-600 px-3 py-1.5 text-[10px] font-bold text-white transition hover:bg-violet-500 disabled:opacity-50">Connect endpoint</button>
+        )}
+      </div>
+
+      {endpointConfigured && (
+        <>
+          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            {renderer === 'table' ? 'Records path (optional)' : 'JSON property path (optional)'}
+            <input
+              type="text"
+              maxLength={1000}
+              value={node.dataSourceField || ''}
+              disabled={!canEdit}
+              onChange={(event) => onUpdate({ dataSourceField: event.target.value })}
+              placeholder={renderer === 'table' ? 'records' : 'metrics[0].value'}
+              className={inputClass}
+            />
+          </label>
+
+          <div>
+            <label htmlFor={`rest-refresh-${node.id}`} className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Refresh policy</label>
+            <select
+              id={`rest-refresh-${node.id}`}
+              value={Number(node.dataRefreshInterval) || 0}
+              disabled={!canEdit}
+              onChange={(event) => onUpdate({ dataRefreshInterval: Number(event.target.value) })}
+              className={inputClass}
+            >
+              {workspaceDataRefreshIntervals.map((interval) => <option key={interval.value} value={interval.value}>{interval.label}</option>)}
+            </select>
+          </div>
+
+          <div className="flex items-start justify-between gap-2 border-t border-violet-200/70 pt-2 dark:border-violet-500/20">
+            <p role={query?.isError && !sourceData ? 'alert' : 'status'} className={`min-w-0 text-[10px] leading-4 ${query?.isError && !sourceData ? 'text-rose-600 dark:text-rose-300' : 'text-slate-500 dark:text-slate-400'}`}>{endpointStatus}</p>
+            <button
+              type="button"
+              onClick={() => query?.refetch()}
+              disabled={!query || query.isFetching || !endpointConfigured}
+              aria-label={`Refresh REST data for ${node.title || 'widget'}`}
+              title="Refresh now"
+              className="shrink-0 rounded-lg border border-violet-200 bg-white p-1.5 text-violet-600 transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-slate-900 dark:text-violet-300 dark:hover:bg-white/5"
+            >
+              <RefreshCw size={13} className={query?.isFetching ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 function NodeGrid({ nodes, selectedNodeIds = [], selectedNodeId, onSelectNode, resolveNodeValue, getWorkspaceDataState, onDragStart, onResizeStart, onKeyboardMove, updateNode, canEdit, awarenessStates, localClientId,
 }) {
   const remoteSelections = useMemo(() => {
@@ -3677,10 +3836,15 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
 }) {
   const displayValue = resolveNodeValue(node);
   const nodeDefinition = getWidgetDefinition(node.type);
-  const workspaceDataState = node.valueSource === 'workspace-file' ? getWorkspaceDataState?.(node) : null;
-  const workspaceData = workspaceDataState?.file ? usableWorkspaceData(workspaceDataState.query) : null;
+  const usesDataSource = ['workspace-file', 'rest-api'].includes(node.valueSource);
+  const workspaceDataState = usesDataSource ? getWorkspaceDataState?.(node) : null;
+  const workspaceData = workspaceDataState?.file || workspaceDataState?.kind === 'rest'
+    ? usableWorkspaceData(workspaceDataState.query)
+    : null;
   const valueSourceCaption = node.valueSource === 'workspace-file'
     ? 'Workspace file data'
+    : node.valueSource === 'rest-api'
+      ? 'Public REST data'
     : node.valueSource === 'connections'
       ? 'Connected inputs'
       : 'Sample value · no data source connected';
@@ -3912,7 +4076,7 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
                 <div className="flex flex-col items-center justify-center h-[65px] bg-slate-100 dark:bg-white/5 rounded text-center p-2">
                   <span className="text-[20px] font-bold font-mono">{displayValue}</span>
                   <span className="text-[9px] text-slate-400">
-                    {node.valueSource === 'workspace-file' ? 'Workspace file data' : node.valueSource === 'connections' ? 'Single connected metric value' : 'Add more values to show a trend'}
+                    {node.valueSource === 'workspace-file' ? 'Workspace file data' : node.valueSource === 'rest-api' ? 'Public REST data' : node.valueSource === 'connections' ? 'Single connected metric value' : 'Add more values to show a trend'}
                   </span>
                 </div>
               )}
@@ -4033,12 +4197,12 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
 
       {/* 9. Table */}
       {nodeDefinition?.renderer === 'table' && (() => {
-        const usesWorkspaceFile = node.valueSource === 'workspace-file';
-        const linkedTable = usesWorkspaceFile && workspaceData ? tableFromWorkspaceData(workspaceData, node.dataSourceField) : null;
-        const cols = usesWorkspaceFile
+        const usesDataSource = ['workspace-file', 'rest-api'].includes(node.valueSource);
+        const linkedTable = usesDataSource && workspaceData ? tableFromWorkspaceData(workspaceData, node.dataSourceField) : null;
+        const cols = usesDataSource
           ? linkedTable?.columns || []
           : (node.columns || '').split(',').map((c) => c.trim()).filter(Boolean);
-        const rows = usesWorkspaceFile
+        const rows = usesDataSource
           ? linkedTable?.rows.map((row) => cols.map((column) => row[column] ?? '')) || []
           : (node.rows || '').split('\n').map((r) => r.split(',').map((c) => c.trim()));
         return (
@@ -4134,9 +4298,16 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
           </p>
         </div>
       )}
-      {node.valueSource === 'workspace-file' && (
+      {usesDataSource && (
         <p role={workspaceDataState?.query?.isError && !workspaceData ? 'alert' : 'status'} className={`mt-2 border-t pt-2 text-[10px] ${workspaceDataState?.query?.isError && !workspaceData ? 'border-rose-200 text-rose-600 dark:border-rose-900/50 dark:text-rose-300' : 'border-slate-100 text-slate-400 dark:border-white/5'}`}>
-          {workspaceDataState?.fileListLoading ? 'Checking workspace files…'
+          {workspaceDataState?.kind === 'rest' && workspaceDataState.notConfigured ? 'Add a public HTTPS JSON endpoint in the inspector.'
+            : workspaceDataState?.kind === 'rest' && workspaceDataState.query?.isError && workspaceData ? 'REST refresh failed. Showing the last loaded response.'
+              : workspaceDataState?.kind === 'rest' && workspaceDataState.query?.isError ? `REST endpoint error: ${workspaceDataState.query.error?.message || 'Response unavailable.'}`
+                : workspaceDataState?.kind === 'rest' && workspaceDataState.query?.isPending ? 'Loading public REST data…'
+                  : workspaceDataState?.kind === 'rest' && workspaceDataState.query?.isFetching ? 'Refreshing public REST data…'
+                    : workspaceDataState?.kind === 'rest' && workspaceData ? 'Live data · Public REST endpoint'
+                      : workspaceDataState?.kind === 'rest' ? 'Waiting for the REST response…'
+                        : workspaceDataState?.fileListLoading ? 'Checking workspace files…'
             : workspaceDataState?.fileListError ? 'Workspace files could not be loaded.'
               : workspaceDataState?.missing ? 'Source file is unavailable. Choose another file in the inspector.'
                 : !workspaceDataState?.file ? 'Choose a CSV or JSON file in the inspector.'

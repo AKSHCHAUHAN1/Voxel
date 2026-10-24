@@ -10,6 +10,7 @@ const { prismaMock, userId } = vi.hoisted(() => ({
     workspace: { create: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     notification: { createMany: vi.fn() },
     dashboard: { findFirst: vi.fn(), create: vi.fn() },
+    dashboardShare: { findUnique: vi.fn() },
     dashboardVersion: { create: vi.fn() },
     dashboardComment: { findMany: vi.fn(), create: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     dashboardTemplate: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
@@ -57,6 +58,65 @@ afterEach(async () => {
 });
 
 describe('workspace template and activity routes', () => {
+  it('redacts private data source configuration from read-only share payloads', async () => {
+    const token = 'a'.repeat(40);
+    prismaMock.dashboardShare.findUnique.mockResolvedValue({
+      permission: 'VIEW',
+      revokedAt: null,
+      expiresAt: null,
+      dashboard: {
+        id: dashboardId,
+        name: 'Metrics',
+        description: null,
+        scene: {
+          schemaVersion: 2,
+          nodes: [
+            { id: 'file-card', type: 'metric', valueSource: 'workspace-file', dataSourceFileId: 'private-file-id', dataSourceField: 'revenue', dataRefreshInterval: 30000 },
+            { id: 'rest-card', type: 'chart', valueSource: 'rest-api', dataSourceUrl: 'https://api.example.com/private?team=ops', dataSourceField: 'metrics', dataRefreshInterval: 60000 },
+            { id: 'manual-card', type: 'metric', valueSource: 'manual', content: '42' },
+          ],
+          connections: [],
+        },
+        version: 3,
+        deletedAt: null,
+        status: 'PUBLISHED',
+        workspace: { deletedAt: null, archivedAt: null, plugins: [] },
+      },
+    });
+
+    const response = await app.inject({ method: 'GET', url: `/api/v1/shares/${token}` });
+
+    expect(response.statusCode).toBe(200);
+    const nodes = response.json().data.scene.nodes;
+    expect(nodes[0]).toEqual({ id: 'file-card', type: 'metric', valueSource: 'workspace-file' });
+    expect(nodes[1]).toEqual({ id: 'rest-card', type: 'chart', valueSource: 'rest-api' });
+    expect(nodes[2]).toEqual({ id: 'manual-card', type: 'metric', valueSource: 'manual', content: '42' });
+  });
+
+  it('retains source configuration for edit share links so updates do not erase it', async () => {
+    const token = 'b'.repeat(40);
+    prismaMock.dashboardShare.findUnique.mockResolvedValue({
+      permission: 'EDIT',
+      revokedAt: null,
+      expiresAt: null,
+      dashboard: {
+        id: dashboardId,
+        name: 'Metrics',
+        description: null,
+        scene: { schemaVersion: 2, nodes: [{ id: 'rest-card', type: 'metric', valueSource: 'rest-api', dataSourceUrl: 'https://api.example.com/data' }], connections: [] },
+        version: 3,
+        deletedAt: null,
+        status: 'PUBLISHED',
+        workspace: { deletedAt: null, archivedAt: null, plugins: [] },
+      },
+    });
+
+    const response = await app.inject({ method: 'GET', url: `/api/v1/shares/${token}` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.scene.nodes[0].dataSourceUrl).toBe('https://api.example.com/data');
+  });
+
   it('creates workspaces with JSON-safe storage counters and keeps the audit event', async () => {
     const createdAt = new Date('2026-10-12T10:00:00.000Z');
     prismaMock.workspace.create.mockResolvedValue({

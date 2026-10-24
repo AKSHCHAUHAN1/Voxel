@@ -109,9 +109,9 @@ function SharedNode({ node, nodes, editing, onUpdate, resolvedValue }) {
   const definition = getWidgetDefinition(node.type);
   const renderer = definition?.renderer || node.type;
   const widgetLabel = definition?.title || typeLabel(node.type);
-  const fileSourceUnavailable = node.valueSource === 'workspace-file';
+  const externalSourceUnavailable = node.valueSource === 'workspace-file' || node.valueSource === 'rest-api';
   const linkedValueUnavailable = (node.valueSource === 'connections' || renderer === 'logic') && resolvedValue == null;
-  const content = displayValue(fileSourceUnavailable ? '' : resolvedValue ?? node.content);
+  const content = displayValue(externalSourceUnavailable ? '' : resolvedValue ?? node.content);
   const numericProgress = Number.parseFloat(content);
   const isProgress = renderer === 'progress' && Number.isFinite(numericProgress);
   const progressTarget = Number.isFinite(Number(node.target)) && Number(node.target) > 0 ? Number(node.target) : 100;
@@ -131,10 +131,16 @@ function SharedNode({ node, nodes, editing, onUpdate, resolvedValue }) {
   const rows = (node.rows || '').split('\n').filter(Boolean).map((row) => row.split(',').map((value) => value.trim()));
   let body;
 
-  if (fileSourceUnavailable && editing) {
-    body = <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-400/20 dark:bg-amber-500/5"><p className="text-xs leading-5 text-amber-900 dark:text-amber-100">This share link does not include workspace file contents. Switch to a manual value to show content here.</p><button type="button" onClick={() => onUpdate(node.id, { valueSource: 'manual', dataSourceFileId: '', dataSourceField: '' })} className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100 dark:border-amber-400/20 dark:bg-slate-900 dark:text-amber-100">Switch to a manual value</button></div>;
-  } else if (fileSourceUnavailable) {
-    body = <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900 dark:border-amber-400/20 dark:bg-amber-500/5 dark:text-amber-100">This widget uses a private workspace file. Its contents are not included in this share.</div>;
+  if (externalSourceUnavailable && editing) {
+    const sourceNotice = node.valueSource === 'workspace-file'
+      ? 'This share link does not include workspace file contents.'
+      : 'This share link does not query or expose external REST responses.';
+    body = <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-400/20 dark:bg-amber-500/5"><p className="text-xs leading-5 text-amber-900 dark:text-amber-100">{sourceNotice} Switch to a manual value to show content here.</p><button type="button" onClick={() => onUpdate(node.id, { valueSource: 'manual', dataSourceFileId: '', dataSourceUrl: '', dataSourceField: '' })} className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100 dark:border-amber-400/20 dark:bg-slate-900 dark:text-amber-100">Switch to a manual value</button></div>;
+  } else if (externalSourceUnavailable) {
+    const sourceNotice = node.valueSource === 'workspace-file'
+      ? 'This widget uses a private workspace file. Its contents are not included in this share.'
+      : 'This widget uses an external REST source. Its response is not included in this share.';
+    body = <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900 dark:border-amber-400/20 dark:bg-amber-500/5 dark:text-amber-100">{sourceNotice}</div>;
   } else if (linkedValueUnavailable && editing) {
     body = <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-400/20 dark:bg-amber-500/5"><p className="text-xs leading-5 text-amber-900 dark:text-amber-100">A connected value depends on data that is not available through this share.</p>{node.valueSource === 'connections' && <button type="button" onClick={() => onUpdate(node.id, { valueSource: 'manual' })} className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100 dark:border-amber-400/20 dark:bg-slate-900 dark:text-amber-100">Switch to a manual value</button>}{renderer === 'logic' && <SharedNodeEditor node={node} nodes={nodes} renderer={renderer} onUpdate={onUpdate} />}</div>;
   } else if (linkedValueUnavailable) {

@@ -37,7 +37,7 @@ export function resolveSharedDashboardValues(nodes = [], connections = [], rende
       }
     }
 
-    if (node.valueSource === 'workspace-file') return undefined;
+    if (node.valueSource === 'workspace-file' || node.valueSource === 'rest-api') return undefined;
     if (node.valueSource !== 'connections') return node.content ?? '';
 
     const sourceIds = connections.filter((connection) => connection.toId === nodeId).map((connection) => connection.fromId);

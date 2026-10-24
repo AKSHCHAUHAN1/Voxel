@@ -39,6 +39,10 @@ export const workspaceService = {
   installPlugin: (workspaceId, pluginId) => request(`/api/v1/workspaces/${workspaceId}/plugins`, { method: 'POST', body: JSON.stringify({ pluginId }) }),
   uninstallPlugin: (workspaceId, pluginId) => request(`/api/v1/workspaces/${workspaceId}/plugins/${encodeURIComponent(pluginId)}`, { method: 'DELETE' }),
   files: (workspaceId) => request(`/api/v1/workspaces/${workspaceId}/files`),
+  restData: (dashboardId, url) => request(`/api/v1/dashboards/${dashboardId}/data-sources/rest`, {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  }),
   uploadFile,
   uploadCoverImage,
   downloadFile,

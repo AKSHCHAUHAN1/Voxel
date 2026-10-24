@@ -31,6 +31,17 @@ describe('shared dashboard values', () => {
     expect(values.get('formula')).toBeUndefined();
   });
 
+  it('does not invoke or expose external REST values through a share link', () => {
+    const nodes = [
+      { id: 'external', type: 'metric', valueSource: 'rest-api', dataSourceUrl: 'https://api.example.com/private', content: 'saved sample' },
+      { id: 'summary', type: 'display', valueSource: 'connections', aggregationOperator: 'sum' },
+    ];
+    const values = resolveSharedDashboardValues(nodes, [{ fromId: 'external', toId: 'summary' }]);
+
+    expect(values.get('external')).toBeUndefined();
+    expect(values.get('summary')).toBeUndefined();
+  });
+
   it('stops recursive connection cycles from producing a misleading value', () => {
     const nodes = [
       { id: 'first', type: 'metric', valueSource: 'connections' },
