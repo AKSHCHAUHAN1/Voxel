@@ -1842,8 +1842,12 @@ export default function EditorPage() {
   };
 
   const handleDragStart = (e, nodeId) => {
-    if (e.button !== 0 || !canEditDashboard) return;
+    if (e.button !== 0 || e.isPrimary === false || !canEditDashboard) return;
     e.preventDefault();
+    e.stopPropagation();
+    const pointerId = e.pointerId;
+    const captureTarget = e.currentTarget;
+    captureTarget.setPointerCapture?.(pointerId);
 
     const currentScene = sceneRef.current;
     const startScene = JSON.parse(JSON.stringify(currentScene));
@@ -1868,7 +1872,8 @@ export default function EditorPage() {
     let hasDragged = false;
     let rafId = null;
 
-    const handleMouseMove = (moveEvent) => {
+    const handlePointerMove = (moveEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
       const dist = Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY);
       if (!hasDragged && dist > 3) {
         hasDragged = true;
@@ -1906,23 +1911,30 @@ export default function EditorPage() {
       });
     };
 
-    const handleMouseUp = () => {
+    const handlePointerEnd = (endEvent) => {
+      if (endEvent.pointerId !== pointerId) return;
       if (rafId) cancelAnimationFrame(rafId);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerEnd);
+      window.removeEventListener('pointercancel', handlePointerEnd);
+      if (captureTarget.hasPointerCapture?.(pointerId)) captureTarget.releasePointerCapture(pointerId);
       if (hasDragged) {
         useHistoryStore.getState().push(startScene);
       }
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('pointermove', handlePointerMove, { passive: false });
+    window.addEventListener('pointerup', handlePointerEnd);
+    window.addEventListener('pointercancel', handlePointerEnd);
   };
 
   const handleResizeStart = (e, nodeId) => {
-    if (e.button !== 0 || !canEditDashboard) return;
+    if (e.button !== 0 || e.isPrimary === false || !canEditDashboard) return;
     e.preventDefault();
     e.stopPropagation();
+    const pointerId = e.pointerId;
+    const captureTarget = e.currentTarget;
+    captureTarget.setPointerCapture?.(pointerId);
     const startScene = structuredClone(sceneRef.current);
     const node = startScene.nodes.find((item) => item.id === nodeId);
     if (!node) return;
@@ -1934,7 +1946,8 @@ export default function EditorPage() {
     let hasResized = false;
     let rafId = null;
 
-    const handleMouseMove = (moveEvent) => {
+    const handlePointerMove = (moveEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
       if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) > 3) hasResized = true;
       if (rafId) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
@@ -1947,15 +1960,19 @@ export default function EditorPage() {
       });
     };
 
-    const handleMouseUp = () => {
+    const handlePointerEnd = (endEvent) => {
+      if (endEvent.pointerId !== pointerId) return;
       if (rafId) cancelAnimationFrame(rafId);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerEnd);
+      window.removeEventListener('pointercancel', handlePointerEnd);
+      if (captureTarget.hasPointerCapture?.(pointerId)) captureTarget.releasePointerCapture(pointerId);
       if (hasResized) useHistoryStore.getState().push(startScene);
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('pointermove', handlePointerMove, { passive: false });
+    window.addEventListener('pointerup', handlePointerEnd);
+    window.addEventListener('pointercancel', handlePointerEnd);
   };
 
   const updateNode = (id, updates, skipHistory = false) => {
@@ -4059,6 +4076,7 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
         minHeight: node.customHeight ? `${node.customHeight}px` : undefined,
         zIndex: isSelected ? 30 : 10,
         willChange: 'left, top',
+        touchAction: canEdit ? 'none' : 'auto',
       }}
       onClick={(e) => {
         e.stopPropagation();
@@ -4073,7 +4091,7 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
       onKeyDown={(event) => {
         if (event.target === event.currentTarget) onKeyboardMove(event, node.id);
       }}
-      onMouseDown={(e) => {
+      onPointerDown={(e) => {
         // Allow dragging from anywhere on the card unless clicking interactive controls
         const isInteractive = e.target.closest('button, input, select, textarea, a, label');
         if (!isInteractive) {
@@ -4482,7 +4500,7 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
           type="button"
           aria-label={`Resize ${node.title || node.type}`}
           title="Drag to resize or use arrow keys"
-          onMouseDown={(event) => onResizeStart(event, node.id)}
+          onPointerDown={(event) => onResizeStart(event, node.id)}
           onKeyDown={(event) => {
             if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
             event.preventDefault();
@@ -4498,6 +4516,7 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
               ),
             });
           }}
+          style={{ touchAction: 'none' }}
           className="absolute -bottom-2 -right-2 z-50 grid size-6 cursor-nwse-resize place-items-center rounded-lg border border-indigo-300 bg-white text-indigo-600 shadow-md hover:bg-indigo-50 dark:border-indigo-500/50 dark:bg-slate-900 dark:text-indigo-300"
         >
           <Maximize2 size={12} />
