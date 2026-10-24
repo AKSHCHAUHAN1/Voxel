@@ -7,6 +7,7 @@ import {
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
+  closestCenter,
   pointerWithin,
   rectIntersection,
   useDraggable,
@@ -15,6 +16,13 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import appIcon from '@/assets/app-icon.png';
 import appIconDark from '@/assets/app-icon-dark.png';
 
@@ -56,6 +64,12 @@ import {
   CheckCircle2,
   CornerDownRight,
   LocateFixed,
+  GripVertical,
+  Eye,
+  EyeOff,
+  Lock,
+  Unlock,
+  Search,
 } from 'lucide-react';
 import { workspaceService } from '@/features/workspaces/workspace-service';
 import { authService } from '@/features/auth/auth-service';
@@ -691,7 +705,7 @@ export default function EditorPage() {
     // First reset zoom to 1 so we measure at 1:1 scale
     setZoom(1);
 
-    const nodes = scene?.nodes || [];
+    const nodes = (scene?.nodes || []).filter((node) => !node.hidden);
 
     // Run after zoom state update has been painted
     requestAnimationFrame(() => {
@@ -1728,6 +1742,20 @@ export default function EditorPage() {
     useNotificationStore.getState().add(`Ungrouped ${groupIds.size} widget group${groupIds.size === 1 ? '' : 's'}.`, 'info');
   };
 
+  const handleToggleLayerFlag = (nodeId, key) => {
+    const node = scene.nodes.find((item) => item.id === nodeId);
+    if (!canEditDashboard || !node || !['hidden', 'locked'].includes(key)) return;
+    updateNode(nodeId, { [key]: !node[key] });
+  };
+
+  const handleLayerReorder = ({ active, over }) => {
+    if (!canEditDashboard || !over || active.id === over.id) return;
+    const fromIndex = scene.nodes.findIndex((node) => node.id === active.id);
+    const toIndex = scene.nodes.findIndex((node) => node.id === over.id);
+    if (fromIndex < 0 || toIndex < 0) return;
+    update({ ...scene, nodes: arrayMove(scene.nodes, fromIndex, toIndex) });
+  };
+
   const handleSelectAll = useCallback((e) => {
     if (e && e.preventDefault) e.preventDefault();
     if (scene.nodes && scene.nodes.length > 0) {
@@ -2051,6 +2079,8 @@ export default function EditorPage() {
 
   const handleResizeStart = (e, nodeId, anchor = 'se') => {
     if (e.button !== 0 || e.isPrimary === false || !canEditDashboard) return;
+    const currentNode = sceneRef.current.nodes.find((item) => item.id === nodeId);
+    if (!currentNode || currentNode.locked) return;
     e.preventDefault();
     e.stopPropagation();
     const pointerId = e.pointerId;
@@ -2171,7 +2201,7 @@ export default function EditorPage() {
     event.preventDefault();
     const current = sceneRef.current;
     const node = current.nodes.find((item) => item.id === nodeId);
-    if (!node) return;
+    if (!node || node.locked) return;
     const step = event.shiftKey ? 50 : snapToGrid ? current.gridSize || 24 : 10;
     updateNode(nodeId, {
       x: (node.x ?? 40) + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0),
@@ -2663,102 +2693,28 @@ export default function EditorPage() {
                     </div>
                   )}
 
-                  <div className="space-y-1">
-                    {scene.nodes.map((n) => {
-                      const isEditing = editingLayerId === n.id;
-                      const isSelected = selectedNodeIds.includes(n.id);
-
-                      return (
-                        <div
-                          key={n.id}
-                          onClick={(e) => handleSelectNode(n.id, e)}
-                          className={`w-full flex items-center justify-between p-2 rounded-xl text-xs font-bold transition cursor-pointer group ${
-                            isSelected
-                              ? 'bg-violet-500/15 text-violet-600 dark:text-violet-300 border border-violet-500/30'
-                              : 'hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-300 border border-transparent'
-                          }`}
-                        >
-                          {isEditing ? (
-                            <form
-                              onSubmit={(e) => {
-                                e.preventDefault();
-                                if (editingLayerTitle.trim()) {
-                                  updateNode(n.id, { title: editingLayerTitle.trim() });
-                                }
-                                setEditingLayerId(null);
-                              }}
-                              className="flex-1 mr-2"
-                            >
-                              <input
-                                type="text"
-                                autoFocus
-                                value={editingLayerTitle}
-                                onChange={(e) => setEditingLayerTitle(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Escape') setEditingLayerId(null);
-                                }}
-                                onBlur={() => {
-                                  if (editingLayerTitle.trim()) {
-                                    updateNode(n.id, { title: editingLayerTitle.trim() });
-                                  }
-                                  setEditingLayerId(null);
-                                }}
-                                className="w-full rounded-lg border border-violet-500 bg-white dark:bg-slate-900 px-2 py-1 text-xs font-extrabold outline-none text-slate-900 dark:text-white shadow-xs"
-                              />
-                            </form>
-                          ) : (
-                            <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
-                              <span
-                                onDoubleClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditingLayerId(n.id);
-                                  setEditingLayerTitle(n.title || '');
-                                }}
-                                className="truncate hover:underline cursor-text"
-                                title="Double-click to rename layer"
-                              >
-                                {n.title || 'Untitled Node'}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditingLayerId(n.id);
-                                  setEditingLayerTitle(n.title || '');
-                                }}
-                                className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-violet-600 dark:hover:text-violet-300 transition-opacity cursor-pointer shrink-0"
-                                title="Rename layer"
-                              >
-                                <Pencil size={12} />
-                              </button>
-                            </div>
-                          )}
-
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="text-[9px] uppercase font-extrabold px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-white/10 text-slate-500 dark:text-slate-400">
-                              {n.type}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteNode(n.id);
-                              }}
-                              className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-opacity cursor-pointer"
-                              title="Delete layer"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {scene.nodes.length === 0 && (
-                      <div className="p-4 text-center text-xs text-slate-400 font-medium">
-                        No nodes added to scene yet.
-                      </div>
-                    )}
-                  </div>
+                  <LayerList
+                    nodes={scene.nodes}
+                    selectedNodeIds={selectedNodeIds}
+                    canEdit={canEditDashboard}
+                    onSelectNode={handleSelectNode}
+                    onRename={(node) => {
+                      setEditingLayerId(node.id);
+                      setEditingLayerTitle(node.title || '');
+                    }}
+                    editingLayerId={editingLayerId}
+                    editingLayerTitle={editingLayerTitle}
+                    setEditingLayerTitle={setEditingLayerTitle}
+                    onCommitRename={(nodeId, title) => {
+                      if (title.trim()) updateNode(nodeId, { title: title.trim() });
+                      setEditingLayerId(null);
+                    }}
+                    onCancelRename={() => setEditingLayerId(null)}
+                    onDelete={deleteNode}
+                    onToggleHidden={(nodeId) => handleToggleLayerFlag(nodeId, 'hidden')}
+                    onToggleLocked={(nodeId) => handleToggleLayerFlag(nodeId, 'locked')}
+                    onDragEnd={handleLayerReorder}
+                  />
                 </div>
               )}
 
@@ -2790,11 +2746,18 @@ export default function EditorPage() {
           style={gridStyleInline}
         >
           {/* Centered Empty State Overlay when no nodes exist */}
-          {!scene.nodes.length && (
+          {scene.nodes.every((node) => node.hidden) && (
             <div className="absolute inset-0 z-20 flex items-center justify-center p-6 pointer-events-none">
-              <div className="pointer-events-auto max-w-md w-full">
-                <CanvasEmpty onAdd={() => addNode('metric')} />
-              </div>
+              {scene.nodes.length === 0 ? (
+                <div className="pointer-events-auto max-w-md w-full"><CanvasEmpty onAdd={() => addNode('metric')} /></div>
+              ) : (
+                <div className="pointer-events-auto max-w-sm rounded-2xl border border-slate-200 bg-white/90 p-6 text-center shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/90">
+                  <EyeOff size={20} className="mx-auto text-slate-400" />
+                  <p className="mt-3 text-sm font-semibold text-slate-800 dark:text-slate-100">All canvas widgets are hidden</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">Show a layer from the Layers panel to bring it back onto the canvas.</p>
+                  <button type="button" onClick={() => { setLeftPanelOpen(true); setLeftPanelTab('layers'); }} className="mt-4 rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-violet-500">Open layers</button>
+                </div>
+              )}
             </div>
           )}
 
@@ -2840,7 +2803,7 @@ export default function EditorPage() {
                 {scene.connections.map((conn, i) => {
                   const fromNode = scene.nodes.find((n) => n.id === conn.fromId);
                   const toNode = scene.nodes.find((n) => n.id === conn.toId);
-                  if (!fromNode || !toNode) return null;
+                  if (!fromNode || !toNode || fromNode.hidden || toNode.hidden) return null;
 
                   const startX = (fromNode.x ?? 40) + 140; // Approx center (width ~280)
                   const startY = (fromNode.y ?? 40) + 100; // Approx center (height ~200)
@@ -2906,7 +2869,7 @@ export default function EditorPage() {
           </div>
 
           <CanvasOverview
-            nodes={scene.nodes}
+            nodes={scene.nodes.filter((node) => !node.hidden)}
             collaborators={awarenessStates.filter(([, state]) => state.user?.id && state.viewport)}
             localClientId={awareness?.clientID}
             zoom={zoom}
@@ -4218,14 +4181,15 @@ function NodeGrid({ nodes, currentScene, selectedNodeIds = [], selectedNodeId, g
     const groupedNodeIds = activeNode?.groupId
       ? nodes.filter((node) => node.groupId === activeNode.groupId).map((node) => node.id)
       : [activeId];
-    const movingNodeIds = selectedNodeIds.includes(activeId) && selectedNodeIds.length > 1
+    const selectedDragIds = selectedNodeIds.includes(activeId) && selectedNodeIds.length > 1
       ? selectedNodeIds
       : groupedNodeIds;
+    const movingNodeIds = selectedDragIds.filter((id) => !nodes.find((node) => node.id === id)?.locked);
     const startScene = structuredClone(currentScene);
     const origins = movingNodeIds.map((id) => {
       const node = nodes.find((item) => item.id === id);
       const element = document.getElementById(`node-card-${id}`);
-      if (!node) return null;
+      if (!node || node.hidden) return null;
       const sizeFallback = { small: 220, medium: 280, large: 340, wide: 440 }[node.size] || 280;
       return {
         id,
@@ -4293,7 +4257,7 @@ function NodeGrid({ nodes, currentScene, selectedNodeIds = [], selectedNodeId, g
       const renderer = getWidgetDefinition(node.type)?.renderer;
       const height = node.customHeight ?? element?.offsetHeight
         ?? ({ image: 240, chart: 220, table: 260, code: 220, metric: 160, timer: 160, status: 160, link: 160 }[renderer] || 180);
-      return { id: node.id, groupId: node.groupId, left: node.x ?? 40, top: node.y ?? 40, right: (node.x ?? 40) + width, bottom: (node.y ?? 40) + height };
+      return { id: node.id, groupId: node.groupId, hidden: node.hidden, left: node.x ?? 40, top: node.y ?? 40, right: (node.x ?? 40) + width, bottom: (node.y ?? 40) + height };
     });
     selectionTransactionRef.current = {
       pointerId: event.pointerId,
@@ -4318,7 +4282,7 @@ function NodeGrid({ nodes, currentScene, selectedNodeIds = [], selectedNodeId, g
       bottom: Math.max(transaction.origin.y, point.y),
     };
     const intersectingNodes = transaction.nodeBounds.filter((node) =>
-      node.left <= rect.right && node.right >= rect.left && node.top <= rect.bottom && node.bottom >= rect.top,
+      !node.hidden && node.left <= rect.right && node.right >= rect.left && node.top <= rect.bottom && node.bottom >= rect.top,
     );
     const intersectingNodeIds = new Set(intersectingNodes.map((node) => node.id));
     const intersectingGroupIds = new Set(intersectingNodes.map((node) => node.groupId).filter(Boolean));
@@ -4413,7 +4377,7 @@ function NodeGrid({ nodes, currentScene, selectedNodeIds = [], selectedNodeId, g
     [nodes, viewport, pinnedNodeIds],
   );
   const visibleNodes = useMemo(
-    () => nodes.filter((node) => visibleNodeIds.has(node.id)),
+    () => nodes.filter((node) => visibleNodeIds.has(node.id) && !node.hidden),
     [nodes, visibleNodeIds],
   );
 
@@ -4532,6 +4496,165 @@ function CanvasDropZone({ children, ...props }) {
   return <div ref={setNodeRef} {...props}>{children}</div>;
 }
 
+function LayerList({ nodes, selectedNodeIds, canEdit, onSelectNode, onRename, editingLayerId, editingLayerTitle, setEditingLayerTitle, onCommitRename, onCancelRename, onDelete, onToggleHidden, onToggleLocked, onDragEnd }) {
+  const [search, setSearch] = useState('');
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const filteredNodes = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return nodes;
+    return nodes.filter((node) => `${node.title || ''} ${node.type || ''}`.toLowerCase().includes(query));
+  }, [nodes, search]);
+
+  return (
+    <div className="space-y-2">
+      <label className="relative block">
+        <Search size={13} aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Filter layers"
+          aria-label="Filter canvas layers"
+          className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-8 pr-3 text-xs outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-500/10 dark:border-white/10 dark:bg-slate-900"
+        />
+      </label>
+      <DndContext
+        sensors={canEdit ? sensors : []}
+        collisionDetection={closestCenter}
+        autoScroll={canEdit}
+        onDragEnd={onDragEnd}
+      >
+        <SortableContext items={filteredNodes.map((node) => node.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-1">
+            {filteredNodes.map((node) => (
+              <SortableLayerRow
+                key={node.id}
+                node={node}
+                isSelected={selectedNodeIds.includes(node.id)}
+                canEdit={canEdit}
+                isEditing={editingLayerId === node.id}
+                editingLayerTitle={editingLayerTitle}
+                setEditingLayerTitle={setEditingLayerTitle}
+                onSelect={(event) => onSelectNode(node.id, event)}
+                onRename={() => onRename(node)}
+                onCommitRename={(title) => onCommitRename(node.id, title)}
+                onCancelRename={onCancelRename}
+                onDelete={() => onDelete(node.id)}
+                onToggleHidden={() => onToggleHidden(node.id)}
+                onToggleLocked={() => onToggleLocked(node.id)}
+              />
+            ))}
+            {nodes.length === 0 && (
+              <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400 dark:border-white/10">
+                No widgets on this canvas yet.
+              </div>
+            )}
+            {nodes.length > 0 && filteredNodes.length === 0 && (
+              <div className="p-4 text-center text-xs text-slate-400">No layers match “{search}”.</div>
+            )}
+          </div>
+        </SortableContext>
+      </DndContext>
+    </div>
+  );
+}
+
+function SortableLayerRow({ node, isSelected, canEdit, isEditing, editingLayerTitle, setEditingLayerTitle, onSelect, onRename, onCommitRename, onCancelRename, onDelete, onToggleHidden, onToggleLocked }) {
+  const renameFinishedRef = useRef(false);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: node.id,
+    disabled: !canEdit || isEditing,
+  });
+  const finishRename = () => {
+    if (renameFinishedRef.current) return;
+    renameFinishedRef.current = true;
+    onCommitRename(editingLayerTitle);
+  };
+  const rowStyle = {
+    transform: transform ? CSS.Transform.toString(transform) : undefined,
+    transition,
+    zIndex: isDragging ? 20 : undefined,
+  };
+  const rowTone = isSelected
+    ? 'border-violet-500/30 bg-violet-500/15 text-violet-700 dark:text-violet-300'
+    : 'border-transparent text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/5';
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={rowStyle}
+      className={`group flex min-w-0 items-center gap-1 rounded-xl border p-1 transition-colors ${rowTone} ${isDragging ? 'opacity-70 shadow-xl' : ''} ${node.hidden ? 'opacity-60' : ''}`}
+    >
+      <button
+        type="button"
+        {...(canEdit ? attributes : {})}
+        {...(canEdit ? listeners : {})}
+        aria-label={`Reorder ${node.title || node.type}`}
+        title="Drag to reorder layer"
+        className="grid size-7 shrink-0 touch-none place-items-center rounded-lg text-slate-400 hover:bg-white/80 hover:text-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:hover:bg-slate-800 dark:hover:text-violet-300"
+      >
+        <GripVertical size={14} aria-hidden="true" />
+      </button>
+      {isEditing ? (
+        <form
+          className="min-w-0 flex-1"
+          onSubmit={(event) => { event.preventDefault(); finishRename(); }}
+        >
+          <input
+            type="text"
+            autoFocus
+            maxLength={160}
+            value={editingLayerTitle}
+            onChange={(event) => setEditingLayerTitle(event.target.value)}
+            onFocus={() => { renameFinishedRef.current = false; }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                renameFinishedRef.current = true;
+                onCancelRename();
+              }
+            }}
+            onBlur={finishRename}
+            aria-label={`Rename ${node.title || node.type}`}
+            className="w-full rounded-lg border border-violet-500 bg-white px-2 py-1 text-xs font-semibold text-slate-900 outline-none dark:bg-slate-900 dark:text-white"
+          />
+        </form>
+      ) : (
+        <button
+          type="button"
+          onClick={onSelect}
+          onDoubleClick={onRename}
+          aria-pressed={isSelected}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+          title="Select layer; double-click to rename"
+        >
+          <span className="min-w-0 flex-1 truncate text-xs font-semibold">{node.title || 'Untitled widget'}</span>
+          {node.groupId && <span className="rounded bg-violet-100 px-1 py-0.5 text-[8px] font-bold uppercase text-violet-600 dark:bg-violet-500/15 dark:text-violet-300">Group</span>}
+          <span className="max-w-16 truncate rounded bg-slate-200/70 px-1.5 py-0.5 text-[8px] font-extrabold uppercase text-slate-500 dark:bg-white/10 dark:text-slate-400">{node.type}</span>
+        </button>
+      )}
+      {canEdit && !isEditing && (
+        <div className="flex shrink-0 items-center">
+          <button type="button" onClick={onRename} aria-label={`Rename ${node.title || node.type}`} title="Rename layer" className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white hover:text-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:hover:bg-slate-800 dark:hover:text-violet-300">
+            <Pencil size={12} />
+          </button>
+          <button type="button" onClick={onToggleHidden} aria-label={node.hidden ? `Show ${node.title || node.type}` : `Hide ${node.title || node.type}`} title={node.hidden ? 'Show on canvas' : 'Hide from canvas'} className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white hover:text-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:hover:bg-slate-800 dark:hover:text-violet-300">
+            {node.hidden ? <EyeOff size={12} /> : <Eye size={12} />}
+          </button>
+          <button type="button" onClick={onToggleLocked} aria-label={node.locked ? `Unlock ${node.title || node.type}` : `Lock ${node.title || node.type}`} title={node.locked ? 'Unlock movement and resize' : 'Lock movement and resize'} className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white hover:text-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:hover:bg-slate-800 dark:hover:text-violet-300">
+            {node.locked ? <Lock size={12} /> : <Unlock size={12} />}
+          </button>
+          <button type="button" onClick={onDelete} aria-label={`Delete ${node.title || node.type}`} title="Delete layer" className="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 dark:hover:bg-rose-500/10 dark:hover:text-rose-300">
+            <Trash2 size={12} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 class WidgetErrorBoundary extends Component {
   state = { failed: false };
 
@@ -4571,11 +4694,11 @@ function CanvasNodeCard({ node, zoom, isSelected, remoteSelectedBy, onSelect, re
 }) {
   const draggable = useDraggable({
     id: node.id,
-    disabled: !canEdit,
+    disabled: !canEdit || node.locked,
     attributes: { role: 'group', roleDescription: 'canvas widget', tabIndex: 0 },
   });
   const dropTargetId = `widget-drop-${node.id}`;
-  const droppable = useDroppable({ id: dropTargetId, disabled: !canEdit });
+  const droppable = useDroppable({ id: dropTargetId, disabled: !canEdit || node.locked });
   const setCardRef = useCallback((element) => {
     draggable.setNodeRef(element);
     droppable.setNodeRef(element);
@@ -4714,11 +4837,11 @@ function CanvasNodeCard({ node, zoom, isSelected, remoteSelectedBy, onSelect, re
       }}
       role="group"
       {...draggable.attributes}
-      aria-label={`${node.title || node.type} canvas widget${isSelected ? ', selected' : ''}. Use arrow keys to move.`}
+      aria-label={`${node.title || node.type} canvas widget${isSelected ? ', selected' : ''}${node.locked ? ', locked' : ''}. Use arrow keys to move.`}
       {...(canEdit ? draggable.listeners : {})}
       onKeyDown={handleCardKeyDown}
       onPointerDown={canEdit ? handleCardPointerDown : undefined}
-      className={`rounded-2xl p-5 backdrop-blur-xl shadow-lg transition-shadow duration-200 select-none ${canEdit ? 'cursor-grab active:cursor-grabbing' : ''} ${cardStyle} ${
+      className={`rounded-2xl p-5 backdrop-blur-xl shadow-lg transition-shadow duration-200 select-none ${canEdit && !node.locked ? 'cursor-grab active:cursor-grabbing' : ''} ${cardStyle} ${
         isSelected
           ? 'ring-2 ring-indigo-500/90 shadow-[0_0_30px_rgba(99,102,241,0.35)] scale-[1.02] z-[30]'
           : 'hover:shadow-xl hover:scale-[1.01] z-[10]'
@@ -5115,7 +5238,7 @@ function CanvasNodeCard({ node, zoom, isSelected, remoteSelectedBy, onSelect, re
                             : `Waiting for ${workspaceDataState.file.name}…`}
         </p>
       )}
-      {canEdit && isSelected && (
+      {canEdit && isSelected && !node.locked && (
         resizeHandleDefinitions.map((handle) => (
           <button
             key={handle.id}

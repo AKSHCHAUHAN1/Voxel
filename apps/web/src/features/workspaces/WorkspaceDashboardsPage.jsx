@@ -74,7 +74,7 @@ function createDashboardSnapshot(dashboard, format) {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas export is unavailable in this browser.');
-  const nodes = Array.isArray(dashboard.scene?.nodes) ? dashboard.scene.nodes : [];
+  const nodes = Array.isArray(dashboard.scene?.nodes) ? dashboard.scene.nodes.filter((node) => !node.hidden) : [];
   const dimensions = nodes.map((node) => ({ node, ...sceneNodeSize(node) }));
   const minLeft = Math.min(0, ...dimensions.map(({ node }) => Number(node.x) || 0));
   const minTop = Math.min(0, ...dimensions.map(({ node }) => Number(node.y) || 0));
@@ -509,7 +509,7 @@ export default function WorkspaceDashboardsPage() {
   };
 
   const handleDownloadPDF = (dashboard) => {
-    const nodes = Array.isArray(dashboard.scene?.nodes) ? dashboard.scene.nodes : [];
+    const nodes = Array.isArray(dashboard.scene?.nodes) ? dashboard.scene.nodes.filter((node) => !node.hidden) : [];
     const cards = nodes.map((node) => {
       const value = [node.content, node.unit, node.target != null ? `Target: ${node.target}` : '', node.description, node.code, node.rows, node.url].filter(Boolean).join('\n');
       return `<article><p class="type">${escapeHtml(node.type || 'widget')}</p><h2>${escapeHtml(node.title || 'Untitled widget')}</h2><pre>${escapeHtml(value)}</pre></article>`;

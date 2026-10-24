@@ -236,13 +236,14 @@ export default function SharedDashboardPage() {
     nodes: previous.nodes.map((node) => node.id === nodeId ? { ...node, ...patch } : node),
   }));
 
+  const visibleNodes = useMemo(() => (scene?.nodes || []).filter((node) => !node.hidden), [scene?.nodes]);
   const boardDimensions = useMemo(() => {
-    const nodes = scene?.nodes || [];
+    const nodes = visibleNodes;
     return {
       width: Math.max(window.innerWidth, ...nodes.map((node) => (Number(node.x) || 0) + nodeWidth(node.size) + 48)),
       height: Math.max(window.innerHeight - 88, ...nodes.map((node) => (Number(node.y) || 0) + 240)),
     };
-  }, [scene]);
+  }, [visibleNodes]);
   const sharedValues = useMemo(
     () => resolveSharedDashboardValues(scene?.nodes || [], scene?.connections || [], (node) => getWidgetDefinition(node.type)?.renderer || node.type),
     [scene],
@@ -261,7 +262,7 @@ export default function SharedDashboardPage() {
       {save.isError && <div role="alert" className="mx-4 mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700 sm:mx-8">{save.error.message} Reload the page before making further changes.</div>}
       {saved && <div role="status" className="fixed right-5 top-20 z-30 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-bold text-white shadow-lg"><Check size={14}/> Changes saved</div>}
       <section className="min-h-[calc(100vh-4rem)] overflow-auto bg-[radial-gradient(circle_at_1px_1px,rgba(139,92,246,.17)_1px,transparent_0)] [background-size:24px_24px] dark:bg-[radial-gradient(circle_at_1px_1px,rgba(139,92,246,.18)_1px,transparent_0)]" style={{ backgroundColor: 'rgba(248,250,252,.82)' }}>
-        {scene?.nodes?.length ? <div className="relative" style={{ width: boardDimensions.width, height: boardDimensions.height }}>{scene.nodes.map((node) => <SharedNode key={node.id} node={node} nodes={scene.nodes} editing={editing} onUpdate={updateNode} resolvedValue={sharedValues.get(node.id)} />)}</div> : <div className="grid min-h-[calc(100vh-4rem)] place-items-center"><div className="text-center"><h1 className="text-lg font-bold">This canvas is empty</h1><p className="mt-1 text-sm text-slate-500">The owner has not added any widgets yet.</p></div></div>}
+        {visibleNodes.length > 0 ? <div className="relative" style={{ width: boardDimensions.width, height: boardDimensions.height }}>{visibleNodes.map((node) => <SharedNode key={node.id} node={node} nodes={scene.nodes} editing={editing} onUpdate={updateNode} resolvedValue={sharedValues.get(node.id)} />)}</div> : <div className="grid min-h-[calc(100vh-4rem)] place-items-center"><div className="text-center"><h1 className="text-lg font-bold">{scene?.nodes?.length ? 'This canvas has no visible widgets' : 'This canvas is empty'}</h1><p className="mt-1 text-sm text-slate-500">{scene?.nodes?.length ? 'The owner has hidden all of its widgets.' : 'The owner has not added any widgets yet.'}</p></div></div>}
       </section>
       <footer className="border-t border-slate-200 bg-white px-5 py-4 text-center text-[10px] text-slate-500 dark:border-white/10 dark:bg-slate-950">Shared securely with Voxel · <Link to="/" className="font-bold text-violet-600">Create your own workspace</Link></footer>
     </main>
