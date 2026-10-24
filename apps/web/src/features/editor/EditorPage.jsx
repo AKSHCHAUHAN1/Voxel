@@ -1,4 +1,4 @@
-import { Component, memo, useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { Component, memo, useMemo, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate, useParams, Link } from 'react-router-dom';
 import appIcon from '@/assets/app-icon.png';
@@ -57,6 +57,8 @@ import {
   tableFromWorkspaceData,
   valueFromWorkspaceData,
 } from './workspace-data-source';
+import { getVisibleCanvasNodeIds } from './canvas-virtualization';
+import { getTimerDisplaySeconds, pauseTimerNode, resetTimerNode, startTimerNode } from './timer-state';
 import {
   CANVAS_INNER_PADDING,
   CANVAS_PADDING,
@@ -2638,6 +2640,8 @@ export default function EditorPage() {
                 {scene.nodes.length > 0 && (
                   <NodeGrid
                     nodes={scene.nodes}
+                    gridRef={gridRef}
+                    zoom={zoom}
                     selectedNodeIds={selectedNodeIds}
                     selectedNodeId={selectedNodeId}
                     onSelectNode={handleSelectNode}
@@ -3853,8 +3857,60 @@ function RestDataSourceInspector({ node, renderer, query, sourceData, canEdit, o
   );
 }
 
-function NodeGrid({ nodes, selectedNodeIds = [], selectedNodeId, onSelectNode, resolveNodeValue, getWorkspaceDataState, onDragStart, onResizeStart, onKeyboardMove, updateNode, canEdit, awarenessStates, localClientId,
+function NodeGrid({ nodes, selectedNodeIds = [], selectedNodeId, gridRef, zoom, onSelectNode, resolveNodeValue, getWorkspaceDataState, onDragStart, onResizeStart, onKeyboardMove, updateNode, canEdit, awarenessStates, localClientId,
 }) {
+  const [viewport, setViewport] = useState(null);
+
+  useLayoutEffect(() => {
+    const scrollContainer = gridRef.current;
+    if (!scrollContainer) return undefined;
+
+    let animationFrame = 0;
+    const measureViewport = () => {
+      const next = getCanvasViewport(
+        scrollContainer.scrollLeft,
+        scrollContainer.scrollTop,
+        scrollContainer.clientWidth,
+        scrollContainer.clientHeight,
+        zoom,
+      );
+      setViewport((current) => current && current.x === next.x && current.y === next.y
+        && current.width === next.width && current.height === next.height ? current : next);
+    };
+    const scheduleMeasure = () => {
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = 0;
+        measureViewport();
+      });
+    };
+
+    measureViewport();
+    scrollContainer.addEventListener('scroll', scheduleMeasure, { passive: true });
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleMeasure);
+    if (resizeObserver) resizeObserver.observe(scrollContainer);
+    else window.addEventListener('resize', scheduleMeasure);
+
+    return () => {
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      scrollContainer.removeEventListener('scroll', scheduleMeasure);
+      resizeObserver?.disconnect();
+      if (!resizeObserver) window.removeEventListener('resize', scheduleMeasure);
+    };
+  }, [gridRef, zoom]);
+
+  const pinnedNodeIds = selectedNodeIds.length > 0
+    ? selectedNodeIds
+    : selectedNodeId ? [selectedNodeId] : [];
+  const visibleNodeIds = useMemo(
+    () => getVisibleCanvasNodeIds(nodes, viewport, pinnedNodeIds),
+    [nodes, viewport, pinnedNodeIds],
+  );
+  const visibleNodes = useMemo(
+    () => nodes.filter((node) => visibleNodeIds.has(node.id)),
+    [nodes, visibleNodeIds],
+  );
+
   const remoteSelections = useMemo(() => {
     if (!awarenessStates) return {};
     const selections = {};
@@ -3868,8 +3924,14 @@ function NodeGrid({ nodes, selectedNodeIds = [], selectedNodeId, onSelectNode, r
   }, [awarenessStates, localClientId]);
 
   return (
-    <div className="relative w-full min-h-[650px] z-10">
-      {nodes.map((node) => (
+    <div
+      role="group"
+      aria-label={`Canvas widgets. Showing ${visibleNodes.length} of ${nodes.length}.`}
+      data-rendered-widget-count={visibleNodes.length}
+      data-total-widget-count={nodes.length}
+      className="relative w-full min-h-[650px] z-10"
+    >
+      {visibleNodes.map((node) => (
         <WidgetErrorBoundary key={node.id} node={node} onSelectNode={onSelectNode}>
           <CanvasNodeCard
             node={node}
@@ -4902,25 +4964,25 @@ function EditorSkeleton() {
 }
 
 function TimerNode({ node, updateNode }) {
-  const [timeRemaining, setTimeRemaining] = useState(node.duration || 300);
-
-  useEffect(() => {
-    let interval;
-    if (node.timerState === 'running' && timeRemaining > 0) {
-      interval = setInterval(() => {
-        setTimeRemaining((t) => t - 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [node.timerState, timeRemaining]);
-
-  useEffect(() => {
-    setTimeRemaining(node.duration || 300);
-  }, [node.duration]);
-
-  const minutes = Math.floor(timeRemaining / 60);
-  const seconds = timeRemaining % 60;
+  const [now, setNow] = useState(() => Date.now());
+  const isCountdown = node.timerMode !== 'stopwatch';
+  const endAt = Number.isFinite(node.timerEndsAt) ? node.timerEndsAt : null;
+  const displayedSeconds = getTimerDisplaySeconds(node, now);
+  const minutes = Math.floor(displayedSeconds / 60);
+  const seconds = displayedSeconds % 60;
   const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  const timerRunning = node.timerState === 'running' && (!isCountdown || displayedSeconds > 0);
+  const timerComplete = isCountdown && displayedSeconds === 0 && ['running', 'paused', 'finished'].includes(node.timerState);
+
+  useEffect(() => {
+    if (node.timerState !== 'running' || (isCountdown && endAt && now >= endAt)) return undefined;
+    const interval = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(interval);
+  }, [endAt, isCountdown, node.timerState, now]);
+
+  const startTimer = () => updateNode(node.id, startTimerNode(node));
+  const pauseTimer = () => updateNode(node.id, pauseTimerNode(node, Date.now()));
+  const resetTimer = () => updateNode(node.id, resetTimerNode(node));
 
   return (
     <div className="space-y-3">
@@ -4930,25 +4992,23 @@ function TimerNode({ node, updateNode }) {
           {timeStr}
         </span>
         <div className="flex gap-1.5">
-          {node.timerState !== 'running' ? (
+          {!timerRunning ? (
             <button
-              onClick={() => updateNode(node.id, { timerState: 'running' })}
+              onClick={startTimer}
               className="px-2 py-1 text-[10px] font-bold rounded bg-amber-500 hover:bg-amber-400 text-white cursor-pointer"
             >
-              Start
+              {timerComplete ? 'Restart' : 'Start'}
             </button>
           ) : (
             <button
-              onClick={() => updateNode(node.id, { timerState: 'paused' })}
+              onClick={pauseTimer}
               className="px-2 py-1 text-[10px] font-bold rounded bg-slate-500 hover:bg-slate-400 text-white cursor-pointer"
             >
               Pause
             </button>
           )}
           <button
-            onClick={() =>
-              updateNode(node.id, { timerState: 'idle', duration: node.duration || 300 })
-            }
+            onClick={resetTimer}
             className="px-2 py-1 text-[10px] font-bold rounded border border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer text-slate-600 dark:text-slate-300"
           >
             Reset
@@ -4956,7 +5016,7 @@ function TimerNode({ node, updateNode }) {
         </div>
       </div>
       <span className="text-[10px] text-slate-400 block">
-        {node.timerMode === 'countdown' ? 'Countdown active' : 'Stopwatch active'}
+        {isCountdown ? (timerComplete ? 'Countdown complete' : 'Countdown timer') : 'Stopwatch'}
       </span>
     </div>
   );
