@@ -436,6 +436,31 @@ export default function EditorPage() {
     type: 'warning',
     onConfirm: null,
   });
+  const [contextMenu, setContextMenu] = useState(null);
+  const contextMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!contextMenu) return undefined;
+    const dismissOutside = (event) => {
+      if (!contextMenuRef.current?.contains(event.target)) setContextMenu(null);
+    };
+    const dismissOnEscape = (event) => {
+      if (event.key === 'Escape') setContextMenu(null);
+    };
+    const dismissOnScroll = () => setContextMenu(null);
+    document.addEventListener('pointerdown', dismissOutside);
+    document.addEventListener('keydown', dismissOnEscape);
+    window.addEventListener('scroll', dismissOnScroll, true);
+    const focusFrame = window.requestAnimationFrame(() => {
+      contextMenuRef.current?.querySelector('[role="menuitem"]:not(:disabled)')?.focus();
+    });
+    return () => {
+      document.removeEventListener('pointerdown', dismissOutside);
+      document.removeEventListener('keydown', dismissOnEscape);
+      window.removeEventListener('scroll', dismissOnScroll, true);
+      window.cancelAnimationFrame(focusFrame);
+    };
+  }, [contextMenu]);
   const gridRef = useRef(null);
   const panDragRef = useRef(null);
   const suppressCanvasClickRef = useRef(false);
@@ -1822,6 +1847,32 @@ export default function EditorPage() {
     useNotificationStore.getState().add(gridStyle === 'blank' ? 'Canvas grid hidden.' : 'Canvas grid shown.', 'info');
   };
 
+  const handleCanvasContextMenu = (event) => {
+    event.preventDefault();
+    const widgetElement = event.target instanceof Element
+      ? event.target.closest('[data-canvas-widget]')
+      : null;
+    const nodeId = widgetElement?.getAttribute('data-canvas-widget');
+    const node = scene.nodes.find((item) => item.id === nodeId);
+    let kind = 'canvas';
+    if (node) {
+      kind = 'widget';
+      const memberIds = node.groupId
+        ? scene.nodes.filter((item) => item.groupId === node.groupId).map((item) => item.id)
+        : [node.id];
+      if (!selectedNodeIds.includes(node.id)) setSelectedNodeIds(memberIds);
+      else if (memberIds.some((memberId) => !selectedNodeIds.includes(memberId))) {
+        setSelectedNodeIds([...new Set([...selectedNodeIds, ...memberIds])]);
+      }
+    }
+    setContextMenu({
+      kind,
+      nodeId: node?.id,
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - 248)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 360)),
+    });
+  };
+
   const handleRestoreVersion = (ver) => {
     if (!ver?.scene) return;
     setConfirmModal({
@@ -2145,6 +2196,57 @@ export default function EditorPage() {
 
   const deleteConnection = (index) => {
     update({ ...scene, connections: scene.connections.filter((_, i) => i !== index) });
+  };
+
+  const hasCanvasClipboard = () => {
+    if (copiedSceneRef.current.nodes.length > 0) return true;
+    try {
+      return Boolean(localStorage.getItem('voxel_dashboard_clipboard')
+        || localStorage.getItem('voxel_copied_nodes')
+        || localStorage.getItem('voxel_copied_node'));
+    } catch {
+      return false;
+    }
+  };
+
+  const exportSelectedWidgets = () => {
+    const selected = createCanvasClipboard(scene.nodes, scene.connections, selectedNodeIds);
+    if (selected.nodes.length === 0) return;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(selected, null, 2)], { type: 'application/json' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${dashboard.data?.name || 'canvas'}-widgets.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const contextMenuItem = (key, label, action, disabled = false, danger = false) => (
+    <button
+      key={key}
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      onClick={() => { setContextMenu(null); action(); }}
+      className={`w-full rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-40 ${danger ? 'text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-500/10' : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-white/10'}`}
+    >
+      {label}
+    </button>
+  );
+
+  const contextMenuSeparator = (key) => <div key={key} role="separator" className="my-1 border-t border-slate-100 dark:border-white/10" />;
+
+  const handleContextMenuKeyDown = (event) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const items = [...contextMenuRef.current.querySelectorAll('[role="menuitem"]:not(:disabled)')];
+    if (items.length === 0) return;
+    event.preventDefault();
+    const currentIndex = items.indexOf(document.activeElement);
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? items.length - 1
+        : (currentIndex + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[nextIndex].focus();
   };
 
   if (!workspaceId || !dashboardId) return null;
@@ -2675,7 +2777,9 @@ export default function EditorPage() {
         )}
 
         <main
+          onContextMenu={handleCanvasContextMenu}
           onClick={() => {
+            if (contextMenu) setContextMenu(null);
             if (suppressCanvasClickRef.current) {
               suppressCanvasClickRef.current = false;
               return;
@@ -2871,6 +2975,47 @@ export default function EditorPage() {
             </button>
           </div>
         </main>
+
+        {contextMenu && typeof document !== 'undefined' && createPortal(
+          <div
+            ref={contextMenuRef}
+            role="menu"
+            aria-label={contextMenu.kind === 'widget' ? 'Widget actions' : 'Canvas actions'}
+            onKeyDown={handleContextMenuKeyDown}
+            style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
+            className="fixed z-[120] max-h-[calc(100vh-16px)] w-56 overflow-y-auto rounded-xl border border-slate-200/90 bg-white/95 p-1.5 shadow-2xl shadow-slate-950/20 backdrop-blur-xl dark:border-white/10 dark:bg-[#0c101d]/95"
+          >
+            <p className="truncate px-3 pb-1.5 pt-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              {contextMenu.kind === 'widget'
+                ? scene.nodes.find((node) => node.id === contextMenu.nodeId)?.title || 'Widget'
+                : 'Canvas'}
+            </p>
+            {contextMenu.kind === 'canvas' ? (
+              <>
+                {contextMenuItem('add-widget', 'Add widget', () => setPickerOpen(true), !canEditDashboard)}
+                {contextMenuItem('paste-widgets', 'Paste widgets', handlePaste, !canEditDashboard || !hasCanvasClipboard())}
+                {contextMenuSeparator('canvas-divider-edit')}
+                {contextMenuItem('toggle-grid', scene.gridStyle === 'blank' ? 'Show grid' : 'Hide grid', handleToggleGrid, !canEditDashboard)}
+                {contextMenuItem('fit-canvas', 'Fit canvas to widgets', handleRepositionCanvas)}
+                {contextMenuSeparator('canvas-divider-export')}
+                {contextMenuItem('export-dashboard', 'Export dashboard JSON', handleExportJSON)}
+              </>
+            ) : (
+              <>
+                {contextMenuItem('configure-widget', 'Open properties', () => setRightPanelOpen(true))}
+                {contextMenuItem('copy-widget', 'Copy selection', () => storeSelectedClipboard())}
+                {contextMenuItem('export-widget', 'Export selection JSON', exportSelectedWidgets)}
+                {contextMenuSeparator('widget-divider-edit')}
+                {contextMenuItem('duplicate-widget', 'Duplicate selection', handleDuplicateSelected, !canEditDashboard)}
+                {selectedNodeIds.length > 1 && contextMenuItem('group-widgets', 'Group selection', handleGroupSelected, !canEditDashboard)}
+                {selectedNodeIds.some((id) => scene.nodes.some((node) => node.id === id && node.groupId))
+                  && contextMenuItem('ungroup-widgets', 'Ungroup selection', handleUngroupSelected, !canEditDashboard)}
+                {contextMenuItem('delete-widget', 'Delete selection', handleDeleteSelected, !canEditDashboard, true)}
+              </>
+            )}
+          </div>,
+          document.body,
+        )}
 
         {/* --- VERSION HISTORY PANEL --- */}
         {versionHistoryOpen && (
@@ -4546,6 +4691,7 @@ function CanvasNodeCard({ node, zoom, isSelected, remoteSelectedBy, onSelect, re
   return (
     <article
       id={`node-card-${node.id}`}
+      data-canvas-widget={node.id}
       ref={setCardRef}
       style={{
         position: 'absolute',
