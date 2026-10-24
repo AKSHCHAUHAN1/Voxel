@@ -13,6 +13,7 @@ import {
 const ACCESS_TOKEN_LIFETIME_SECONDS = 15 * 60;
 const REFRESH_TOKEN_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 const EMAIL_VERIFICATION_LIFETIME_HOURS = 24;
+const PASSWORD_RESET_LIFETIME_MINUTES = 60;
 
 const digest = (value) => createHash('sha256').update(value).digest('hex');
 const secret = (environment) => new TextEncoder().encode(environment.SESSION_SECRET);
@@ -142,6 +143,74 @@ export class AuthService {
     });
     await this.ensureDefaultWorkspace(user.id, user.displayName);
     return user;
+  }
+
+  async issuePasswordResetToken(email) {
+    const user = await this.database.user.findFirst({
+      where: { email, deletedAt: null, emailVerified: true, passwordHash: { not: null } },
+      select: { id: true, email: true, displayName: true },
+    });
+    if (!user) return null;
+
+    const token = randomBytes(32).toString('base64url');
+    const now = new Date();
+    await this.database.$transaction(async (transaction) => {
+      await transaction.passwordResetToken.deleteMany({
+        where: { userId: user.id, OR: [{ consumedAt: { not: null } }, { expiresAt: { lte: now } }] },
+      });
+      await transaction.passwordResetToken.updateMany({
+        where: { userId: user.id, consumedAt: null },
+        data: { consumedAt: now },
+      });
+      await transaction.passwordResetToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: digest(token),
+          expiresAt: new Date(now.getTime() + PASSWORD_RESET_LIFETIME_MINUTES * 60 * 1_000),
+        },
+      });
+    });
+    return { email: user.email, displayName: user.displayName, token };
+  }
+
+  async resetPassword(token, nextPassword) {
+    const resetError = new Error('This password reset link is invalid or has expired. Request a new link and try again.');
+    resetError.statusCode = 400;
+    if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{40,100}$/.test(token)) throw resetError;
+
+    const now = new Date();
+    const record = await this.database.passwordResetToken.findUnique({
+      where: { tokenHash: digest(token) },
+      include: { user: true },
+    });
+    if (!record || record.consumedAt || record.expiresAt <= now || record.user.deletedAt || !record.user.passwordHash) {
+      throw resetError;
+    }
+
+    const passwordHash = hashPassword(nextPassword);
+    await this.database.$transaction(async (transaction) => {
+      const consumedAt = new Date();
+      const consumed = await transaction.passwordResetToken.updateMany({
+        where: { id: record.id, consumedAt: null, expiresAt: { gt: consumedAt } },
+        data: { consumedAt },
+      });
+      if (consumed.count !== 1) throw resetError;
+      await transaction.user.update({ where: { id: record.userId }, data: { passwordHash } });
+      await transaction.passwordResetToken.updateMany({
+        where: { userId: record.userId, consumedAt: null },
+        data: { consumedAt },
+      });
+      await transaction.session.updateMany({ where: { userId: record.userId }, data: { expiresAt: consumedAt } });
+      await transaction.refreshToken.updateMany({
+        where: { session: { userId: record.userId }, revokedAt: null },
+        data: { revokedAt: consumedAt },
+      });
+      await transaction.mfaChallenge.updateMany({
+        where: { userId: record.userId, consumedAt: null },
+        data: { consumedAt },
+      });
+    });
+    return { updated: true, signedOutEverywhere: true };
   }
 
   async loginWithEmail(input, metadata) {

@@ -8,6 +8,12 @@ export const createVerificationUrl = (token, environment) => {
   return url.toString();
 };
 
+export const createPasswordResetUrl = (token, environment) => {
+  const url = new URL('/reset-password', environment.VOXEL_PUBLIC_APP_URL);
+  url.hash = new URLSearchParams({ token }).toString();
+  return url.toString();
+};
+
 export const createWorkspaceInviteUrl = (token, environment) => (
   new URL(`/invite/${encodeURIComponent(token)}`, environment.VOXEL_PUBLIC_APP_URL).toString()
 );
@@ -86,4 +92,22 @@ export const sendVerificationEmail = async ({ email, displayName, token, environ
     environment,
     fetchImpl,
   });
+};
+
+export const sendPasswordResetEmail = async ({ email, displayName, token, environment, fetchImpl = fetch }) => {
+  const resetUrl = createPasswordResetUrl(token, environment);
+  if (!environment.VOXEL_EMAIL_DELIVERY_URL) return { delivered: false, resetUrl };
+
+  const name = displayName || 'there';
+  const text = `Hi ${name},\n\nReset your Voxel password by opening this link:\n${resetUrl}\n\nThis link expires in one hour and works only once. If you did not request a password reset, you can ignore this email.`;
+  const html = `<p>Hi ${escapeHtml(name)},</p><p>Reset your Voxel password with the secure link below. It expires in one hour and works only once.</p><p><a href="${escapeHtml(resetUrl)}">Reset password</a></p><p>If you did not request a password reset, you can ignore this email.</p>`;
+  const delivery = await deliverEmail({
+    to: email,
+    subject: 'Reset your Voxel password',
+    text,
+    html,
+    environment,
+    fetchImpl,
+  });
+  return { ...delivery, resetUrl };
 };

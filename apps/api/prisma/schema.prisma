@@ -67,6 +67,7 @@ model User {
   notificationsSent   Notification[] @relation("NotificationActor")
   uploadedFiles      StoredFile[] @relation("StoredFileUploader")
   emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens PasswordResetToken[]
   mfaChallenges MfaChallenge[]
   mfaRecoveryCodes MfaRecoveryCode[]
 
@@ -110,6 +111,18 @@ model EmailVerificationToken {
   consumedAt  DateTime?
   createdAt   DateTime  @default(now())
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consumedAt, expiresAt])
+}
+
+model PasswordResetToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  tokenHash  String    @unique @db.Char(64)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, consumedAt, expiresAt])
 }

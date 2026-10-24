@@ -6,6 +6,7 @@ const { prismaMock, authMock } = vi.hoisted(() => ({
   prismaMock: { user: { findFirst: vi.fn() } },
   authMock: {
     signUpWithEmail: vi.fn(), issueEmailVerificationToken: vi.fn(), verifyEmailToken: vi.fn(),
+    issuePasswordResetToken: vi.fn(), resetPassword: vi.fn(),
     generateSessionForUser: vi.fn(), loginWithEmail: vi.fn(), completeMfaChallenge: vi.fn(),
     getAuthenticatedContext: vi.fn(), getMfaStatus: vi.fn(), startTotpSetup: vi.fn(),
     confirmTotpSetup: vi.fn(), rotateMfaRecoveryCodes: vi.fn(), disableTotp: vi.fn(),
@@ -16,6 +17,8 @@ vi.mock('../../database/prisma.js', () => ({ prisma: prismaMock }));
 vi.mock('./auth-service.js', () => ({ AuthService: class {
   signUpWithEmail(...args) { return authMock.signUpWithEmail(...args); }
   issueEmailVerificationToken(...args) { return authMock.issueEmailVerificationToken(...args); }
+  issuePasswordResetToken(...args) { return authMock.issuePasswordResetToken(...args); }
+  resetPassword(...args) { return authMock.resetPassword(...args); }
   verifyEmailToken(...args) { return authMock.verifyEmailToken(...args); }
   generateSessionForUser(...args) { return authMock.generateSessionForUser(...args); }
   loginWithEmail(...args) { return authMock.loginWithEmail(...args); }
@@ -97,6 +100,58 @@ describe('email verification routes', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().data).toEqual({ sent: true });
     expect(authMock.issueEmailVerificationToken).not.toHaveBeenCalled();
+  });
+});
+
+describe('password reset routes', () => {
+  it('returns the same production response for an unknown email and an eligible account', async () => {
+    authMock.issuePasswordResetToken.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      email: 'alex@example.com', displayName: 'Alex Rivers', token: 'c'.repeat(43),
+    });
+    environment.NODE_ENV = 'production';
+    try {
+      const unknown = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/password-reset/request',
+        payload: { email: 'unknown@example.com' },
+      });
+      const account = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/password-reset/request',
+        payload: { email: 'alex@example.com' },
+      });
+
+      expect(unknown.statusCode).toBe(202);
+      expect(account.statusCode).toBe(202);
+      expect(unknown.json().data).toEqual({ sent: true });
+      expect(account.json().data).toEqual({ sent: true });
+    } finally {
+      environment.NODE_ENV = 'test';
+    }
+  });
+
+  it('returns a development-only reset link and completes a password reset without creating a session', async () => {
+    authMock.issuePasswordResetToken.mockResolvedValue({
+      email: 'alex@example.com', displayName: 'Alex Rivers', token: 'd'.repeat(43),
+    });
+    authMock.resetPassword.mockResolvedValue({ updated: true, signedOutEverywhere: true });
+
+    const request = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/password-reset/request',
+      payload: { email: 'alex@example.com' },
+    });
+    expect(request.json().data.resetUrl).toContain('/reset-password#token=');
+
+    const reset = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/password-reset/complete',
+      payload: { token: 'd'.repeat(43), password: 'NewLongPassword123!' },
+    });
+    expect(reset.statusCode).toBe(200);
+    expect(reset.json().data).toEqual({ updated: true, signedOutEverywhere: true });
+    expect(reset.headers['set-cookie']).toBeUndefined();
+    expect(authMock.resetPassword).toHaveBeenCalledWith('d'.repeat(43), 'NewLongPassword123!');
   });
 });
 

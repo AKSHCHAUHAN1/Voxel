@@ -4,7 +4,7 @@ import { prisma } from '../../database/prisma.js';
 import { createRequestId } from '@voxel/contracts';
 import { success } from '../../lib/api-response.js';
 import { AuthService } from './auth-service.js';
-import { sendVerificationEmail } from './email-delivery.js';
+import { sendPasswordResetEmail, sendVerificationEmail } from './email-delivery.js';
 
 const GOOGLE_USER_INFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 const googleIdentitySchema = z.object({
@@ -29,6 +29,13 @@ const emailVerificationSchema = z.object({ token: z.string().min(40).max(100) })
 const resendVerificationSchema = z.object({
   email: z.string().trim().email().transform((email) => email.toLowerCase()),
 });
+const passwordResetRequestSchema = z.object({
+  email: z.string().trim().email().transform((email) => email.toLowerCase()),
+});
+const passwordResetSchema = z.object({
+  token: z.string().min(40).max(100),
+  password: z.string().min(12, 'Password must be at least 12 characters.').max(128),
+}).strict();
 const mfaCodeSchema = z.object({ code: z.string().trim().min(6).max(32) });
 const mfaSetupSchema = z.object({ currentPassword: z.string().max(128).optional() });
 const mfaDisableSchema = z.object({ code: z.string().trim().max(32).optional(), currentPassword: z.string().max(128).optional() })
@@ -204,6 +211,48 @@ export const registerAuthRoutes = async (app, environment) => {
     });
     applySessionCookies(reply, result, environment);
     return reply.send(success({ authenticated: true, user: result.user }, createRequestId(request.id)));
+  });
+
+  app.post('/api/v1/auth/password-reset/request', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
+    const { email } = passwordResetRequestSchema.parse(request.body);
+    if (environment.NODE_ENV === 'production') {
+      void (async () => {
+        const reset = await authService.issuePasswordResetToken(email);
+        if (!reset) return;
+        await sendPasswordResetEmail({
+          email: reset.email,
+          displayName: reset.displayName,
+          token: reset.token,
+          environment,
+        });
+      })().catch((error) => request.log.warn({ err: error }, 'Password reset email could not be delivered'));
+      return reply.status(202).send(success({ sent: true }, createRequestId(request.id)));
+    }
+
+    const reset = await authService.issuePasswordResetToken(email);
+    let delivery = { delivered: false };
+    if (reset) {
+      try {
+        delivery = await sendPasswordResetEmail({
+          email: reset.email,
+          displayName: reset.displayName,
+          token: reset.token,
+          environment,
+        });
+      } catch (error) {
+        request.log.warn({ err: error }, 'Password reset email could not be delivered');
+      }
+    }
+    return reply.status(202).send(success({
+      sent: true,
+      ...(environment.NODE_ENV !== 'production' && delivery.resetUrl ? { resetUrl: delivery.resetUrl } : {}),
+    }, createRequestId(request.id)));
+  });
+
+  app.post('/api/v1/auth/password-reset/complete', { config: { rateLimit: { max: 8, timeWindow: '5 minutes' } } }, async (request, reply) => {
+    const { token, password } = passwordResetSchema.parse(request.body);
+    const result = await authService.resetPassword(token, password);
+    return reply.send(success(result, createRequestId(request.id)));
   });
 
   app.post('/api/v1/auth/login', { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } }, async (request, reply) => {

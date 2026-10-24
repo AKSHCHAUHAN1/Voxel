@@ -12,7 +12,7 @@ import {
   LogIn,
   AlertCircle,
 } from 'lucide-react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { authService } from './auth-service';
 import { useThemeStore } from '@/store/theme-store';
@@ -421,6 +421,12 @@ export function LoginPage() {
                 </button>
               </div>
             </div>
+
+            {mode === 'signin' && (
+              <div className="-mt-1 flex justify-end">
+                <Link to="/forgot-password" className="text-[11px] font-semibold text-violet-600 underline-offset-2 hover:underline dark:text-violet-300">Forgot password?</Link>
+              </div>
+            )}
 
             {mode === 'signup' && (
               <div>
