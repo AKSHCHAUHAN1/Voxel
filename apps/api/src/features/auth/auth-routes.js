@@ -4,7 +4,7 @@ import { prisma } from '../../database/prisma.js';
 import { createRequestId } from '@voxel/contracts';
 import { success } from '../../lib/api-response.js';
 import { AuthService } from './auth-service.js';
-import { sendPasswordResetEmail, sendVerificationEmail } from './email-delivery.js';
+import { sendEmailChangeVerificationEmail, sendPasswordResetEmail, sendVerificationEmail } from './email-delivery.js';
 
 const GOOGLE_USER_INFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 const googleIdentitySchema = z.object({
@@ -31,6 +31,9 @@ const resendVerificationSchema = z.object({
 });
 const passwordResetRequestSchema = z.object({
   email: z.string().trim().email().transform((email) => email.toLowerCase()),
+});
+const emailChangeRequestSchema = z.object({
+  email: z.string().trim().email('Please enter a valid email address.').transform((email) => email.toLowerCase()),
 });
 const passwordResetSchema = z.object({
   token: z.string().min(40).max(100),
@@ -211,6 +214,48 @@ export const registerAuthRoutes = async (app, environment) => {
     });
     applySessionCookies(reply, result, environment);
     return reply.send(success({ authenticated: true, user: result.user }, createRequestId(request.id)));
+  });
+
+  app.post('/api/v1/auth/email-change/request', { config: { rateLimit: { max: 3, timeWindow: '1 hour' } } }, async (request, reply) => {
+    const context = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+    if (!context) throw new AuthenticationError('Authentication is required.');
+    const { email } = emailChangeRequestSchema.parse(request.body);
+    const change = await authService.issueEmailChangeToken(context.user.id, context.sessionId, email);
+    if (environment.NODE_ENV === 'production') {
+      if (change) {
+        void sendEmailChangeVerificationEmail({
+          email: change.email,
+          displayName: change.displayName,
+          token: change.token,
+          environment,
+        }).catch((error) => request.log.warn({ err: error }, 'Email change verification could not be delivered'));
+      }
+      return reply.status(202).send(success({ sent: true }, createRequestId(request.id)));
+    }
+
+    let delivery = {};
+    if (change) {
+      try {
+        delivery = await sendEmailChangeVerificationEmail({
+          email: change.email,
+          displayName: change.displayName,
+          token: change.token,
+          environment,
+        });
+      } catch (error) {
+        request.log.warn({ err: error }, 'Email change verification could not be delivered');
+      }
+    }
+    return reply.status(202).send(success({
+      sent: true,
+      ...(delivery.verificationUrl ? { verificationUrl: delivery.verificationUrl } : {}),
+    }, createRequestId(request.id)));
+  });
+
+  app.post('/api/v1/auth/email-change/verify', { config: { rateLimit: { max: 8, timeWindow: '5 minutes' } } }, async (request, reply) => {
+    const { token } = emailVerificationSchema.parse(request.body);
+    const result = await authService.verifyEmailChangeToken(token);
+    return reply.send(success(result, createRequestId(request.id)));
   });
 
   app.post('/api/v1/auth/password-reset/request', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
@@ -411,6 +456,7 @@ export const registerAuthRoutes = async (app, environment) => {
         {
           id: user.id,
           email: user.email,
+          emailChangeAllowed: Boolean(user.passwordHash && !user.googleSubject),
           displayName: user.displayName,
           avatarUrl: user.avatarUrl,
           jobTitle: user.jobTitle,

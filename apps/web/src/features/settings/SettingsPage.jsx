@@ -210,6 +210,9 @@ export default function SettingsPage() {
   // Account & Profile State
   const [displayName, setDisplayName] = useState(user?.displayName || 'User');
   const email = user?.email || '';
+  const [emailChangeDraft, setEmailChangeDraft] = useState('');
+  const [emailChangeUrl, setEmailChangeUrl] = useState('');
+  const [emailChangePending, setEmailChangePending] = useState(false);
   const [jobTitle, setJobTitle] = useState('Product Engineer');
   const [isCustomRole, setIsCustomRole] = useState(false);
   const [customRoleInput, setCustomRoleInput] = useState('');
@@ -378,6 +381,23 @@ export default function SettingsPage() {
       addToast('Profile saved to your account.', 'success');
     } catch (error) {
       addToast(error.message || 'Profile could not be saved.', 'error');
+    }
+  };
+
+  const handleRequestEmailChange = async () => {
+    const nextEmail = emailChangeDraft.trim();
+    if (!user?.emailChangeAllowed || !nextEmail || emailChangePending) return;
+    setEmailChangePending(true);
+    setEmailChangeUrl('');
+    try {
+      const result = await authService.requestEmailChange(nextEmail);
+      setEmailChangeUrl(result.verificationUrl || '');
+      setEmailChangeDraft('');
+      addToast('If this address can be used, a confirmation link has been sent. Your current address stays active until you confirm.', 'info');
+    } catch (error) {
+      addToast(error.message || 'Email change could not be requested.', 'error');
+    } finally {
+      setEmailChangePending(false);
     }
   };
 
@@ -938,7 +958,37 @@ export default function SettingsPage() {
                             aria-describedby="account-email-note"
                             className="w-full cursor-not-allowed rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-500 outline-none dark:border-white/10 dark:bg-white/5"
                           />
-                          <p id="account-email-note" className="mt-1 text-[10px] text-slate-500">Changing your sign-in email is not available yet.</p>
+                          {user.emailChangeAllowed ? (
+                            <>
+                              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                                <input
+                                  type="email"
+                                  autoComplete="email"
+                                  maxLength={254}
+                                  value={emailChangeDraft}
+                                  onChange={(event) => setEmailChangeDraft(event.target.value)}
+                                  placeholder="New email address"
+                                  aria-label="New sign-in email address"
+                                  className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none focus:border-violet-500 dark:border-white/10 dark:bg-white/5"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={emailChangePending || !emailChangeDraft.trim()}
+                                  onClick={handleRequestEmailChange}
+                                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-violet-600 px-3.5 py-2.5 text-xs font-bold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {emailChangePending && <Loader2 size={14} className="animate-spin" />}
+                                  Send confirmation
+                                </button>
+                              </div>
+                              <p id="account-email-note" className="mt-1 text-[10px] leading-4 text-slate-500">Sign in again first if your session is more than 10 minutes old. The new address must be confirmed within 24 hours. You will sign in again after the change.</p>
+                              {emailChangeUrl && (
+                                <a href={emailChangeUrl} className="mt-2 inline-flex text-[10px] font-semibold text-violet-600 underline underline-offset-2 dark:text-violet-300">Open local verification link</a>
+                              )}
+                            </>
+                          ) : (
+                            <p id="account-email-note" className="mt-1 text-[10px] text-slate-500">This address is managed by your Google sign-in provider.</p>
+                          )}
                         </div>
                       )}
 

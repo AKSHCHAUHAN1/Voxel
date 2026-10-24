@@ -13,6 +13,7 @@ import {
 const ACCESS_TOKEN_LIFETIME_SECONDS = 15 * 60;
 const REFRESH_TOKEN_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 const EMAIL_VERIFICATION_LIFETIME_HOURS = 24;
+const EMAIL_CHANGE_LIFETIME_HOURS = 24;
 const PASSWORD_RESET_LIFETIME_MINUTES = 60;
 
 const digest = (value) => createHash('sha256').update(value).digest('hex');
@@ -143,6 +144,109 @@ export class AuthService {
     });
     await this.ensureDefaultWorkspace(user.id, user.displayName);
     return user;
+  }
+
+  async issueEmailChangeToken(userId, sessionId, requestedEmail) {
+    const session = await this.database.session.findFirst({
+      where: { id: sessionId, userId },
+      select: { createdAt: true },
+    });
+    if (!session || Date.now() - session.createdAt.getTime() > 10 * 60 * 1_000) {
+      const error = new Error('Sign in again before changing your account email.');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const user = await this.database.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, displayName: true, passwordHash: true, googleSubject: true, deletedAt: true },
+    });
+    if (!user || user.deletedAt || !user.passwordHash || user.googleSubject) return null;
+
+    const email = requestedEmail.trim().toLowerCase();
+    if (email === user.email.toLowerCase()) return null;
+    const existingUser = await this.database.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+    if (existingUser) return null;
+
+    const token = randomBytes(32).toString('base64url');
+    const now = new Date();
+    await this.database.emailChangeToken.upsert({
+      where: { userId },
+      create: {
+        userId,
+        email,
+        tokenHash: digest(token),
+        expiresAt: new Date(now.getTime() + EMAIL_CHANGE_LIFETIME_HOURS * 60 * 60 * 1_000),
+      },
+      update: {
+        email,
+        tokenHash: digest(token),
+        expiresAt: new Date(now.getTime() + EMAIL_CHANGE_LIFETIME_HOURS * 60 * 60 * 1_000),
+        consumedAt: null,
+        createdAt: now,
+      },
+    });
+    return { email, displayName: user.displayName, token };
+  }
+
+  async verifyEmailChangeToken(token) {
+    const changeError = new Error('This email change link is invalid, expired, or already used.');
+    changeError.statusCode = 400;
+    if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{40,100}$/.test(token)) throw changeError;
+
+    const now = new Date();
+    try {
+      const record = await this.database.$transaction(async (transaction) => {
+        const pending = await transaction.emailChangeToken.findUnique({
+          where: { tokenHash: digest(token) },
+          include: { user: true },
+        });
+        if (
+          !pending || pending.consumedAt || pending.expiresAt <= now || pending.user.deletedAt ||
+          !pending.user.passwordHash || pending.user.googleSubject
+        ) throw changeError;
+
+        const consumed = await transaction.emailChangeToken.updateMany({
+          where: { id: pending.id, consumedAt: null, expiresAt: { gt: now } },
+          data: { consumedAt: now },
+        });
+        if (consumed.count !== 1) throw changeError;
+
+        await transaction.user.update({
+          where: { id: pending.userId },
+          data: { email: pending.email, emailVerified: true },
+        });
+        await transaction.session.updateMany({ where: { userId: pending.userId }, data: { expiresAt: now } });
+        await transaction.refreshToken.updateMany({
+          where: { session: { userId: pending.userId }, revokedAt: null },
+          data: { revokedAt: now },
+        });
+        await transaction.mfaChallenge.updateMany({
+          where: { userId: pending.userId, consumedAt: null },
+          data: { consumedAt: now },
+        });
+        await transaction.passwordResetToken.updateMany({
+          where: { userId: pending.userId, consumedAt: null },
+          data: { consumedAt: now },
+        });
+        await transaction.emailVerificationToken.updateMany({
+          where: { userId: pending.userId, consumedAt: null },
+          data: { consumedAt: now },
+        });
+        return { email: pending.email, updated: true, signedOutEverywhere: true };
+      });
+      return record;
+    } catch (error) {
+      if (error?.code === 'P2002') {
+        const conflict = new Error('This email address is no longer available. Request a new link.');
+        conflict.statusCode = 409;
+        throw conflict;
+      }
+      throw error;
+    }
   }
 
   async issuePasswordResetToken(email) {

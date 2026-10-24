@@ -8,6 +8,12 @@ export const createVerificationUrl = (token, environment) => {
   return url.toString();
 };
 
+export const createEmailChangeVerificationUrl = (token, environment) => {
+  const url = new URL('/change-email', environment.VOXEL_PUBLIC_APP_URL);
+  url.hash = new URLSearchParams({ token }).toString();
+  return url.toString();
+};
+
 export const createPasswordResetUrl = (token, environment) => {
   const url = new URL('/reset-password', environment.VOXEL_PUBLIC_APP_URL);
   url.hash = new URLSearchParams({ token }).toString();
@@ -92,6 +98,22 @@ export const sendVerificationEmail = async ({ email, displayName, token, environ
     environment,
     fetchImpl,
   });
+};
+
+export const sendEmailChangeVerificationEmail = async ({ email, displayName, token, environment, fetchImpl = fetch }) => {
+  const verificationUrl = createEmailChangeVerificationUrl(token, environment);
+  const name = displayName || 'there';
+  const text = `Hi ${name},\n\nConfirm your new Voxel sign-in email by opening this link:\n${verificationUrl}\n\nThis link expires in 24 hours and works once. Your current address remains active until you confirm. If you did not request this change, you can ignore this email.`;
+  const html = `<p>Hi ${escapeHtml(name)},</p><p>Confirm your new Voxel sign-in email. Your current address remains active until you confirm.</p><p><a href="${escapeHtml(verificationUrl)}">Confirm email address</a></p><p>This link expires in 24 hours and works once. If you did not request this change, you can ignore this email.</p>`;
+  const delivery = await deliverEmail({
+    to: email,
+    subject: 'Confirm your new Voxel sign-in email',
+    text,
+    html,
+    environment,
+    fetchImpl,
+  });
+  return { ...delivery, verificationUrl };
 };
 
 export const sendPasswordResetEmail = async ({ email, displayName, token, environment, fetchImpl = fetch }) => {

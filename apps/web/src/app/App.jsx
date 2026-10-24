@@ -18,6 +18,7 @@ const SettingsPage = lazy(() => import('@/features/settings/SettingsPage'));
 const PublicInvitePage = lazy(() => import('@/features/workspaces/PublicInvitePage'));
 const SharedDashboardPage = lazy(() => import('@/features/workspaces/SharedDashboardPage'));
 const VerifyEmailPage = lazy(() => import('@/features/auth/VerifyEmailPage'));
+const EmailChangePage = lazy(() => import('@/features/auth/EmailChangePage'));
 const ForgotPasswordPage = lazy(() => import('@/features/auth/ForgotPasswordPage'));
 const PasswordResetPage = lazy(() => import('@/features/auth/PasswordResetPage'));
 
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/change-email" element={<EmailChangePage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<PasswordResetPage />} />
           <Route path="/invite/:token" element={<PublicInvitePage />} />

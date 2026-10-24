@@ -6,6 +6,7 @@ const { prismaMock, authMock } = vi.hoisted(() => ({
   prismaMock: { user: { findFirst: vi.fn() } },
   authMock: {
     signUpWithEmail: vi.fn(), issueEmailVerificationToken: vi.fn(), verifyEmailToken: vi.fn(),
+    issueEmailChangeToken: vi.fn(), verifyEmailChangeToken: vi.fn(),
     issuePasswordResetToken: vi.fn(), resetPassword: vi.fn(),
     generateSessionForUser: vi.fn(), loginWithEmail: vi.fn(), completeMfaChallenge: vi.fn(),
     getAuthenticatedContext: vi.fn(), getMfaStatus: vi.fn(), startTotpSetup: vi.fn(),
@@ -17,6 +18,8 @@ vi.mock('../../database/prisma.js', () => ({ prisma: prismaMock }));
 vi.mock('./auth-service.js', () => ({ AuthService: class {
   signUpWithEmail(...args) { return authMock.signUpWithEmail(...args); }
   issueEmailVerificationToken(...args) { return authMock.issueEmailVerificationToken(...args); }
+  issueEmailChangeToken(...args) { return authMock.issueEmailChangeToken(...args); }
+  verifyEmailChangeToken(...args) { return authMock.verifyEmailChangeToken(...args); }
   issuePasswordResetToken(...args) { return authMock.issuePasswordResetToken(...args); }
   resetPassword(...args) { return authMock.resetPassword(...args); }
   verifyEmailToken(...args) { return authMock.verifyEmailToken(...args); }
@@ -100,6 +103,69 @@ describe('email verification routes', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().data).toEqual({ sent: true });
     expect(authMock.issueEmailVerificationToken).not.toHaveBeenCalled();
+  });
+});
+
+describe('email change routes', () => {
+  it('requires an authenticated recently signed-in user and returns only a local fragment link', async () => {
+    authMock.getAuthenticatedContext.mockResolvedValue({
+      user: { id: 'user-id' },
+      sessionId: 'session-id',
+    });
+    authMock.issueEmailChangeToken.mockResolvedValue({
+      email: 'new@example.com',
+      displayName: 'Alex Rivers',
+      token: 'c'.repeat(43),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/email-change/request',
+      headers: { cookie: 'voxel_access=access-token' },
+      payload: { email: ' New@Example.com ' },
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json().data.verificationUrl).toContain('/change-email#token=');
+    expect(new URL(response.json().data.verificationUrl).search).toBe('');
+    expect(authMock.issueEmailChangeToken).toHaveBeenCalledWith('user-id', 'session-id', 'new@example.com');
+  });
+
+  it('confirms the one-time token without issuing a new session', async () => {
+    authMock.verifyEmailChangeToken.mockResolvedValue({
+      updated: true,
+      email: 'new@example.com',
+      signedOutEverywhere: true,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/email-change/verify',
+      payload: { token: 'd'.repeat(43) },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['set-cookie']).toBeUndefined();
+    expect(response.json().data).toEqual({ updated: true, email: 'new@example.com', signedOutEverywhere: true });
+    expect(authMock.verifyEmailChangeToken).toHaveBeenCalledWith('d'.repeat(43));
+  });
+
+  it('keeps the production response generic when the requested address is unavailable', async () => {
+    authMock.getAuthenticatedContext.mockResolvedValue({ user: { id: 'user-id' }, sessionId: 'session-id' });
+    authMock.issueEmailChangeToken.mockResolvedValue(null);
+    environment.NODE_ENV = 'production';
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/email-change/request',
+        headers: { cookie: 'voxel_access=access-token' },
+        payload: { email: 'taken@example.com' },
+      });
+      expect(response.statusCode).toBe(202);
+      expect(response.json().data).toEqual({ sent: true });
+    } finally {
+      environment.NODE_ENV = 'test';
+    }
   });
 });
 

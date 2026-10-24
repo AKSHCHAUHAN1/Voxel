@@ -26,6 +26,8 @@ export const authService = {
     }),
   resendEmailVerification: (email) => request('/api/v1/auth/email-verification/resend', { method: 'POST', body: JSON.stringify({ email }) }),
   verifyEmail: (token) => request('/api/v1/auth/email-verification/verify', { method: 'POST', body: JSON.stringify({ token }) }),
+  requestEmailChange: (email) => request('/api/v1/auth/email-change/request', { method: 'POST', body: JSON.stringify({ email }) }),
+  verifyEmailChange: (token) => request('/api/v1/auth/email-change/verify', { method: 'POST', body: JSON.stringify({ token }) }),
   requestPasswordReset: (email) => request('/api/v1/auth/password-reset/request', { method: 'POST', body: JSON.stringify({ email }) }),
   resetPassword: (token, password) => request('/api/v1/auth/password-reset/complete', { method: 'POST', body: JSON.stringify({ token, password }) }),
   mfaStatus: () => request('/api/v1/auth/mfa'),
