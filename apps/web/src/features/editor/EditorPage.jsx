@@ -1,6 +1,20 @@
 import { Component, memo, useMemo, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate, useParams, Link } from 'react-router-dom';
+import { createPortal } from 'react-dom';
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  pointerWithin,
+  rectIntersection,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 import appIcon from '@/assets/app-icon.png';
 import appIconDark from '@/assets/app-icon-dark.png';
 
@@ -1841,92 +1855,35 @@ export default function EditorPage() {
     setPickerOpen(false);
   };
 
-  const handleDragStart = (e, nodeId) => {
-    if (e.button !== 0 || e.isPrimary === false || !canEditDashboard) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const pointerId = e.pointerId;
-    const captureTarget = e.currentTarget;
-    captureTarget.setPointerCapture?.(pointerId);
+  const handleNodesDragEnd = useCallback(({ delta, startScene, startZoom, movingNodeIds }) => {
+    if (!startScene || Math.hypot(delta.x, delta.y) < 1) return;
 
-    const currentScene = sceneRef.current;
-    const startScene = JSON.parse(JSON.stringify(currentScene));
-
-    const draggedNode = currentScene.nodes.find((n) => n.id === nodeId);
-    if (!draggedNode) return;
-
-    // If dragging a node that is among selected nodes, drag all selected nodes together
-    const isMultiDrag = selectedNodeIds.includes(nodeId) && selectedNodeIds.length > 1;
-    const dragNodeIds = isMultiDrag ? selectedNodeIds : [nodeId];
-
-    const initialPositions = {};
-    currentScene.nodes.forEach((n) => {
-      if (dragNodeIds.includes(n.id)) {
-        initialPositions[n.id] = { x: n.x ?? 100, y: n.y ?? 100 };
-      }
-    });
-
-    const startX = e.clientX;
-    const startY = e.clientY;
-
-    let hasDragged = false;
-    let rafId = null;
-
-    const handlePointerMove = (moveEvent) => {
-      if (moveEvent.pointerId !== pointerId) return;
-      const dist = Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY);
-      if (!hasDragged && dist > 3) {
-        hasDragged = true;
-      }
-
-      if (!hasDragged) return;
-
-      if (rafId) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        const currentZoom = zoomRef.current || 1;
-        const dx = (moveEvent.clientX - startX) / currentZoom;
-        const dy = (moveEvent.clientY - startY) / currentZoom;
-
-        const current = sceneRef.current;
-        update(
-          {
-            ...current,
-            nodes: current.nodes.map((n) => {
-              if (initialPositions[n.id]) {
-                return {
-                  ...n,
-                  x: snapToGrid
-                    ? Math.round((initialPositions[n.id].x + dx) / (current.gridSize || 24)) * (current.gridSize || 24)
-                    : Math.round(initialPositions[n.id].x + dx),
-                  y: snapToGrid
-                    ? Math.round((initialPositions[n.id].y + dy) / (current.gridSize || 24)) * (current.gridSize || 24)
-                    : Math.round(initialPositions[n.id].y + dy),
-                };
-              }
-              return n;
-            }),
-          },
-          true,
-        );
-      });
+    const current = sceneRef.current;
+    const zoomFactor = startZoom || 1;
+    const gridSize = current.gridSize || 24;
+    const movedIds = new Set(movingNodeIds);
+    const startingPositions = new Map(startScene.nodes.map((node) => [node.id, node]));
+    const next = {
+      ...current,
+      nodes: current.nodes.map((node) => {
+        if (!movedIds.has(node.id)) return node;
+        const original = startingPositions.get(node.id);
+        if (!original) return node;
+        const x = (original.x ?? 40) + delta.x / zoomFactor;
+        const y = (original.y ?? 40) + delta.y / zoomFactor;
+        return {
+          ...node,
+          x: snapToGrid ? Math.round(x / gridSize) * gridSize : Math.round(x),
+          y: snapToGrid ? Math.round(y / gridSize) * gridSize : Math.round(y),
+        };
+      }),
     };
 
-    const handlePointerEnd = (endEvent) => {
-      if (endEvent.pointerId !== pointerId) return;
-      if (rafId) cancelAnimationFrame(rafId);
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerEnd);
-      window.removeEventListener('pointercancel', handlePointerEnd);
-      if (captureTarget.hasPointerCapture?.(pointerId)) captureTarget.releasePointerCapture(pointerId);
-      if (hasDragged) {
-        useHistoryStore.getState().push(startScene);
-      }
-    };
-
-    window.addEventListener('pointermove', handlePointerMove, { passive: false });
-    window.addEventListener('pointerup', handlePointerEnd);
-    window.addEventListener('pointercancel', handlePointerEnd);
-  };
+    update(next, true);
+    useHistoryStore.getState().push(startScene);
+    suppressCanvasClickRef.current = true;
+    window.setTimeout(() => { suppressCanvasClickRef.current = false; }, 0);
+  }, [snapToGrid, update]);
 
   const handleResizeStart = (e, nodeId) => {
     if (e.button !== 0 || e.isPrimary === false || !canEditDashboard) return;
@@ -2664,7 +2621,8 @@ export default function EditorPage() {
                     onSelectNode={handleSelectNode}
                     resolveNodeValue={resolveNodeValue}
                     getWorkspaceDataState={getWorkspaceDataState}
-                    onDragStart={handleDragStart}
+                    currentScene={scene}
+                    onNodesDragEnd={handleNodesDragEnd}
                     onResizeStart={handleResizeStart}
                     onKeyboardMove={handleKeyboardMove}
                     updateNode={updateNode}
@@ -3874,9 +3832,84 @@ function RestDataSourceInspector({ node, renderer, query, sourceData, canEdit, o
   );
 }
 
-function NodeGrid({ nodes, selectedNodeIds = [], selectedNodeId, gridRef, zoom, onSelectNode, resolveNodeValue, getWorkspaceDataState, onDragStart, onResizeStart, onKeyboardMove, updateNode, canEdit, awarenessStates, localClientId,
+const canvasKeyboardCoordinates = (event, { currentCoordinates }) => {
+  const step = event.shiftKey ? 96 : 24;
+  const next = { ...currentCoordinates };
+  if (event.code === 'ArrowLeft') next.x -= step;
+  else if (event.code === 'ArrowRight') next.x += step;
+  else if (event.code === 'ArrowUp') next.y -= step;
+  else if (event.code === 'ArrowDown') next.y += step;
+  else return undefined;
+  return next;
+};
+
+const canvasCollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  return pointerCollisions.length > 0 ? pointerCollisions : rectIntersection(args);
+};
+
+function NodeGrid({ nodes, currentScene, selectedNodeIds = [], selectedNodeId, gridRef, zoom, onSelectNode, resolveNodeValue, getWorkspaceDataState, onNodesDragEnd, onResizeStart, onKeyboardMove, updateNode, canEdit, awarenessStates, localClientId,
 }) {
   const [viewport, setViewport] = useState(null);
+  const [dragPresentation, setDragPresentation] = useState(null);
+  const [overDropTargetId, setOverDropTargetId] = useState(null);
+  const dragTransactionRef = useRef(null);
+  const suppressWidgetClickRef = useRef(false);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: canvasKeyboardCoordinates }),
+  );
+
+  const handleDragStart = (event) => {
+    const activeId = String(event.active.id);
+    const movingNodeIds = selectedNodeIds.includes(activeId) && selectedNodeIds.length > 1
+      ? selectedNodeIds
+      : [activeId];
+    const startScene = structuredClone(currentScene);
+    const origins = movingNodeIds.map((id) => {
+      const node = nodes.find((item) => item.id === id);
+      const element = document.getElementById(`node-card-${id}`);
+      if (!node) return null;
+      const sizeFallback = { small: 220, medium: 280, large: 340, wide: 440 }[node.size] || 280;
+      return {
+        id,
+        x: node.x ?? 40,
+        y: node.y ?? 40,
+        width: element?.offsetWidth || node.customWidth || sizeFallback,
+        height: element?.offsetHeight || node.customHeight || 180,
+      };
+    }).filter(Boolean);
+    const transaction = { startScene, startZoom: zoom || 1, movingNodeIds, origins };
+    dragTransactionRef.current = transaction;
+    setDragPresentation({
+      activeId,
+      movingNodeIds,
+      origins,
+      delta: { x: 0, y: 0 },
+    });
+  };
+
+  const handleDragMove = ({ delta }) => {
+    setDragPresentation((current) => current ? { ...current, delta } : current);
+  };
+
+  const handleDragEnd = (event) => {
+    const transaction = dragTransactionRef.current;
+    dragTransactionRef.current = null;
+    setDragPresentation(null);
+    setOverDropTargetId(null);
+    if (Math.hypot(event.delta.x, event.delta.y) > 1) {
+      suppressWidgetClickRef.current = true;
+      window.setTimeout(() => { suppressWidgetClickRef.current = false; }, 100);
+    }
+    if (transaction) onNodesDragEnd({ delta: event.delta, ...transaction });
+  };
+
+  const handleDragCancel = () => {
+    dragTransactionRef.current = null;
+    setDragPresentation(null);
+    setOverDropTargetId(null);
+  };
 
   useLayoutEffect(() => {
     const scrollContainer = gridRef.current;
@@ -3916,9 +3949,10 @@ function NodeGrid({ nodes, selectedNodeIds = [], selectedNodeId, gridRef, zoom, 
     };
   }, [gridRef, zoom]);
 
-  const pinnedNodeIds = selectedNodeIds.length > 0
-    ? selectedNodeIds
-    : selectedNodeId ? [selectedNodeId] : [];
+  const pinnedNodeIds = [...new Set([
+    ...selectedNodeIds,
+    ...((dragPresentation?.movingNodeIds) || (selectedNodeId ? [selectedNodeId] : [])),
+  ])];
   const visibleNodeIds = useMemo(
     () => getVisibleCanvasNodeIds(nodes, viewport, pinnedNodeIds),
     [nodes, viewport, pinnedNodeIds],
@@ -3940,33 +3974,90 @@ function NodeGrid({ nodes, selectedNodeIds = [], selectedNodeId, gridRef, zoom, 
     return selections;
   }, [awarenessStates, localClientId]);
 
+  const activeNode = dragPresentation
+    ? nodes.find((node) => node.id === dragPresentation.activeId)
+    : null;
+
   return (
-    <div
-      role="group"
-      aria-label={`Canvas widgets. Showing ${visibleNodes.length} of ${nodes.length}.`}
-      data-rendered-widget-count={visibleNodes.length}
-      data-total-widget-count={nodes.length}
-      className="relative w-full min-h-[650px] z-10"
+    <DndContext
+      sensors={canEdit ? sensors : []}
+      collisionDetection={canvasCollisionDetection}
+      autoScroll={canEdit}
+      onDragStart={handleDragStart}
+      onDragMove={handleDragMove}
+      onDragOver={({ over }) => setOverDropTargetId(over?.id ?? null)}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
-      {visibleNodes.map((node) => (
-        <WidgetErrorBoundary key={node.id} node={node} onSelectNode={onSelectNode}>
-          <CanvasNodeCard
-            node={node}
-            isSelected={selectedNodeIds.length > 0 ? selectedNodeIds.includes(node.id) : node.id === selectedNodeId}
-            remoteSelectedBy={remoteSelections[node.id] || []}
-            onSelect={(e) => onSelectNode(node.id, e)}
-            resolveNodeValue={resolveNodeValue}
-            getWorkspaceDataState={getWorkspaceDataState}
-            onDragStart={onDragStart}
-            onResizeStart={onResizeStart}
-            onKeyboardMove={onKeyboardMove}
-            updateNode={updateNode}
-            canEdit={canEdit}
+      <CanvasDropZone
+        role="group"
+        aria-label={`Canvas widgets. Showing ${visibleNodes.length} of ${nodes.length}.`}
+        data-rendered-widget-count={visibleNodes.length}
+        data-total-widget-count={nodes.length}
+        className="relative w-full min-h-[650px] z-10"
+      >
+        {dragPresentation?.origins.map((origin) => (
+          <div
+            key={`drag-origin-${origin.id}`}
+            aria-hidden="true"
+            className="pointer-events-none absolute rounded-2xl border-2 border-dashed border-indigo-400/70 bg-indigo-400/5 dark:border-indigo-300/50 dark:bg-indigo-300/5"
+            style={{
+              left: `${origin.x}px`,
+              top: `${origin.y}px`,
+              width: `${origin.width}px`,
+              height: `${origin.height}px`,
+              zIndex: 5,
+            }}
           />
-        </WidgetErrorBoundary>
-      ))}
-    </div>
+        ))}
+        {visibleNodes.map((node) => (
+          <WidgetErrorBoundary key={node.id} node={node} onSelectNode={onSelectNode}>
+            <CanvasNodeCard
+              node={node}
+              zoom={zoom}
+              isSelected={selectedNodeIds.length > 0 ? selectedNodeIds.includes(node.id) : node.id === selectedNodeId}
+              remoteSelectedBy={remoteSelections[node.id] || []}
+              onSelect={(event) => {
+                if (suppressWidgetClickRef.current) return;
+                onSelectNode(node.id, event);
+              }}
+              resolveNodeValue={resolveNodeValue}
+              getWorkspaceDataState={getWorkspaceDataState}
+              onResizeStart={onResizeStart}
+              onKeyboardMove={onKeyboardMove}
+              updateNode={updateNode}
+              canEdit={canEdit}
+              selectedForDrag={Boolean(dragPresentation?.movingNodeIds.includes(node.id))}
+              dragDelta={dragPresentation?.delta}
+              activeDragId={dragPresentation?.activeId}
+              overDropTargetId={overDropTargetId}
+            />
+          </WidgetErrorBoundary>
+        ))}
+      </CanvasDropZone>
+      {typeof document !== 'undefined' && createPortal(
+        <DragOverlay>
+          {activeNode && (
+            <div aria-hidden="true" className="pointer-events-none flex max-w-64 items-center gap-3 rounded-2xl border border-indigo-300/70 bg-white/95 px-4 py-3 text-slate-800 shadow-2xl shadow-indigo-950/20 ring-1 ring-indigo-500/15 backdrop-blur-xl dark:border-indigo-400/40 dark:bg-slate-900/95 dark:text-slate-100">
+              <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-400/10 dark:text-indigo-300"><Layers size={17} /></span>
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-semibold">{activeNode.title || activeNode.type}</span>
+                <span className="mt-0.5 block text-[10px] text-slate-500 dark:text-slate-400">
+                  {dragPresentation.movingNodeIds.length > 1 ? `Moving ${dragPresentation.movingNodeIds.length} widgets` : 'Move widget'}
+                </span>
+              </span>
+            </div>
+          )}
+        </DragOverlay>,
+        document.body,
+      )}
+    </DndContext>
   );
+}
+
+function CanvasDropZone({ children, ...props }) {
+  const { setNodeRef } = useDroppable({ id: 'canvas-drop-zone' });
+  return <div ref={setNodeRef} {...props}>{children}</div>;
 }
 
 class WidgetErrorBoundary extends Component {
@@ -4004,8 +4095,36 @@ class WidgetErrorBoundary extends Component {
 }
 
 // --- CANVAS CARD COMPONENT ---
-function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveNodeValue, getWorkspaceDataState, onDragStart, onResizeStart, onKeyboardMove, updateNode, canEdit,
+function CanvasNodeCard({ node, zoom, isSelected, remoteSelectedBy, onSelect, resolveNodeValue, getWorkspaceDataState, onResizeStart, onKeyboardMove, updateNode, canEdit, selectedForDrag, dragDelta, activeDragId, overDropTargetId,
 }) {
+  const draggable = useDraggable({
+    id: node.id,
+    disabled: !canEdit,
+    attributes: { role: 'group', roleDescription: 'canvas widget', tabIndex: 0 },
+  });
+  const dropTargetId = `widget-drop-${node.id}`;
+  const droppable = useDroppable({ id: dropTargetId, disabled: !canEdit });
+  const setCardRef = useCallback((element) => {
+    draggable.setNodeRef(element);
+    droppable.setNodeRef(element);
+  }, [draggable.setNodeRef, droppable.setNodeRef]);
+  const handleCardPointerDown = (event) => {
+    if (event.target.closest('button, input, select, textarea, a, label')) return;
+    draggable.listeners?.onPointerDown?.(event);
+  };
+  const handleCardKeyDown = (event) => {
+    draggable.listeners?.onKeyDown?.(event);
+    if (!canEdit || event.defaultPrevented || event.target !== event.currentTarget || activeDragId) return;
+    onKeyboardMove(event, node.id);
+  };
+  const dragTranslation = selectedForDrag ? dragDelta : draggable.transform;
+  const dragTransform = dragTranslation
+    ? CSS.Transform.toString({
+      ...dragTranslation,
+      x: dragTranslation.x / (zoom || 1),
+      y: dragTranslation.y / (zoom || 1),
+    })
+    : undefined;
   const displayValue = resolveNodeValue(node);
   const nodeDefinition = getWidgetDefinition(node.type);
   const externalDataLabel = node.dataSourceKind === 'graphql' ? 'Public GraphQL data' : 'Public REST data';
@@ -4068,14 +4187,17 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
   return (
     <article
       id={`node-card-${node.id}`}
+      ref={setCardRef}
       style={{
         position: 'absolute',
         left: `${node.x ?? 40}px`,
         top: `${node.y ?? 40}px`,
         width: `${node.customWidth ?? widthOf(node.size)}px`,
         minHeight: node.customHeight ? `${node.customHeight}px` : undefined,
-        zIndex: isSelected ? 30 : 10,
-        willChange: 'left, top',
+        zIndex: draggable.isDragging ? 50 : isSelected ? 30 : 10,
+        willChange: selectedForDrag || draggable.isDragging ? 'transform' : undefined,
+        transform: dragTransform,
+        opacity: draggable.isDragging ? 0.9 : undefined,
         touchAction: canEdit ? 'none' : 'auto',
       }}
       onClick={(e) => {
@@ -4086,23 +4208,16 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
         if (event.target === event.currentTarget) onSelect(event);
       }}
       role="group"
-      tabIndex={0}
+      {...draggable.attributes}
       aria-label={`${node.title || node.type} canvas widget${isSelected ? ', selected' : ''}. Use arrow keys to move.`}
-      onKeyDown={(event) => {
-        if (event.target === event.currentTarget) onKeyboardMove(event, node.id);
-      }}
-      onPointerDown={(e) => {
-        // Allow dragging from anywhere on the card unless clicking interactive controls
-        const isInteractive = e.target.closest('button, input, select, textarea, a, label');
-        if (!isInteractive) {
-          onDragStart(e, node.id);
-        }
-      }}
-      className={`rounded-2xl p-5 backdrop-blur-xl shadow-lg transition-shadow duration-200 select-none cursor-grab active:cursor-grabbing ${cardStyle} ${
+      {...(canEdit ? draggable.listeners : {})}
+      onKeyDown={handleCardKeyDown}
+      onPointerDown={canEdit ? handleCardPointerDown : undefined}
+      className={`rounded-2xl p-5 backdrop-blur-xl shadow-lg transition-shadow duration-200 select-none ${canEdit ? 'cursor-grab active:cursor-grabbing' : ''} ${cardStyle} ${
         isSelected
           ? 'ring-2 ring-indigo-500/90 shadow-[0_0_30px_rgba(99,102,241,0.35)] scale-[1.02] z-[30]'
           : 'hover:shadow-xl hover:scale-[1.01] z-[10]'
-      }`}
+      } ${droppable.isOver && overDropTargetId === dropTargetId && activeDragId !== node.id ? 'ring-2 ring-emerald-400 shadow-[0_0_24px_rgba(52,211,153,0.28)]' : ''}`}
     >
       {/* Remote Selection Ring Overlay */}
       {remoteSelectedBy && remoteSelectedBy.length > 0 && (
