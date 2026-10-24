@@ -209,6 +209,27 @@ const newNode = (type, x = 40, y = 40) => {
   };
 };
 
+const sceneAfterCanvasMove = (currentScene, startScene, movingNodeIds, delta, zoom, shouldSnap) => {
+  const movedIds = new Set(movingNodeIds);
+  const startingPositions = new Map(startScene.nodes.map((node) => [node.id, node]));
+  const gridSize = currentScene.gridSize || 24;
+  return {
+    ...currentScene,
+    nodes: currentScene.nodes.map((node) => {
+      if (!movedIds.has(node.id)) return node;
+      const original = startingPositions.get(node.id);
+      if (!original) return node;
+      const x = (original.x ?? 40) + delta.x / zoom;
+      const y = (original.y ?? 40) + delta.y / zoom;
+      return {
+        ...node,
+        x: shouldSnap ? Math.round(x / gridSize) * gridSize : Math.round(x),
+        y: shouldSnap ? Math.round(y / gridSize) * gridSize : Math.round(y),
+      };
+    }),
+  };
+};
+
 // --- Theme mappings ---
 
 const cardColors = {
@@ -626,6 +647,7 @@ export default function EditorPage() {
 
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
+  const dragPreviewRafRef = useRef(0);
 
   const handleRepositionCanvas = useCallback(() => {
     if (!gridRef.current) return;
@@ -1660,17 +1682,42 @@ export default function EditorPage() {
         height,
       };
     });
-    const horizontal = ['left', 'center', 'right'].includes(mode);
+    const horizontal = ['left', 'center', 'right', 'distribute-x', 'equal-width'].includes(mode);
     const startKey = horizontal ? 'left' : 'top';
     const endKey = horizontal ? 'right' : 'bottom';
     const sizeKey = horizontal ? 'width' : 'height';
+    const positions = new Map();
+    if (mode === 'distribute-x' || mode === 'distribute-y') {
+      const sorted = [...boxes].sort((a, b) => a[startKey] - b[startKey]);
+      const first = sorted[0][startKey];
+      const span = sorted.at(-1)[endKey] - first;
+      const totalSize = sorted.reduce((sum, box) => sum + box[sizeKey], 0);
+      const gap = Math.max(0, (Math.max(span, totalSize) - totalSize) / (sorted.length - 1));
+      let cursor = first;
+      sorted.forEach((box) => {
+        positions.set(box.node.id, Math.round(cursor));
+        cursor += box[sizeKey] + gap;
+      });
+    } else if (mode === 'equal-width' || mode === 'equal-height') {
+      const size = Math.round(boxes.reduce((sum, box) => sum + box[sizeKey], 0) / boxes.length);
+      const nextNodes = scene.nodes.map((node) => selectedNodeIds.includes(node.id)
+        ? { ...node, [horizontal ? 'customWidth' : 'customHeight']: size }
+        : node);
+      update({ ...scene, nodes: nextNodes });
+      useNotificationStore.getState().add(`Matched ${selected.length} widget ${horizontal ? 'widths' : 'heights'}.`, 'info');
+      return;
+    }
     const low = Math.min(...boxes.map((box) => box[startKey]));
     const high = Math.max(...boxes.map((box) => box[endKey]));
     const target = mode === 'left' || mode === 'top' ? low : mode === 'right' || mode === 'bottom' ? high : (low + high) / 2;
     const nextNodes = scene.nodes.map((node) => {
       if (!selectedNodeIds.includes(node.id)) return node;
       const box = boxes.find((candidate) => candidate.node.id === node.id);
-      const position = mode === 'left' || mode === 'top' ? target : mode === 'right' || mode === 'bottom' ? target - box[sizeKey] : target - box[sizeKey] / 2;
+      const position = positions.has(node.id)
+        ? positions.get(node.id)
+        : mode === 'left' || mode === 'top' ? target
+          : mode === 'right' || mode === 'bottom' ? target - box[sizeKey]
+            : target - box[sizeKey] / 2;
       return horizontal ? { ...node, x: Math.round(position) } : { ...node, y: Math.round(position) };
     });
     update({ ...scene, nodes: nextNodes });
@@ -1855,37 +1902,55 @@ export default function EditorPage() {
     setPickerOpen(false);
   };
 
-  const handleNodesDragEnd = useCallback(({ delta, startScene, startZoom, movingNodeIds }) => {
-    if (!startScene || Math.hypot(delta.x, delta.y) < 1) return;
-
-    const current = sceneRef.current;
-    const zoomFactor = startZoom || 1;
-    const gridSize = current.gridSize || 24;
-    const movedIds = new Set(movingNodeIds);
-    const startingPositions = new Map(startScene.nodes.map((node) => [node.id, node]));
-    const next = {
-      ...current,
-      nodes: current.nodes.map((node) => {
-        if (!movedIds.has(node.id)) return node;
-        const original = startingPositions.get(node.id);
-        if (!original) return node;
-        const x = (original.x ?? 40) + delta.x / zoomFactor;
-        const y = (original.y ?? 40) + delta.y / zoomFactor;
-        return {
-          ...node,
-          x: snapToGrid ? Math.round(x / gridSize) * gridSize : Math.round(x),
-          y: snapToGrid ? Math.round(y / gridSize) * gridSize : Math.round(y),
-        };
-      }),
-    };
-
-    update(next, true);
-    useHistoryStore.getState().push(startScene);
-    suppressCanvasClickRef.current = true;
-    window.setTimeout(() => { suppressCanvasClickRef.current = false; }, 0);
+  const handleNodesDragPreview = useCallback((transaction) => {
+    if (!transaction.startScene) return;
+    if (dragPreviewRafRef.current) window.cancelAnimationFrame(dragPreviewRafRef.current);
+    dragPreviewRafRef.current = window.requestAnimationFrame(() => {
+      dragPreviewRafRef.current = 0;
+      update(
+        sceneAfterCanvasMove(
+          sceneRef.current,
+          transaction.startScene,
+          transaction.movingNodeIds,
+          transaction.delta,
+          transaction.startZoom || 1,
+          snapToGrid,
+        ),
+        true,
+      );
+    });
   }, [snapToGrid, update]);
 
-  const handleResizeStart = (e, nodeId) => {
+  const handleNodesDragEnd = useCallback(({ delta, startScene, startZoom, movingNodeIds }) => {
+    if (dragPreviewRafRef.current) window.cancelAnimationFrame(dragPreviewRafRef.current);
+    dragPreviewRafRef.current = 0;
+    if (!startScene) return;
+    update(
+      sceneAfterCanvasMove(
+        sceneRef.current,
+        startScene,
+        movingNodeIds,
+        delta,
+        startZoom || 1,
+        snapToGrid,
+      ),
+      true,
+    );
+    if (Math.hypot(delta.x, delta.y) > 1) {
+      useHistoryStore.getState().push(startScene);
+      suppressCanvasClickRef.current = true;
+      window.setTimeout(() => { suppressCanvasClickRef.current = false; }, 0);
+    }
+  }, [snapToGrid, update]);
+
+  const handleNodesDragCancel = useCallback(({ startScene, movingNodeIds, startZoom }) => {
+    if (dragPreviewRafRef.current) window.cancelAnimationFrame(dragPreviewRafRef.current);
+    dragPreviewRafRef.current = 0;
+    if (!startScene) return;
+    update(sceneAfterCanvasMove(sceneRef.current, startScene, movingNodeIds, { x: 0, y: 0 }, startZoom || 1, false), true);
+  }, [update]);
+
+  const handleResizeStart = (e, nodeId, anchor = 'se') => {
     if (e.button !== 0 || e.isPrimary === false || !canEditDashboard) return;
     e.preventDefault();
     e.stopPropagation();
@@ -1895,25 +1960,66 @@ export default function EditorPage() {
     const startScene = structuredClone(sceneRef.current);
     const node = startScene.nodes.find((item) => item.id === nodeId);
     if (!node) return;
-    const cardBounds = e.currentTarget.parentElement.getBoundingClientRect();
-    const initialWidth = node.customWidth ?? cardBounds.width;
-    const initialHeight = node.customHeight ?? cardBounds.height;
+    const cardElement = e.currentTarget.parentElement;
+    const initialWidth = node.customWidth ?? cardElement.offsetWidth;
+    const initialHeight = node.customHeight ?? cardElement.offsetHeight;
+    const initialX = node.x ?? 40;
+    const initialY = node.y ?? 40;
+    const startZoom = zoomRef.current || 1;
+    const gridSize = sceneRef.current.gridSize || 24;
     const startX = e.clientX;
     const startY = e.clientY;
+    const originalSize = {
+      customWidth: node.customWidth,
+      customHeight: node.customHeight,
+      x: node.x,
+      y: node.y,
+    };
     let hasResized = false;
     let rafId = null;
+
+    const applyResize = (moveEvent) => {
+      const deltaX = (moveEvent.clientX - startX) / startZoom;
+      const deltaY = (moveEvent.clientY - startY) / startZoom;
+        const movesLeft = anchor.includes('w');
+        const movesRight = anchor.includes('e');
+        const movesTop = anchor.includes('n');
+        const movesBottom = anchor.includes('s');
+        const minWidth = snapToGrid ? Math.ceil(180 / gridSize) * gridSize : 180;
+        const minHeight = snapToGrid ? Math.ceil(100 / gridSize) * gridSize : 100;
+        const snap = (value) => snapToGrid ? Math.round(value / gridSize) * gridSize : Math.round(value);
+        let width = initialWidth;
+        let height = initialHeight;
+        let x = initialX;
+        let y = initialY;
+
+        if (movesLeft) {
+          const fixedRight = initialX + initialWidth;
+          const left = Math.min(fixedRight - minWidth, snap(initialX + deltaX));
+          width = Math.min(5000, fixedRight - left);
+          x = fixedRight - width;
+        } else if (movesRight) {
+          width = Math.min(5000, Math.max(minWidth, snap(initialWidth + deltaX)));
+        }
+        if (movesTop) {
+          const fixedBottom = initialY + initialHeight;
+          const top = Math.min(fixedBottom - minHeight, snap(initialY + deltaY));
+          height = Math.min(5000, fixedBottom - top);
+          y = fixedBottom - height;
+        } else if (movesBottom) {
+          height = Math.min(5000, Math.max(minHeight, snap(initialHeight + deltaY)));
+        }
+        updateNode(nodeId, { customWidth: width, customHeight: height, x, y }, true);
+    };
 
     const handlePointerMove = (moveEvent) => {
       if (moveEvent.pointerId !== pointerId) return;
       if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) > 3) hasResized = true;
+      if (!hasResized) return;
       if (rafId) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
-        const currentZoom = zoomRef.current || 1;
-        const width = Math.max(180, Math.round(initialWidth + (moveEvent.clientX - startX) / currentZoom),
-        );
-        const height = Math.max(100, Math.round(initialHeight + (moveEvent.clientY - startY) / currentZoom),
-        );
-        updateNode(nodeId, { customWidth: width, customHeight: height }, true);
+        rafId = null;
+        applyResize(moveEvent);
       });
     };
 
@@ -1924,7 +2030,14 @@ export default function EditorPage() {
       window.removeEventListener('pointerup', handlePointerEnd);
       window.removeEventListener('pointercancel', handlePointerEnd);
       if (captureTarget.hasPointerCapture?.(pointerId)) captureTarget.releasePointerCapture(pointerId);
-      if (hasResized) useHistoryStore.getState().push(startScene);
+      if (endEvent.type === 'pointercancel') {
+        if (hasResized) updateNode(nodeId, originalSize, true);
+        return;
+      }
+      if (hasResized) {
+        applyResize(endEvent);
+        useHistoryStore.getState().push(startScene);
+      }
     };
 
     window.addEventListener('pointermove', handlePointerMove, { passive: false });
@@ -2623,10 +2736,15 @@ export default function EditorPage() {
                     getWorkspaceDataState={getWorkspaceDataState}
                     currentScene={scene}
                     onNodesDragEnd={handleNodesDragEnd}
+                    onNodesDragPreview={handleNodesDragPreview}
+                    onNodesDragCancel={handleNodesDragCancel}
+                    onSelectionChange={setSelectedNodeIds}
+                    suppressCanvasClickRef={suppressCanvasClickRef}
                     onResizeStart={handleResizeStart}
                     onKeyboardMove={handleKeyboardMove}
                     updateNode={updateNode}
                     canEdit={canEditDashboard}
+                    snapToGrid={snapToGrid}
                     awarenessStates={awarenessStates}
                     localClientId={awareness?.clientID}
                   />
@@ -2770,12 +2888,14 @@ export default function EditorPage() {
                       <legend className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                         Align selection
                       </legend>
-                      <div className="grid grid-cols-3 gap-1.5">
+                      <div className="grid grid-cols-2 gap-1.5">
                         {[
                           { id: 'left', label: 'Left' }, { id: 'center', label: 'Center' }, { id: 'right', label: 'Right' },
                           { id: 'top', label: 'Top' }, { id: 'middle', label: 'Middle' }, { id: 'bottom', label: 'Bottom' },
+                          { id: 'distribute-x', label: 'Distribute horizontally' }, { id: 'distribute-y', label: 'Distribute vertically' },
+                          { id: 'equal-width', label: 'Equal width' }, { id: 'equal-height', label: 'Equal height' },
                         ].map((alignment) => (
-                          <button key={alignment.id} type="button" disabled={!canEditDashboard} onClick={() => alignSelectedNodes(alignment.id)} className="rounded-lg border border-slate-200 px-2 py-2 text-[10px] font-semibold text-slate-600 transition hover:border-violet-400 hover:bg-violet-500/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:border-violet-500/40">
+                          <button key={alignment.id} type="button" disabled={!canEditDashboard} onClick={() => alignSelectedNodes(alignment.id)} className="rounded-lg border border-slate-200 px-2 py-2 text-left text-[10px] font-semibold text-slate-600 transition hover:border-violet-400 hover:bg-violet-500/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:border-violet-500/40">
                             {alignment.label}
                           </button>
                         ))}
@@ -3832,6 +3952,17 @@ function RestDataSourceInspector({ node, renderer, query, sourceData, canEdit, o
   );
 }
 
+const resizeHandleDefinitions = [
+  { id: 'n', label: 'top edge', cursor: 'cursor-ns-resize', position: '-top-1.5 left-1/2 h-2.5 w-8 -translate-x-1/2' },
+  { id: 'ne', label: 'top right corner', cursor: 'cursor-nesw-resize', position: '-right-1.5 -top-1.5 size-5' },
+  { id: 'e', label: 'right edge', cursor: 'cursor-ew-resize', position: '-right-1.5 top-1/2 h-8 w-2.5 -translate-y-1/2' },
+  { id: 'se', label: 'bottom right corner', cursor: 'cursor-nwse-resize', position: '-right-1.5 -bottom-1.5 size-5' },
+  { id: 's', label: 'bottom edge', cursor: 'cursor-ns-resize', position: '-bottom-1.5 left-1/2 h-2.5 w-8 -translate-x-1/2' },
+  { id: 'sw', label: 'bottom left corner', cursor: 'cursor-nesw-resize', position: '-bottom-1.5 -left-1.5 size-5' },
+  { id: 'w', label: 'left edge', cursor: 'cursor-ew-resize', position: '-left-1.5 top-1/2 h-8 w-2.5 -translate-y-1/2' },
+  { id: 'nw', label: 'top left corner', cursor: 'cursor-nwse-resize', position: '-left-1.5 -top-1.5 size-5' },
+];
+
 const canvasKeyboardCoordinates = (event, { currentCoordinates }) => {
   const step = event.shiftKey ? 96 : 24;
   const next = { ...currentCoordinates };
@@ -3848,12 +3979,14 @@ const canvasCollisionDetection = (args) => {
   return pointerCollisions.length > 0 ? pointerCollisions : rectIntersection(args);
 };
 
-function NodeGrid({ nodes, currentScene, selectedNodeIds = [], selectedNodeId, gridRef, zoom, onSelectNode, resolveNodeValue, getWorkspaceDataState, onNodesDragEnd, onResizeStart, onKeyboardMove, updateNode, canEdit, awarenessStates, localClientId,
+function NodeGrid({ nodes, currentScene, selectedNodeIds = [], selectedNodeId, gridRef, zoom, onSelectNode, onSelectionChange, suppressCanvasClickRef, resolveNodeValue, getWorkspaceDataState, onNodesDragEnd, onNodesDragPreview, onNodesDragCancel, onResizeStart, onKeyboardMove, updateNode, canEdit, snapToGrid, awarenessStates, localClientId,
 }) {
   const [viewport, setViewport] = useState(null);
   const [dragPresentation, setDragPresentation] = useState(null);
+  const [selectionPresentation, setSelectionPresentation] = useState(null);
   const [overDropTargetId, setOverDropTargetId] = useState(null);
   const dragTransactionRef = useRef(null);
+  const selectionTransactionRef = useRef(null);
   const suppressWidgetClickRef = useRef(false);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -3885,12 +4018,12 @@ function NodeGrid({ nodes, currentScene, selectedNodeIds = [], selectedNodeId, g
       activeId,
       movingNodeIds,
       origins,
-      delta: { x: 0, y: 0 },
     });
   };
 
   const handleDragMove = ({ delta }) => {
-    setDragPresentation((current) => current ? { ...current, delta } : current);
+    const transaction = dragTransactionRef.current;
+    if (transaction) onNodesDragPreview({ ...transaction, delta });
   };
 
   const handleDragEnd = (event) => {
@@ -3906,9 +4039,105 @@ function NodeGrid({ nodes, currentScene, selectedNodeIds = [], selectedNodeId, g
   };
 
   const handleDragCancel = () => {
+    const transaction = dragTransactionRef.current;
     dragTransactionRef.current = null;
     setDragPresentation(null);
     setOverDropTargetId(null);
+    if (transaction) onNodesDragCancel(transaction);
+  };
+
+  const pointForPointer = (event) => {
+    const viewportElement = gridRef.current;
+    if (!viewportElement) return null;
+    const bounds = viewportElement.getBoundingClientRect();
+    return pointerToCanvasPoint(
+      event.clientX,
+      event.clientY,
+      bounds,
+      viewportElement.scrollLeft,
+      viewportElement.scrollTop,
+      zoom,
+    );
+  };
+
+  const handleSelectionStart = (event) => {
+    if (!canEdit || event.pointerType === 'touch' || event.target !== event.currentTarget || event.button !== 0 || event.isPrimary === false) return;
+    const origin = pointForPointer(event);
+    if (!origin) return;
+    const nodeBounds = nodes.map((node) => {
+      const element = document.getElementById(`node-card-${node.id}`);
+      const width = node.customWidth ?? element?.offsetWidth ?? ({ small: 220, medium: 280, large: 340, wide: 440 }[node.size] || 280);
+      const renderer = getWidgetDefinition(node.type)?.renderer;
+      const height = node.customHeight ?? element?.offsetHeight
+        ?? ({ image: 240, chart: 220, table: 260, code: 220, metric: 160, timer: 160, status: 160, link: 160 }[renderer] || 180);
+      return { id: node.id, left: node.x ?? 40, top: node.y ?? 40, right: (node.x ?? 40) + width, bottom: (node.y ?? 40) + height };
+    });
+    selectionTransactionRef.current = {
+      pointerId: event.pointerId,
+      captureTarget: event.currentTarget,
+      origin,
+      startClient: { x: event.clientX, y: event.clientY },
+      current: origin,
+      nodeBounds,
+      additive: event.shiftKey,
+      initialSelection: [...selectedNodeIds],
+      moved: false,
+      animationFrame: 0,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const applySelectionRectangle = (transaction, point) => {
+    const rect = {
+      left: Math.min(transaction.origin.x, point.x),
+      top: Math.min(transaction.origin.y, point.y),
+      right: Math.max(transaction.origin.x, point.x),
+      bottom: Math.max(transaction.origin.y, point.y),
+    };
+    const intersectingIds = transaction.nodeBounds.flatMap((node) =>
+      node.left <= rect.right && node.right >= rect.left && node.top <= rect.bottom && node.bottom >= rect.top
+        ? [node.id]
+        : [],
+    );
+    const nextSelection = transaction.additive
+      ? [...new Set([...transaction.initialSelection, ...intersectingIds])]
+      : intersectingIds;
+    onSelectionChange(nextSelection);
+    setSelectionPresentation(rect);
+  };
+
+  const updateSelectionRectangle = (event) => {
+    const transaction = selectionTransactionRef.current;
+    if (!transaction || transaction.pointerId !== event.pointerId) return;
+    const point = pointForPointer(event);
+    if (!point) return;
+    transaction.current = point;
+    if (!transaction.moved && Math.hypot(event.clientX - transaction.startClient.x, event.clientY - transaction.startClient.y) < 4) return;
+    transaction.moved = true;
+    event.preventDefault();
+    suppressCanvasClickRef.current = true;
+    if (!transaction.animationFrame) {
+      transaction.animationFrame = window.requestAnimationFrame(() => {
+        transaction.animationFrame = 0;
+        if (selectionTransactionRef.current === transaction) applySelectionRectangle(transaction, transaction.current);
+      });
+    }
+  };
+
+  const finishSelectionRectangle = (event, cancelled = false) => {
+    const transaction = selectionTransactionRef.current;
+    if (!transaction || (event.pointerId != null && transaction.pointerId !== event.pointerId)) return;
+    if (transaction.animationFrame) window.cancelAnimationFrame(transaction.animationFrame);
+    if (transaction.captureTarget.hasPointerCapture?.(transaction.pointerId)) {
+      transaction.captureTarget.releasePointerCapture(transaction.pointerId);
+    }
+    if (cancelled && transaction.moved) onSelectionChange(transaction.initialSelection);
+    else if (transaction.moved) applySelectionRectangle(transaction, transaction.current);
+    if (transaction.moved) {
+      window.setTimeout(() => { suppressCanvasClickRef.current = false; }, 100);
+    }
+    selectionTransactionRef.current = null;
+    setSelectionPresentation(null);
   };
 
   useLayoutEffect(() => {
@@ -3990,12 +4219,28 @@ function NodeGrid({ nodes, currentScene, selectedNodeIds = [], selectedNodeId, g
       onDragCancel={handleDragCancel}
     >
       <CanvasDropZone
+        onPointerDown={handleSelectionStart}
+        onPointerMove={updateSelectionRectangle}
+        onPointerUp={finishSelectionRectangle}
+        onPointerCancel={(event) => finishSelectionRectangle(event, true)}
         role="group"
         aria-label={`Canvas widgets. Showing ${visibleNodes.length} of ${nodes.length}.`}
         data-rendered-widget-count={visibleNodes.length}
         data-total-widget-count={nodes.length}
         className="relative w-full min-h-[650px] z-10"
       >
+        {selectionPresentation && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute z-[60] rounded-md border border-indigo-500 bg-indigo-400/15 shadow-[0_0_0_1px_rgba(99,102,241,0.16)] dark:border-indigo-300 dark:bg-indigo-300/15"
+            style={{
+              left: `${selectionPresentation.left}px`,
+              top: `${selectionPresentation.top}px`,
+              width: `${selectionPresentation.right - selectionPresentation.left}px`,
+              height: `${selectionPresentation.bottom - selectionPresentation.top}px`,
+            }}
+          />
+        )}
         {dragPresentation?.origins.map((origin) => (
           <div
             key={`drag-origin-${origin.id}`}
@@ -4027,8 +4272,9 @@ function NodeGrid({ nodes, currentScene, selectedNodeIds = [], selectedNodeId, g
               onKeyboardMove={onKeyboardMove}
               updateNode={updateNode}
               canEdit={canEdit}
+              snapToGrid={snapToGrid}
+              gridSize={currentScene.gridSize}
               selectedForDrag={Boolean(dragPresentation?.movingNodeIds.includes(node.id))}
-              dragDelta={dragPresentation?.delta}
               activeDragId={dragPresentation?.activeId}
               overDropTargetId={overDropTargetId}
             />
@@ -4095,7 +4341,7 @@ class WidgetErrorBoundary extends Component {
 }
 
 // --- CANVAS CARD COMPONENT ---
-function CanvasNodeCard({ node, zoom, isSelected, remoteSelectedBy, onSelect, resolveNodeValue, getWorkspaceDataState, onResizeStart, onKeyboardMove, updateNode, canEdit, selectedForDrag, dragDelta, activeDragId, overDropTargetId,
+function CanvasNodeCard({ node, zoom, isSelected, remoteSelectedBy, onSelect, resolveNodeValue, getWorkspaceDataState, onResizeStart, onKeyboardMove, updateNode, canEdit, snapToGrid, gridSize = 24, selectedForDrag, activeDragId, overDropTargetId,
 }) {
   const draggable = useDraggable({
     id: node.id,
@@ -4117,7 +4363,7 @@ function CanvasNodeCard({ node, zoom, isSelected, remoteSelectedBy, onSelect, re
     if (!canEdit || event.defaultPrevented || event.target !== event.currentTarget || activeDragId) return;
     onKeyboardMove(event, node.id);
   };
-  const dragTranslation = selectedForDrag ? dragDelta : draggable.transform;
+  const dragTranslation = selectedForDrag ? null : draggable.transform;
   const dragTransform = dragTranslation
     ? CSS.Transform.toString({
       ...dragTranslation,
@@ -4125,6 +4371,38 @@ function CanvasNodeCard({ node, zoom, isSelected, remoteSelectedBy, onSelect, re
       y: dragTranslation.y / (zoom || 1),
     })
     : undefined;
+  const handleResizeKeyDown = (event, anchor) => {
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    const step = event.shiftKey ? (snapToGrid ? gridSize * 4 : 40) : (snapToGrid ? gridSize : 10);
+    const deltaX = event.key === 'ArrowRight'
+      ? anchor.includes('e') ? step : anchor.includes('w') ? -step : 0
+      : event.key === 'ArrowLeft'
+        ? anchor.includes('e') ? -step : anchor.includes('w') ? step : 0
+        : 0;
+    const deltaY = event.key === 'ArrowDown'
+      ? anchor.includes('s') ? step : anchor.includes('n') ? -step : 0
+      : event.key === 'ArrowUp'
+        ? anchor.includes('s') ? -step : anchor.includes('n') ? step : 0
+        : 0;
+    if (deltaX === 0 && deltaY === 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const parent = event.currentTarget.parentElement;
+    const currentWidth = node.customWidth ?? parent.offsetWidth;
+    const currentHeight = node.customHeight ?? parent.offsetHeight;
+    const minWidth = snapToGrid ? Math.ceil(180 / gridSize) * gridSize : 180;
+    const minHeight = snapToGrid ? Math.ceil(100 / gridSize) * gridSize : 100;
+    const snap = (value) => snapToGrid ? Math.round(value / gridSize) * gridSize : Math.round(value);
+    const nextWidth = Math.min(5000, Math.max(minWidth, snap(currentWidth + deltaX)));
+    const nextHeight = Math.min(5000, Math.max(minHeight, snap(currentHeight + deltaY)));
+    updateNode(node.id, {
+      customWidth: nextWidth,
+      customHeight: nextHeight,
+      x: (node.x ?? 40) + (anchor.includes('w') ? currentWidth - nextWidth : 0),
+      y: (node.y ?? 40) + (anchor.includes('n') ? currentHeight - nextHeight : 0),
+    });
+  };
   const displayValue = resolveNodeValue(node);
   const nodeDefinition = getWidgetDefinition(node.type);
   const externalDataLabel = node.dataSourceKind === 'graphql' ? 'Public GraphQL data' : 'Public REST data';
@@ -4611,31 +4889,20 @@ function CanvasNodeCard({ node, zoom, isSelected, remoteSelectedBy, onSelect, re
         </p>
       )}
       {canEdit && isSelected && (
-        <button
-          type="button"
-          aria-label={`Resize ${node.title || node.type}`}
-          title="Drag to resize or use arrow keys"
-          onPointerDown={(event) => onResizeStart(event, node.id)}
-          onKeyDown={(event) => {
-            if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
-            event.preventDefault();
-            event.stopPropagation();
-            const bounds = event.currentTarget.parentElement.getBoundingClientRect();
-            const step = event.shiftKey ? 40 : 10;
-            const width = node.customWidth ?? bounds.width;
-            const height = node.customHeight ?? bounds.height;
-            updateNode(node.id, {
-              customWidth: Math.max(180, width + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0),
-              ),
-              customHeight: Math.max(100, height + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0),
-              ),
-            });
-          }}
-          style={{ touchAction: 'none' }}
-          className="absolute -bottom-2 -right-2 z-50 grid size-6 cursor-nwse-resize place-items-center rounded-lg border border-indigo-300 bg-white text-indigo-600 shadow-md hover:bg-indigo-50 dark:border-indigo-500/50 dark:bg-slate-900 dark:text-indigo-300"
-        >
-          <Maximize2 size={12} />
-        </button>
+        resizeHandleDefinitions.map((handle) => (
+          <button
+            key={handle.id}
+            type="button"
+            aria-label={`Resize ${node.title || node.type} from the ${handle.label}`}
+            title={`Drag the ${handle.label} or focus and use arrow keys`}
+            onPointerDown={(event) => onResizeStart(event, node.id, handle.id)}
+            onKeyDown={(event) => handleResizeKeyDown(event, handle.id)}
+            style={{ touchAction: 'none' }}
+            className={`absolute z-50 grid place-items-center rounded-md border border-indigo-300 bg-white text-indigo-600 shadow-md transition-colors hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-indigo-500/50 dark:bg-slate-900 dark:text-indigo-300 dark:hover:bg-indigo-950/70 ${handle.position} ${handle.cursor}`}
+          >
+            <span aria-hidden="true" className={`rounded-sm bg-indigo-400 dark:bg-indigo-300 ${handle.id.length === 1 ? 'h-1 w-3' : 'size-1.5'}`} />
+          </button>
+        ))
       )}
     </article>
   );
