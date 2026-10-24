@@ -4,6 +4,7 @@ import https from 'node:https';
 
 const REQUEST_TIMEOUT_MS = 5_000;
 const MAX_RESPONSE_BYTES = 512 * 1024;
+const MAX_REQUEST_BYTES = 32 * 1024;
 const CACHE_TTL_MS = 15_000;
 const MAX_CACHE_ENTRIES = 64;
 const sensitiveQueryParameters = new Set([
@@ -106,7 +107,7 @@ const resolvePublicIpv4 = async (hostname) => {
   return addresses;
 };
 
-const requestJsonOverHttps = (endpoint, address) => new Promise((resolve, reject) => {
+const requestJsonOverHttps = (endpoint, address, { method = 'GET', body, accept = 'application/json', userAgent = 'Voxel-REST-Widget/0.1' } = {}) => new Promise((resolve, reject) => {
   let settled = false;
   const fail = (error) => {
     if (settled) return;
@@ -117,12 +118,13 @@ const requestJsonOverHttps = (endpoint, address) => new Promise((resolve, reject
   const request = https.request({
     hostname: endpoint.hostname,
     port: 443,
-    method: 'GET',
+    method,
     path: `${endpoint.pathname}${endpoint.search}`,
     headers: {
-      accept: 'application/json',
+      accept,
       'accept-encoding': 'identity',
-      'user-agent': 'Voxel-REST-Widget/0.1',
+      'user-agent': userAgent,
+      ...(body ? { 'content-type': 'application/json', 'content-length': String(Buffer.byteLength(body)) } : {}),
     },
     lookup: createPinnedIpv4Lookup(address),
   }, (response) => {
@@ -173,7 +175,7 @@ const requestJsonOverHttps = (endpoint, address) => new Promise((resolve, reject
     request.destroy(new RestDataSourceError('The endpoint request timed out.', 504));
   });
   request.on('error', (error) => fail(error));
-  request.end();
+  request.end(body);
 });
 
 export class RestDataSourceClient {
@@ -187,7 +189,36 @@ export class RestDataSourceClient {
 
   async fetchJson(value) {
     const endpoint = validateRestEndpoint(value);
-    const cacheKey = endpoint.href;
+    return this.fetchCached(endpoint.href, () => this.fetchValidatedJson(endpoint, { method: 'GET' }));
+  }
+
+  async fetchGraphql(value, query, variables = {}) {
+    const endpoint = validateRestEndpoint(value);
+    if (typeof query !== 'string' || !query.trim() || query.length > 20_000) {
+      throw new RestDataSourceError('Enter a GraphQL query under 20,000 characters.', 422);
+    }
+    if (!variables || typeof variables !== 'object' || Array.isArray(variables)) {
+      throw new RestDataSourceError('GraphQL variables must be a JSON object.', 422);
+    }
+    let body;
+    try {
+      body = JSON.stringify({ query, variables });
+    } catch {
+      throw new RestDataSourceError('GraphQL variables must contain valid JSON values.', 422);
+    }
+    if (Buffer.byteLength(body) > MAX_REQUEST_BYTES) {
+      throw new RestDataSourceError('The GraphQL query and variables exceed the 32 KB limit.', 413);
+    }
+    const cacheKey = `graphql:${endpoint.href}:${body}`;
+    return this.fetchCached(cacheKey, () => this.fetchValidatedJson(endpoint, {
+      method: 'POST',
+      body,
+      accept: 'application/graphql-response+json, application/json',
+      userAgent: 'Voxel-GraphQL-Widget/0.1',
+    }));
+  }
+
+  async fetchCached(cacheKey, operation) {
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expiresAt > this.now()) {
       this.cache.delete(cacheKey);
@@ -197,10 +228,10 @@ export class RestDataSourceClient {
     if (cached) this.cache.delete(cacheKey);
     if (this.pending.has(cacheKey)) return this.pending.get(cacheKey);
 
-    const operation = this.fetchValidatedJson(endpoint);
-    this.pending.set(cacheKey, operation);
+    const request = operation();
+    this.pending.set(cacheKey, request);
     try {
-      const result = await operation;
+      const result = await request;
       this.cache.set(cacheKey, { value: result, expiresAt: this.now() + CACHE_TTL_MS });
       while (this.cache.size > MAX_CACHE_ENTRIES) this.cache.delete(this.cache.keys().next().value);
       return result;
@@ -209,7 +240,7 @@ export class RestDataSourceClient {
     }
   }
 
-  async fetchValidatedJson(endpoint) {
+  async fetchValidatedJson(endpoint, requestOptions) {
     let addresses;
     try {
       addresses = await this.resolveAddresses(endpoint.hostname);
@@ -223,7 +254,7 @@ export class RestDataSourceClient {
 
     let response;
     try {
-      response = await this.requestImpl(endpoint, addresses[0]);
+      response = await this.requestImpl(endpoint, addresses[0], requestOptions);
     } catch (error) {
       if (error instanceof RestDataSourceError) throw error;
       throw new RestDataSourceError('The external endpoint could not be reached.', 502);
@@ -253,3 +284,4 @@ export class RestDataSourceClient {
 const defaultRestDataSourceClient = new RestDataSourceClient();
 
 export const fetchPublicRestJson = (value) => defaultRestDataSourceClient.fetchJson(value);
+export const fetchPublicGraphqlJson = (value, query, variables) => defaultRestDataSourceClient.fetchGraphql(value, query, variables);

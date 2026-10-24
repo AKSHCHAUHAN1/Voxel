@@ -472,6 +472,7 @@ export default function EditorPage() {
   const restDataNodes = useMemo(
     () => scene.nodes.filter((node) => (
       node.valueSource === 'rest-api'
+      && node.dataSourceKind !== 'graphql'
       && workspaceDataRenderers.has(getWidgetDefinition(node.type)?.renderer)
       && typeof node.dataSourceUrl === 'string'
       && node.dataSourceUrl.trim().length > 0
@@ -508,6 +509,54 @@ export default function EditorPage() {
     })),
   });
   const restDataQueryByUrl = new Map(restDataUrls.map((url, index) => [url, restDataQueries[index]]));
+  const graphqlDataNodes = useMemo(
+    () => scene.nodes.filter((node) => (
+      node.valueSource === 'rest-api'
+      && node.dataSourceKind === 'graphql'
+      && workspaceDataRenderers.has(getWidgetDefinition(node.type)?.renderer)
+      && typeof node.dataSourceUrl === 'string'
+      && node.dataSourceUrl.trim().length > 0
+      && typeof node.dataSourceQuery === 'string'
+      && node.dataSourceQuery.trim().length > 0
+    )),
+    [scene.nodes],
+  );
+  const graphqlDataRequests = useMemo(() => {
+    const requests = new Map();
+    graphqlDataNodes.forEach((node) => {
+      const url = node.dataSourceUrl.trim();
+      const query = node.dataSourceQuery.trim();
+      const key = JSON.stringify([url, query]);
+      if (!requests.has(key)) requests.set(key, { key, url, query });
+    });
+    return [...requests.values()];
+  }, [graphqlDataNodes]);
+  const refreshIntervalsByGraphqlKey = useMemo(() => {
+    const intervals = new Map();
+    graphqlDataNodes.forEach((node) => {
+      const interval = Number(node.dataRefreshInterval);
+      if (!Number.isFinite(interval) || interval <= 0) return;
+      const key = JSON.stringify([node.dataSourceUrl.trim(), node.dataSourceQuery.trim()]);
+      const previous = intervals.get(key);
+      intervals.set(key, previous ? Math.min(previous, interval) : interval);
+    });
+    return intervals;
+  }, [graphqlDataNodes]);
+  const graphqlDataQueries = useQueries({
+    queries: graphqlDataRequests.map(({ key, url, query }) => ({
+      queryKey: ['dashboard-graphql-data', dashboardId, key],
+      queryFn: async () => {
+        const response = await workspaceService.graphqlData(dashboardId, url, query);
+        return { kind: 'json', value: response.value };
+      },
+      enabled: Boolean(dashboardId),
+      staleTime: 30_000,
+      refetchInterval: refreshIntervalsByGraphqlKey.get(key) || false,
+      refetchIntervalInBackground: false,
+      retry: (failureCount, error) => ![401, 403, 404, 422].includes(error?.statusCode) && failureCount < 1,
+    })),
+  });
+  const graphqlDataQueryByKey = new Map(graphqlDataRequests.map(({ key }, index) => [key, graphqlDataQueries[index]]));
   const workspaceDataQueryByFileId = new Map(workspaceDataFileIds.map((fileId, index) => [
     fileId,
     { file: workspaceFilesById.get(fileId), query: workspaceDataQueries[index] },
@@ -515,6 +564,19 @@ export default function EditorPage() {
   const getWorkspaceDataState = (node) => {
     if (node.valueSource === 'rest-api') {
       const url = String(node.dataSourceUrl || '').trim();
+      if (node.dataSourceKind === 'graphql') {
+        const query = String(node.dataSourceQuery || '').trim();
+        const key = JSON.stringify([url, query]);
+        const configured = Boolean(url && query);
+        return {
+          kind: 'graphql',
+          url,
+          request: query,
+          file: null,
+          query: configured ? graphqlDataQueryByKey.get(key) : null,
+          notConfigured: !configured,
+        };
+      }
       return {
         kind: 'rest',
         url,
@@ -2900,7 +2962,7 @@ export default function EditorPage() {
                               <option value="manual">Manual Input</option>
                               <option value="connections">Connected Inputs (Aggregation)</option>
                               {workspaceDataRenderers.has(widgetRenderer) && <option value="workspace-file">Workspace File (CSV or JSON)</option>}
-                              {workspaceDataRenderers.has(widgetRenderer) && <option value="rest-api">Public REST API (JSON)</option>}
+                              {workspaceDataRenderers.has(widgetRenderer) && <option value="rest-api">Public REST or GraphQL API</option>}
                             </select>
                           </div>
                     )}
@@ -3109,7 +3171,7 @@ export default function EditorPage() {
                                     </div>
                               ) : workspaceFileValue ? (
                                 <div className="mt-1 rounded-lg border border-violet-200/70 bg-violet-50/70 p-2.5 text-xs font-medium normal-case tracking-normal text-slate-700 dark:border-violet-500/20 dark:bg-violet-500/5 dark:text-slate-300">
-                                  Resolved from {selectedNode.valueSource === 'rest-api' ? 'REST endpoint' : 'workspace file'}: <b>{resolveNodeValue(selectedNode) || (selectedDataQuery?.isPending ? 'Loading…' : 'No value loaded')}</b>
+                                  Resolved from {selectedNode.valueSource === 'rest-api' ? `${selectedNode.dataSourceKind === 'graphql' ? 'GraphQL' : 'REST'} endpoint` : 'workspace file'}: <b>{resolveNodeValue(selectedNode) || (selectedDataQuery?.isPending ? 'Loading…' : 'No value loaded')}</b>
                                 </div>
                               ) : field.type === 'node-select' ? (
                                 <select value={value} onChange={(event) => updateNode(selectedNode.id, { [field.key]: event.target.value,
@@ -3675,27 +3737,41 @@ const CanvasOverview = memo(
 // --- FREEFORM GRID SETUP ---
 function RestDataSourceInspector({ node, renderer, query, sourceData, canEdit, onUpdate }) {
   const [endpointDraft, setEndpointDraft] = useState(node.dataSourceUrl || '');
+  const [graphqlQueryDraft, setGraphqlQueryDraft] = useState(node.dataSourceQuery || '');
   const savedEndpoint = String(node.dataSourceUrl || '').trim();
+  const savedGraphqlQuery = String(node.dataSourceQuery || '').trim();
+  const sourceKind = node.dataSourceKind === 'graphql' ? 'graphql' : 'rest';
 
   useEffect(() => {
     setEndpointDraft(node.dataSourceUrl || '');
-  }, [node.id, node.dataSourceUrl]);
+    setGraphqlQueryDraft(node.dataSourceQuery || '');
+  }, [node.id, node.dataSourceUrl, node.dataSourceQuery]);
 
   const endpointChanged = endpointDraft.trim() !== savedEndpoint;
+  const queryChanged = graphqlQueryDraft.trim() !== savedGraphqlQuery;
   const endpointConfigured = Boolean(savedEndpoint);
+  const sourceConfigured = endpointConfigured && (sourceKind === 'rest' || Boolean(savedGraphqlQuery));
   const inputClass = 'mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-violet-500 disabled:opacity-60 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200';
-  const endpointStatus = !endpointConfigured ? 'Add a public endpoint to connect this widget.'
-    : query?.isError && sourceData ? 'Refresh failed; showing the last successful response.'
-      : query?.isError ? query.error?.message || 'The endpoint could not be loaded.'
-        : query?.isPending ? 'Loading REST response…'
-          : query?.isFetching ? 'Refreshing REST response…'
-            : sourceData ? 'JSON response ready.'
-              : 'Waiting for the endpoint response…';
+  const sourceLabel = sourceKind === 'graphql' ? 'GraphQL' : 'REST';
+  const endpointStatus = !sourceConfigured ? `Add a public endpoint${sourceKind === 'graphql' ? ' and query' : ''} to connect this widget.`
+    : query?.isError && sourceData ? `Refresh failed; showing the last successful ${sourceLabel} response.`
+      : query?.isError ? query.error?.message || `The ${sourceLabel} endpoint could not be loaded.`
+        : query?.isPending ? `Loading ${sourceLabel} response…`
+          : query?.isFetching ? `Refreshing ${sourceLabel} response…`
+            : sourceData ? `${sourceLabel} JSON response ready.`
+              : `Waiting for the ${sourceLabel} response…`;
 
   return (
-    <section className="space-y-3 rounded-xl border border-violet-200/70 bg-violet-50/50 p-3 dark:border-violet-500/20 dark:bg-violet-500/5" aria-label="Public REST data source">
+    <section className="space-y-3 rounded-xl border border-violet-200/70 bg-violet-50/50 p-3 dark:border-violet-500/20 dark:bg-violet-500/5" aria-label={`Public ${sourceLabel} data source`}>
       <div>
-        <label htmlFor={`rest-endpoint-${node.id}`} className="text-[10px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-300">Public HTTPS JSON endpoint</label>
+        <label htmlFor={`external-kind-${node.id}`} className="text-[10px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-300">Request type</label>
+        <select id={`external-kind-${node.id}`} value={sourceKind} disabled={!canEdit} onChange={(event) => onUpdate({ dataSourceKind: event.target.value })} className={inputClass}>
+          <option value="rest">REST · GET JSON</option>
+          <option value="graphql">GraphQL · POST query</option>
+        </select>
+      </div>
+      <div>
+        <label htmlFor={`rest-endpoint-${node.id}`} className="text-[10px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-300">Public HTTPS endpoint</label>
         <input
           id={`rest-endpoint-${node.id}`}
           type="url"
@@ -3707,13 +3783,30 @@ function RestDataSourceInspector({ node, renderer, query, sourceData, canEdit, o
           placeholder="https://api.example.com/metrics"
           className={inputClass}
         />
-        <p className="mt-1 text-[10px] leading-4 text-slate-500 dark:text-slate-400">Public JSON only. Authentication, URL tokens, redirects, private addresses, and non-HTTPS endpoints are blocked.</p>
-        {canEdit && endpointChanged && (
-          <button type="button" onClick={() => onUpdate({ dataSourceUrl: endpointDraft.trim() })} disabled={!endpointDraft.trim()} className="mt-2 rounded-lg bg-violet-600 px-3 py-1.5 text-[10px] font-bold text-white transition hover:bg-violet-500 disabled:opacity-50">Connect endpoint</button>
+        <p className="mt-1 text-[10px] leading-4 text-slate-500 dark:text-slate-400">Public JSON only. Credentials, URL tokens, redirects, private addresses, and non-HTTPS endpoints are blocked.</p>
+        {sourceKind === 'graphql' && (
+          <label htmlFor={`graphql-query-${node.id}`} className="mt-3 block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            GraphQL query
+            <textarea id={`graphql-query-${node.id}`} maxLength={20_000} rows={5} value={graphqlQueryDraft} disabled={!canEdit} onChange={(event) => setGraphqlQueryDraft(event.target.value)} placeholder={'query {\n  metrics {\n    value\n  }\n}'} className={`${inputClass} resize-y font-mono normal-case tracking-normal`} />
+            <span className="mt-1 block font-normal normal-case tracking-normal">The public endpoint receives this query by POST. Keep the response under 512 KB.</span>
+          </label>
+        )}
+        {canEdit && (endpointChanged || (sourceKind === 'graphql' && queryChanged)) && (
+          <button
+            type="button"
+            onClick={() => onUpdate({
+              dataSourceUrl: endpointDraft.trim(),
+              ...(sourceKind === 'graphql' ? { dataSourceQuery: graphqlQueryDraft.trim() } : {}),
+            })}
+            disabled={!endpointDraft.trim() || (sourceKind === 'graphql' && !graphqlQueryDraft.trim())}
+            className="mt-2 rounded-lg bg-violet-600 px-3 py-1.5 text-[10px] font-bold text-white transition hover:bg-violet-500 disabled:opacity-50"
+          >
+            {sourceKind === 'graphql' ? 'Connect query' : 'Connect endpoint'}
+          </button>
         )}
       </div>
 
-      {endpointConfigured && (
+      {sourceConfigured && (
         <>
           <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             {renderer === 'table' ? 'Records path (optional)' : 'JSON property path (optional)'}
@@ -3746,8 +3839,8 @@ function RestDataSourceInspector({ node, renderer, query, sourceData, canEdit, o
             <button
               type="button"
               onClick={() => query?.refetch()}
-              disabled={!query || query.isFetching || !endpointConfigured}
-              aria-label={`Refresh REST data for ${node.title || 'widget'}`}
+              disabled={!query || query.isFetching || !sourceConfigured}
+              aria-label={`Refresh ${sourceLabel} data for ${node.title || 'widget'}`}
               title="Refresh now"
               className="shrink-0 rounded-lg border border-violet-200 bg-white p-1.5 text-violet-600 transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-slate-900 dark:text-violet-300 dark:hover:bg-white/5"
             >
@@ -3836,15 +3929,18 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
 }) {
   const displayValue = resolveNodeValue(node);
   const nodeDefinition = getWidgetDefinition(node.type);
+  const externalDataLabel = node.dataSourceKind === 'graphql' ? 'Public GraphQL data' : 'Public REST data';
   const usesDataSource = ['workspace-file', 'rest-api'].includes(node.valueSource);
   const workspaceDataState = usesDataSource ? getWorkspaceDataState?.(node) : null;
-  const workspaceData = workspaceDataState?.file || workspaceDataState?.kind === 'rest'
+  const isExternalSource = ['rest', 'graphql'].includes(workspaceDataState?.kind);
+  const externalSourceLabel = workspaceDataState?.kind === 'graphql' ? 'GraphQL' : 'REST';
+  const workspaceData = workspaceDataState?.file || ['rest', 'graphql'].includes(workspaceDataState?.kind)
     ? usableWorkspaceData(workspaceDataState.query)
     : null;
   const valueSourceCaption = node.valueSource === 'workspace-file'
     ? 'Workspace file data'
     : node.valueSource === 'rest-api'
-      ? 'Public REST data'
+      ? externalDataLabel
     : node.valueSource === 'connections'
       ? 'Connected inputs'
       : 'Sample value · no data source connected';
@@ -4076,7 +4172,7 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
                 <div className="flex flex-col items-center justify-center h-[65px] bg-slate-100 dark:bg-white/5 rounded text-center p-2">
                   <span className="text-[20px] font-bold font-mono">{displayValue}</span>
                   <span className="text-[9px] text-slate-400">
-                    {node.valueSource === 'workspace-file' ? 'Workspace file data' : node.valueSource === 'rest-api' ? 'Public REST data' : node.valueSource === 'connections' ? 'Single connected metric value' : 'Add more values to show a trend'}
+                    {node.valueSource === 'workspace-file' ? 'Workspace file data' : node.valueSource === 'rest-api' ? externalDataLabel : node.valueSource === 'connections' ? 'Single connected metric value' : 'Add more values to show a trend'}
                   </span>
                 </div>
               )}
@@ -4300,13 +4396,13 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
       )}
       {usesDataSource && (
         <p role={workspaceDataState?.query?.isError && !workspaceData ? 'alert' : 'status'} className={`mt-2 border-t pt-2 text-[10px] ${workspaceDataState?.query?.isError && !workspaceData ? 'border-rose-200 text-rose-600 dark:border-rose-900/50 dark:text-rose-300' : 'border-slate-100 text-slate-400 dark:border-white/5'}`}>
-          {workspaceDataState?.kind === 'rest' && workspaceDataState.notConfigured ? 'Add a public HTTPS JSON endpoint in the inspector.'
-            : workspaceDataState?.kind === 'rest' && workspaceDataState.query?.isError && workspaceData ? 'REST refresh failed. Showing the last loaded response.'
-              : workspaceDataState?.kind === 'rest' && workspaceDataState.query?.isError ? `REST endpoint error: ${workspaceDataState.query.error?.message || 'Response unavailable.'}`
-                : workspaceDataState?.kind === 'rest' && workspaceDataState.query?.isPending ? 'Loading public REST data…'
-                  : workspaceDataState?.kind === 'rest' && workspaceDataState.query?.isFetching ? 'Refreshing public REST data…'
-                    : workspaceDataState?.kind === 'rest' && workspaceData ? 'Live data · Public REST endpoint'
-                      : workspaceDataState?.kind === 'rest' ? 'Waiting for the REST response…'
+          {isExternalSource && workspaceDataState.notConfigured ? `Add a public ${externalSourceLabel} endpoint${externalSourceLabel === 'GraphQL' ? ' and query' : ''} in the inspector.`
+            : isExternalSource && workspaceDataState.query?.isError && workspaceData ? `${externalSourceLabel} refresh failed. Showing the last loaded response.`
+              : isExternalSource && workspaceDataState.query?.isError ? `${externalSourceLabel} endpoint error: ${workspaceDataState.query.error?.message || 'Response unavailable.'}`
+                : isExternalSource && workspaceDataState.query?.isPending ? `Loading public ${externalSourceLabel} data…`
+                  : isExternalSource && workspaceDataState.query?.isFetching ? `Refreshing public ${externalSourceLabel} data…`
+                    : isExternalSource && workspaceData ? `Live data · Public ${externalSourceLabel} endpoint`
+                      : isExternalSource ? `Waiting for the ${externalSourceLabel} response…`
                         : workspaceDataState?.fileListLoading ? 'Checking workspace files…'
             : workspaceDataState?.fileListError ? 'Workspace files could not be loaded.'
               : workspaceDataState?.missing ? 'Source file is unavailable. Choose another file in the inspector.'

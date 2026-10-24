@@ -61,7 +61,46 @@ describe('REST data source security and pipeline', () => {
     expect(first).toEqual({ metrics: [{ value: 12 }] });
     expect(second).toBe(first);
     expect(resolveAddresses).toHaveBeenCalledOnce();
-    expect(requestImpl).toHaveBeenCalledWith(expect.objectContaining({ hostname: 'api.example.com' }), '93.184.216.34');
+    expect(requestImpl).toHaveBeenCalledWith(
+      expect.objectContaining({ hostname: 'api.example.com' }),
+      '93.184.216.34',
+      { method: 'GET' },
+    );
+  });
+
+  it('sends bounded GraphQL queries by POST and caches by endpoint, query, and variables', async () => {
+    const resolveAddresses = vi.fn().mockResolvedValue(['93.184.216.34']);
+    const requestImpl = vi.fn().mockResolvedValue(jsonResponse(
+      { data: { teams: [{ name: 'Voxel' }] } },
+      { contentType: 'application/graphql-response+json; charset=utf-8' },
+    ));
+    const client = new RestDataSourceClient({ resolveAddresses, requestImpl });
+    const query = 'query Teams($limit: Int!) { teams(limit: $limit) { name } }';
+    const variables = { limit: 5 };
+
+    const first = await client.fetchGraphql(endpoint, query, variables);
+    const second = await client.fetchGraphql(endpoint, query, variables);
+
+    expect(first).toEqual({ data: { teams: [{ name: 'Voxel' }] } });
+    expect(second).toBe(first);
+    expect(requestImpl).toHaveBeenCalledOnce();
+    expect(requestImpl.mock.calls[0][2]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ query, variables }),
+      accept: 'application/graphql-response+json, application/json',
+    });
+  });
+
+  it('rejects GraphQL requests without a bounded query and object variables', async () => {
+    const client = new RestDataSourceClient({
+      resolveAddresses: async () => ['93.184.216.34'],
+      requestImpl: vi.fn(),
+    });
+
+    await expect(client.fetchGraphql(endpoint, '', {})).rejects.toThrow(/GraphQL query/);
+    await expect(client.fetchGraphql(endpoint, 'query { value }', [])).rejects.toThrow(/variables must be a JSON object/);
+    await expect(client.fetchGraphql(endpoint, 'x'.repeat(20_001), {})).rejects.toThrow(/GraphQL query/);
+    await expect(client.fetchGraphql(endpoint, 'query { value }', { value: 'x'.repeat(33_000) })).rejects.toThrow(/32 KB limit/);
   });
 
   it('rejects mixed public and private DNS answers before opening a connection', async () => {

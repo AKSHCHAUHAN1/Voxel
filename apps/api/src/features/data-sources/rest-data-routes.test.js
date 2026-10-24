@@ -26,6 +26,7 @@ const dashboardId = '4025e84a-13d5-4829-97e0-ec4d9ef7670c';
 const workspaceId = '9f4f0208-352b-4ed2-9ed9-b12f3cc4c095';
 let app;
 let fetchJson;
+let fetchGraphql;
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -33,10 +34,11 @@ beforeEach(async () => {
   prismaMock.dashboard.findFirst.mockResolvedValue({ id: dashboardId, workspaceId, status: 'DRAFT' });
   prismaMock.workspaceMember.findUnique.mockResolvedValue({ workspace: { id: workspaceId, archivedAt: null, deletedAt: null } });
   fetchJson = vi.fn().mockResolvedValue({ metrics: [{ value: 12 }] });
+  fetchGraphql = vi.fn().mockResolvedValue({ data: { metrics: [{ value: 12 }] } });
   app = Fastify({ logger: false });
   app.setErrorHandler((error, _request, reply) => reply.status(error instanceof ZodError ? 422 : error.statusCode || 500).send({ error: error.message }));
   await app.register(cookie);
-  await registerRestDataRoutes(app, {}, { fetchJson });
+  await registerRestDataRoutes(app, {}, { fetchJson, fetchGraphql });
 });
 
 afterEach(async () => {
@@ -100,5 +102,45 @@ describe('REST data source route', () => {
     });
     expect(archivedWorkspace.statusCode).toBe(404);
     expect(fetchJson).not.toHaveBeenCalled();
+  });
+});
+
+describe('GraphQL data source route', () => {
+  it('fetches GraphQL only for an authenticated member of an active dashboard workspace', async () => {
+    authState.authenticated = false;
+    const rejected = await app.inject({
+      method: 'POST',
+      url: `/api/v1/dashboards/${dashboardId}/data-sources/graphql`,
+      payload: { url: 'https://api.example.com/graphql', query: 'query { metrics { value } }' },
+    });
+    expect(rejected.statusCode).toBe(401);
+    expect(fetchGraphql).not.toHaveBeenCalled();
+  });
+
+  it('returns GraphQL JSON and rejects endpoint query errors', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/dashboards/${dashboardId}/data-sources/graphql`,
+      headers: { cookie: 'voxel_access=session' },
+      payload: {
+        url: 'https://api.example.com/graphql',
+        query: 'query { metrics { value } }',
+        variables: { period: 'week' },
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.value).toEqual({ data: { metrics: [{ value: 12 }] } });
+    expect(fetchGraphql).toHaveBeenCalledWith('https://api.example.com/graphql', 'query { metrics { value } }', { period: 'week' });
+
+    fetchGraphql.mockResolvedValue({ errors: [{ message: 'private server detail' }] });
+    const error = await app.inject({
+      method: 'POST',
+      url: `/api/v1/dashboards/${dashboardId}/data-sources/graphql`,
+      headers: { cookie: 'voxel_access=session' },
+      payload: { url: 'https://api.example.com/graphql', query: 'query { metrics { value } }' },
+    });
+    expect(error.statusCode).toBe(502);
+    expect(error.json().error).toBe('The GraphQL endpoint returned query errors.');
+    expect(error.json().error).not.toContain('private server detail');
   });
 });

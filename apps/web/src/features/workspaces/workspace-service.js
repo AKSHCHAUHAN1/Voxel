@@ -43,6 +43,10 @@ export const workspaceService = {
     method: 'POST',
     body: JSON.stringify({ url }),
   }),
+  graphqlData: (dashboardId, url, query) => request(`/api/v1/dashboards/${dashboardId}/data-sources/graphql`, {
+    method: 'POST',
+    body: JSON.stringify({ url, query }),
+  }),
   uploadFile,
   uploadCoverImage,
   downloadFile,

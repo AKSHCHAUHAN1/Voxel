@@ -123,6 +123,8 @@ const sceneForReadOnlyShare = (scene) => {
       const safeNode = { ...node };
       delete safeNode.dataSourceFileId;
       delete safeNode.dataSourceUrl;
+      delete safeNode.dataSourceQuery;
+      delete safeNode.dataSourceKind;
       delete safeNode.dataSourceField;
       delete safeNode.dataRefreshInterval;
       return safeNode;

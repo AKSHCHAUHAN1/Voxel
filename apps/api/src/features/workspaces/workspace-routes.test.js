@@ -72,7 +72,7 @@ describe('workspace template and activity routes', () => {
           schemaVersion: 2,
           nodes: [
             { id: 'file-card', type: 'metric', valueSource: 'workspace-file', dataSourceFileId: 'private-file-id', dataSourceField: 'revenue', dataRefreshInterval: 30000 },
-            { id: 'rest-card', type: 'chart', valueSource: 'rest-api', dataSourceUrl: 'https://api.example.com/private?team=ops', dataSourceField: 'metrics', dataRefreshInterval: 60000 },
+            { id: 'rest-card', type: 'chart', valueSource: 'rest-api', dataSourceKind: 'graphql', dataSourceUrl: 'https://api.example.com/private?team=ops', dataSourceQuery: 'query { metrics { value } }', dataSourceField: 'data.metrics', dataRefreshInterval: 60000 },
             { id: 'manual-card', type: 'metric', valueSource: 'manual', content: '42' },
           ],
           connections: [],
@@ -103,7 +103,7 @@ describe('workspace template and activity routes', () => {
         id: dashboardId,
         name: 'Metrics',
         description: null,
-        scene: { schemaVersion: 2, nodes: [{ id: 'rest-card', type: 'metric', valueSource: 'rest-api', dataSourceUrl: 'https://api.example.com/data' }], connections: [] },
+        scene: { schemaVersion: 2, nodes: [{ id: 'rest-card', type: 'metric', valueSource: 'rest-api', dataSourceKind: 'graphql', dataSourceUrl: 'https://api.example.com/graphql', dataSourceQuery: 'query { metric { value } }' }], connections: [] },
         version: 3,
         deletedAt: null,
         status: 'PUBLISHED',
@@ -114,7 +114,11 @@ describe('workspace template and activity routes', () => {
     const response = await app.inject({ method: 'GET', url: `/api/v1/shares/${token}` });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json().data.scene.nodes[0].dataSourceUrl).toBe('https://api.example.com/data');
+    expect(response.json().data.scene.nodes[0]).toMatchObject({
+      dataSourceKind: 'graphql',
+      dataSourceUrl: 'https://api.example.com/graphql',
+      dataSourceQuery: 'query { metric { value } }',
+    });
   });
 
   it('creates workspaces with JSON-safe storage counters and keeps the audit event', async () => {
