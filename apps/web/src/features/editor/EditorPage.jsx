@@ -412,14 +412,21 @@ export default function EditorPage() {
   }, []);
 
   const handleSelectNode = useCallback((id, e) => {
+    const node = scene.nodes.find((item) => item.id === id);
+    const memberIds = node?.groupId
+      ? scene.nodes.filter((item) => item.groupId === node.groupId).map((item) => item.id)
+      : [id];
     if (e && (e.metaKey || e.ctrlKey || e.shiftKey)) {
-      setSelectedNodeIds((prev) =>
-        prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-      );
+      setSelectedNodeIds((previous) => {
+        const allSelected = memberIds.every((memberId) => previous.includes(memberId));
+        return allSelected
+          ? previous.filter((selectedId) => !memberIds.includes(selectedId))
+          : [...new Set([...previous, ...memberIds])];
+      });
     } else {
-      setSelectedNodeIds([id]);
+      setSelectedNodeIds(memberIds);
     }
-  }, []);
+  }, [scene.nodes]);
 
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
@@ -648,6 +655,9 @@ export default function EditorPage() {
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
   const dragPreviewRafRef = useRef(0);
+  useEffect(() => () => {
+    if (dragPreviewRafRef.current) window.cancelAnimationFrame(dragPreviewRafRef.current);
+  }, []);
 
   const handleRepositionCanvas = useCallback(() => {
     if (!gridRef.current) return;
@@ -1653,6 +1663,44 @@ export default function EditorPage() {
     });
     setSelectedNodeIds(duplicates.map((node) => node.id));
     useNotificationStore.getState().add(`Duplicated ${duplicates.length} ${duplicates.length === 1 ? 'node' : 'nodes'}.`, 'info');
+  };
+
+  const handleGroupSelected = () => {
+    if (!canEditDashboard || selectedNodeIds.length < 2) return;
+    const selectedIds = new Set(selectedNodeIds);
+    const selectedGroupIds = new Set(scene.nodes
+      .filter((node) => selectedIds.has(node.id) && node.groupId)
+      .map((node) => node.groupId));
+    const memberIds = scene.nodes
+      .filter((node) => selectedIds.has(node.id) || selectedGroupIds.has(node.groupId))
+      .map((node) => node.id);
+    const groupedIds = new Set(memberIds);
+    const groupId = crypto.randomUUID();
+    update({
+      ...scene,
+      nodes: scene.nodes.map((node) => groupedIds.has(node.id) ? { ...node, groupId } : node),
+    });
+    setSelectedNodeIds(memberIds);
+    useNotificationStore.getState().add(`Grouped ${memberIds.length} widgets.`, 'success');
+  };
+
+  const handleUngroupSelected = () => {
+    if (!canEditDashboard || selectedNodeIds.length === 0) return;
+    const selectedIds = new Set(selectedNodeIds);
+    const groupIds = new Set(scene.nodes
+      .filter((node) => selectedIds.has(node.id) && node.groupId)
+      .map((node) => node.groupId));
+    if (groupIds.size === 0) return;
+    update({
+      ...scene,
+      nodes: scene.nodes.map((node) => {
+        if (!groupIds.has(node.groupId)) return node;
+        const ungroupedNode = { ...node };
+        delete ungroupedNode.groupId;
+        return ungroupedNode;
+      }),
+    });
+    useNotificationStore.getState().add(`Ungrouped ${groupIds.size} widget group${groupIds.size === 1 ? '' : 's'}.`, 'info');
   };
 
   const handleSelectAll = useCallback((e) => {
@@ -2902,6 +2950,25 @@ export default function EditorPage() {
                       </div>
                     </fieldset>
 
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        disabled={!canEditDashboard || selectedNodeIds.length < 2}
+                        onClick={handleGroupSelected}
+                        className="rounded-lg border border-violet-200 px-3 py-2 text-xs font-semibold text-violet-700 transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-violet-500/25 dark:text-violet-300 dark:hover:bg-violet-500/10"
+                      >
+                        Group selection
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!canEditDashboard || !scene.nodes.some((node) => selectedNodeIds.includes(node.id) && node.groupId)}
+                        onClick={handleUngroupSelected}
+                        className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                      >
+                        Ungroup
+                      </button>
+                    </div>
+
                     {/* Bulk Color Palette */}
                     <div>
                       <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">
@@ -3988,6 +4055,13 @@ function NodeGrid({ nodes, currentScene, selectedNodeIds = [], selectedNodeId, g
   const dragTransactionRef = useRef(null);
   const selectionTransactionRef = useRef(null);
   const suppressWidgetClickRef = useRef(false);
+  useEffect(() => () => {
+    const transaction = selectionTransactionRef.current;
+    if (transaction?.animationFrame) window.cancelAnimationFrame(transaction.animationFrame);
+    if (transaction?.captureTarget.hasPointerCapture?.(transaction.pointerId)) {
+      transaction.captureTarget.releasePointerCapture(transaction.pointerId);
+    }
+  }, []);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: canvasKeyboardCoordinates }),
@@ -3995,9 +4069,13 @@ function NodeGrid({ nodes, currentScene, selectedNodeIds = [], selectedNodeId, g
 
   const handleDragStart = (event) => {
     const activeId = String(event.active.id);
+    const activeNode = nodes.find((node) => node.id === activeId);
+    const groupedNodeIds = activeNode?.groupId
+      ? nodes.filter((node) => node.groupId === activeNode.groupId).map((node) => node.id)
+      : [activeId];
     const movingNodeIds = selectedNodeIds.includes(activeId) && selectedNodeIds.length > 1
       ? selectedNodeIds
-      : [activeId];
+      : groupedNodeIds;
     const startScene = structuredClone(currentScene);
     const origins = movingNodeIds.map((id) => {
       const node = nodes.find((item) => item.id === id);
@@ -4070,7 +4148,7 @@ function NodeGrid({ nodes, currentScene, selectedNodeIds = [], selectedNodeId, g
       const renderer = getWidgetDefinition(node.type)?.renderer;
       const height = node.customHeight ?? element?.offsetHeight
         ?? ({ image: 240, chart: 220, table: 260, code: 220, metric: 160, timer: 160, status: 160, link: 160 }[renderer] || 180);
-      return { id: node.id, left: node.x ?? 40, top: node.y ?? 40, right: (node.x ?? 40) + width, bottom: (node.y ?? 40) + height };
+      return { id: node.id, groupId: node.groupId, left: node.x ?? 40, top: node.y ?? 40, right: (node.x ?? 40) + width, bottom: (node.y ?? 40) + height };
     });
     selectionTransactionRef.current = {
       pointerId: event.pointerId,
@@ -4094,11 +4172,14 @@ function NodeGrid({ nodes, currentScene, selectedNodeIds = [], selectedNodeId, g
       right: Math.max(transaction.origin.x, point.x),
       bottom: Math.max(transaction.origin.y, point.y),
     };
-    const intersectingIds = transaction.nodeBounds.flatMap((node) =>
-      node.left <= rect.right && node.right >= rect.left && node.top <= rect.bottom && node.bottom >= rect.top
-        ? [node.id]
-        : [],
+    const intersectingNodes = transaction.nodeBounds.filter((node) =>
+      node.left <= rect.right && node.right >= rect.left && node.top <= rect.bottom && node.bottom >= rect.top,
     );
+    const intersectingNodeIds = new Set(intersectingNodes.map((node) => node.id));
+    const intersectingGroupIds = new Set(intersectingNodes.map((node) => node.groupId).filter(Boolean));
+    const intersectingIds = transaction.nodeBounds
+      .filter((node) => intersectingNodeIds.has(node.id) || intersectingGroupIds.has(node.groupId))
+      .map((node) => node.id);
     const nextSelection = transaction.additive
       ? [...new Set([...transaction.initialSelection, ...intersectingIds])]
       : intersectingIds;

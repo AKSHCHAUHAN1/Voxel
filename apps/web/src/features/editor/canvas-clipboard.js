@@ -17,12 +17,17 @@ export function cloneCanvasClipboard(clipboard, offset = 30) {
     ? clipboard.nodes.filter((node) => node && typeof node === 'object' && !Array.isArray(node))
     : [];
   const idMap = new Map();
+  const groupIdMap = new Map();
   const nodes = sourceNodes.map((node) => {
     const id = crypto.randomUUID();
     if (typeof node.id === 'string') idMap.set(node.id, id);
+    if (typeof node.groupId === 'string' && !groupIdMap.has(node.groupId)) {
+      groupIdMap.set(node.groupId, crypto.randomUUID());
+    }
     return {
       ...node,
       id,
+      ...(groupIdMap.has(node.groupId) ? { groupId: groupIdMap.get(node.groupId) } : {}),
       x: (Number.isFinite(node.x) ? node.x : 100) + offset,
       y: (Number.isFinite(node.y) ? node.y : 100) + offset,
     };
