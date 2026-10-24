@@ -11,6 +11,7 @@ export const widgetPluginCatalog = freezeDeep([
     version: '1.0.0',
     author: 'Voxel',
     category: 'Operations',
+    featured: true,
     description: 'Add a ready-to-configure service health card for operational dashboards.',
     permissions: [],
     widgets: [

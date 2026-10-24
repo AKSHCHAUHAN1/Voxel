@@ -14,6 +14,19 @@ class RequestError extends Error {
 
 const idSchema = z.string().uuid();
 const pluginById = new Map(widgetPluginCatalog.map((plugin) => [plugin.id, plugin]));
+const compareVersions = (left, right) => {
+  const parse = (version) => {
+    const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(version);
+    return match ? match.slice(1).map(Number) : null;
+  };
+  const leftParts = parse(left);
+  const rightParts = parse(right);
+  if (!leftParts || !rightParts) return null;
+  for (let index = 0; index < 3; index += 1) {
+    if (leftParts[index] !== rightParts[index]) return leftParts[index] > rightParts[index] ? 1 : -1;
+  }
+  return 0;
+};
 
 const requireUser = async (request, auth) => {
   const user = await auth.getAuthenticatedUser(request.cookies.voxel_access);
@@ -48,6 +61,7 @@ const serializeInstalledPlugin = (record) => {
     permissions: plugin?.permissions ?? [],
     widgets: plugin?.widgets ?? [],
     compatible: Boolean(plugin && plugin.version === record.version),
+    updateAvailable: Boolean(plugin && compareVersions(record.version, plugin.version) === -1),
     installedAt: record.installedAt.toISOString(),
   };
 };
@@ -121,6 +135,95 @@ export const registerPluginRoutes = async (app, environment) => {
       }
       throw error;
     }
+  });
+
+  app.put('/api/v1/workspaces/:workspaceId/plugins/:pluginId', async (request, reply) => {
+    const user = await requireUser(request, auth);
+    const params = z
+      .object({ workspaceId: idSchema, pluginId: z.string().min(3).max(120) })
+      .parse(request.params);
+    await requireMembership(params.workspaceId, user.id, ['OWNER', 'ADMIN']);
+    const plugin = pluginById.get(params.pluginId);
+    if (!plugin) throw new RequestError('This extension is no longer in the Voxel catalog.', 404);
+
+    const updated = await runSerializableTransaction(prisma, async (transaction) => {
+      const record = await transaction.workspacePlugin.findUnique({
+        where: {
+          workspaceId_pluginId: { workspaceId: params.workspaceId, pluginId: params.pluginId },
+        },
+      });
+      if (!record) throw new RequestError('This extension is not installed in the workspace.', 404);
+      const versionOrder = compareVersions(record.version, plugin.version);
+      if (versionOrder === 0) {
+        throw new RequestError('This extension is already up to date.', 409);
+      }
+      if (versionOrder === null) {
+        throw new RequestError('This extension has an invalid version and cannot be updated safely.', 409);
+      }
+      if (versionOrder > 0) {
+        throw new RequestError('The installed extension is newer than the catalog; downgrade was blocked.', 409);
+      }
+
+      const latestWidgetTypes = new Set(plugin.widgets.map((widget) => widget.type));
+      const removedWidgetTypes = (record.widgetTypes ?? []).filter(
+        (widgetType) => !latestWidgetTypes.has(widgetType),
+      );
+      if (removedWidgetTypes.length > 0) {
+        const [dashboards, templates] = await Promise.all([
+          transaction.dashboard.findMany({
+            where: { workspaceId: params.workspaceId },
+            select: { id: true, name: true, scene: true },
+          }),
+          transaction.dashboardTemplate.findMany({
+            where: { workspaceId: params.workspaceId },
+            select: { id: true, name: true, scene: true },
+          }),
+        ]);
+        const removedTypes = new Set(removedWidgetTypes);
+        const dashboardInUse = dashboards.find(
+          (dashboard) =>
+            Array.isArray(dashboard.scene?.nodes) &&
+            dashboard.scene.nodes.some((node) => removedTypes.has(node?.type)),
+        );
+        if (dashboardInUse) {
+          throw new RequestError(
+            `Remove this extension’s retired widgets from dashboard “${dashboardInUse.name}” before updating it.`,
+            409,
+          );
+        }
+        const templateInUse = templates.find(
+          (template) =>
+            Array.isArray(template.scene?.nodes) &&
+            template.scene.nodes.some((node) => removedTypes.has(node?.type)),
+        );
+        if (templateInUse) {
+          throw new RequestError(
+            `Remove this extension’s retired widgets from template “${templateInUse.name}” before updating it.`,
+            409,
+          );
+        }
+      }
+
+      const result = await transaction.workspacePlugin.update({
+        where: { id: record.id },
+        data: { version: plugin.version, widgetTypes: [...latestWidgetTypes] },
+      });
+      await transaction.auditEvent.create({
+        data: {
+          actorId: user.id,
+          workspaceId: params.workspaceId,
+          action: 'plugin.updated',
+          resourceType: 'workspace_plugin',
+          resourceId: record.id,
+          before: { pluginId: record.pluginId, version: record.version },
+          after: { pluginId: plugin.id, version: plugin.version },
+          ipAddress: request.ip,
+          userAgent: request.headers['user-agent'],
+        },
+      });
+      return result;
+    });
+    return reply.send(success(serializeInstalledPlugin(updated), createRequestId(request.id)));
   });
 
   app.delete('/api/v1/workspaces/:workspaceId/plugins/:pluginId', async (request, reply) => {

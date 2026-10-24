@@ -159,6 +159,8 @@ export default function SettingsPage() {
   // Active Tab State
   const [activeTab, setActiveTab] = useState('account');
   const [pluginSearch, setPluginSearch] = useState('');
+  const [pluginView, setPluginView] = useState('catalog');
+  const [pluginCategory, setPluginCategory] = useState('All categories');
   const [pluginActionId, setPluginActionId] = useState('');
 
   // Fetch Current User
@@ -561,6 +563,20 @@ export default function SettingsPage() {
     }
   };
 
+  const handleUpdatePlugin = async (plugin) => {
+    if (!activeWorkspaceId || !canManageMembers || pluginActionId) return;
+    setPluginActionId(plugin.id);
+    try {
+      await workspaceService.updatePlugin(activeWorkspaceId, plugin.id);
+      await queryClient.invalidateQueries({ queryKey: ['workspaces', activeWorkspaceId, 'plugins'] });
+      addToast(`${plugin.name} was updated to v${plugin.version}.`, 'success');
+    } catch (error) {
+      addToast(error.message || 'Extension could not be updated.', 'error');
+    } finally {
+      setPluginActionId('');
+    }
+  };
+
   const handleLogoutAll = async () => {
     try {
       await authService.logoutAll();
@@ -581,12 +597,23 @@ export default function SettingsPage() {
 
   const visiblePluginCatalog = useMemo(() => {
     const query = pluginSearch.trim().toLowerCase();
-    if (!query) return pluginCatalog;
-    return pluginCatalog.filter((plugin) =>
-      [plugin.name, plugin.author, plugin.category, plugin.description]
-        .some((value) => value?.toLowerCase().includes(query)),
-    );
-  }, [pluginCatalog, pluginSearch]);
+    const installedById = new Map(installedPlugins.map((plugin) => [plugin.id, plugin]));
+    return pluginCatalog.filter((plugin) => {
+      const installed = installedById.get(plugin.id);
+      const viewMatches = pluginView === 'catalog'
+        || (pluginView === 'installed' && Boolean(installed))
+          || (pluginView === 'updates' && Boolean(installed?.updateAvailable));
+      const categoryMatches = pluginCategory === 'All categories' || plugin.category === pluginCategory;
+      const searchMatches = !query || [plugin.name, plugin.author, plugin.category, plugin.description]
+        .some((value) => value?.toLowerCase().includes(query));
+      return viewMatches && categoryMatches && searchMatches;
+    });
+  }, [pluginCatalog, installedPlugins, pluginSearch, pluginView, pluginCategory]);
+
+  const pluginCategories = useMemo(
+    () => ['All categories', ...new Set(pluginCatalog.map((plugin) => plugin.category))],
+    [pluginCatalog],
+  );
 
   const tabs = [
     { id: 'account', label: 'Account & Profile', icon: User },
@@ -696,10 +723,29 @@ export default function SettingsPage() {
                     </div>
                   ) : (
                     <>
-                      <label className="relative mt-6 block max-w-xl">
-                        <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input type="search" value={pluginSearch} onChange={(event) => setPluginSearch(event.target.value)} placeholder="Search widget packs" className="w-full rounded-xl border border-slate-200 bg-transparent py-3 pl-10 pr-4 text-sm outline-none focus:border-violet-500 dark:border-white/10" />
-                      </label>
+                      <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <label className="relative block w-full max-w-xl">
+                          <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input type="search" value={pluginSearch} onChange={(event) => setPluginSearch(event.target.value)} placeholder="Search widget packs" className="w-full rounded-xl border border-slate-200 bg-transparent py-3 pl-10 pr-4 text-sm outline-none focus:border-violet-500 dark:border-white/10" />
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                          <span className="sr-only">Filter by category</span>
+                          <select value={pluginCategory} onChange={(event) => setPluginCategory(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs font-bold text-slate-700 outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200">
+                            {pluginCategories.map((category) => <option key={category}>{category}</option>)}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Widget pack views">
+                        {[
+                          { id: 'catalog', label: 'Browse' },
+                          { id: 'installed', label: `Installed (${installedPlugins.length})` },
+                          { id: 'updates', label: `Updates (${installedPlugins.filter((plugin) => plugin.updateAvailable).length})` },
+                        ].map((view) => (
+                          <button key={view.id} type="button" aria-pressed={pluginView === view.id} onClick={() => setPluginView(view.id)} className={`rounded-full px-3.5 py-2 text-xs font-bold transition ${pluginView === view.id ? 'bg-violet-600 text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5'}`}>
+                            {view.label}
+                          </button>
+                        ))}
+                      </div>
 
                       {!canManageMembers && (
                         <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
@@ -736,11 +782,16 @@ export default function SettingsPage() {
                                     <div className="flex flex-wrap items-center gap-2">
                                       <h3 className="text-sm font-extrabold">{plugin.name}</h3>
                                       <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold text-violet-700 dark:text-violet-300">{plugin.category}</span>
+                                      {plugin.featured && <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">Featured</span>}
                                       {installed && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">Installed</span>}
                                     </div>
-                                    <p className="mt-1 text-[11px] text-slate-500">By {plugin.author} · v{plugin.version}</p>
+                                    <p className="mt-1 text-[11px] text-slate-500">By {plugin.author} · v{plugin.version}{installed && ` · Installed v${installed.installedVersion}`}</p>
                                   </div>
-                                  {canManageMembers && (installed ? (
+                                  {canManageMembers && (installed?.updateAvailable ? (
+                                    <button type="button" disabled={Boolean(pluginActionId)} onClick={() => handleUpdatePlugin(plugin)} className="shrink-0 rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white hover:bg-violet-500 disabled:opacity-50">
+                                      {isBusy ? <Loader2 size={14} className="animate-spin" /> : 'Update'}
+                                    </button>
+                                  ) : installed ? (
                                     <button type="button" disabled={Boolean(pluginActionId)} onClick={() => handleUninstallPlugin(plugin)} className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5">
                                       {isBusy ? <Loader2 size={14} className="animate-spin" /> : 'Uninstall'}
                                     </button>
@@ -764,8 +815,8 @@ export default function SettingsPage() {
                                   <p className="mt-3 text-[10px] text-slate-500 dark:text-slate-400">
                                     Permissions: {plugin.permissions.length ? plugin.permissions.join(', ') : 'none'}
                                   </p>
-                                  {installed && !installed.compatible && (
-                                    <p role="status" className="mt-2 text-[11px] font-semibold text-amber-700 dark:text-amber-300">This installed version needs an update before it can be used.</p>
+                                  {installed?.updateAvailable && (
+                                    <p role="status" className="mt-2 text-[11px] font-semibold text-amber-700 dark:text-amber-300">An update is available. Existing widgets are checked before retired types are removed.</p>
                                   )}
                                 </div>
                               </article>

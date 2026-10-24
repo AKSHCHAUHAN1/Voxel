@@ -7,7 +7,7 @@ const { prismaMock, userId } = vi.hoisted(() => ({
   userId: '1b0e3ced-1d40-4a2a-a819-59c2250872bd',
   prismaMock: {
     workspaceMember: { findUnique: vi.fn() },
-    workspacePlugin: { create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), delete: vi.fn() },
+    workspacePlugin: { create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() },
     dashboard: { findMany: vi.fn() },
     dashboardTemplate: { findMany: vi.fn() },
     auditEvent: { create: vi.fn() },
@@ -122,6 +122,73 @@ describe('workspace widget packs', () => {
         data: expect.objectContaining({ action: 'plugin.installed', workspaceId }),
       }),
     );
+  });
+
+  it('updates an outdated pack and records the version change', async () => {
+    const installedAt = new Date('2026-10-12T10:00:00.000Z');
+    prismaMock.workspacePlugin.findUnique.mockResolvedValue({
+      id: 'da98c469-97f3-4140-a4b7-9fc1c76bf998',
+      workspaceId,
+      pluginId,
+      version: '0.9.0',
+      widgetTypes: ['voxel.operations.service-health'],
+    });
+    prismaMock.workspacePlugin.update.mockResolvedValue({
+      id: 'da98c469-97f3-4140-a4b7-9fc1c76bf998',
+      workspaceId,
+      pluginId,
+      version: '1.0.0',
+      widgetTypes: ['voxel.operations.service-health'],
+      installedAt,
+    });
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/workspaces/${workspaceId}/plugins/${pluginId}`,
+      headers: { cookie: 'voxel_access=test-session' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({ id: pluginId, version: '1.0.0', compatible: true });
+    expect(prismaMock.workspacePlugin.update).toHaveBeenCalledWith({
+      where: { id: 'da98c469-97f3-4140-a4b7-9fc1c76bf998' },
+      data: { version: '1.0.0', widgetTypes: ['voxel.operations.service-health'] },
+    });
+    expect(prismaMock.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'plugin.updated',
+          before: { pluginId, version: '0.9.0' },
+          after: { pluginId, version: '1.0.0' },
+        }),
+      }),
+    );
+  });
+
+  it('blocks an update that would retire a widget still used on a dashboard', async () => {
+    prismaMock.workspacePlugin.findUnique.mockResolvedValue({
+      id: 'da98c469-97f3-4140-a4b7-9fc1c76bf998',
+      pluginId,
+      version: '0.9.0',
+      widgetTypes: ['voxel.operations.legacy-health'],
+    });
+    prismaMock.dashboard.findMany.mockResolvedValue([
+      {
+        id: 'a050c2d7-3d5c-48ec-8417-f2bce4eddf6e',
+        name: 'Operations',
+        scene: { nodes: [{ type: 'voxel.operations.legacy-health' }] },
+      },
+    ]);
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/workspaces/${workspaceId}/plugins/${pluginId}`,
+      headers: { cookie: 'voxel_access=test-session' },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toMatch(/Operations/);
+    expect(prismaMock.workspacePlugin.update).not.toHaveBeenCalled();
   });
 
   it('does not uninstall a pack while one of its widgets is on a dashboard', async () => {
