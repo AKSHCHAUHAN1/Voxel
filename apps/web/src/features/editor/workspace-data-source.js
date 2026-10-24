@@ -76,7 +76,9 @@ export function valueAtPath(value, path) {
     .replace(/\[(\d+)\]/g, '.$1')
     .split('.')
     .filter(Boolean);
-  return segments.reduce((current, segment) => current == null ? undefined : current[segment], value);
+  return segments.reduce((current, segment) => (
+    current == null || !Object.hasOwn(Object(current), segment) ? undefined : current[segment]
+  ), value);
 }
 
 const jsonRecords = (value) => {
@@ -93,27 +95,29 @@ export function tableFromWorkspaceData(source, path = '') {
   if (source.kind === 'csv') return { columns: source.columns, rows: source.rows, truncated: source.truncated };
 
   const target = valueAtPath(source.value, path);
-  const records = jsonRecords(target === undefined ? source.value : target).slice(0, MAX_DATA_ROWS);
+  const allRecords = jsonRecords(target === undefined ? source.value : target);
+  const truncated = allRecords.length > MAX_DATA_ROWS;
+  const records = allRecords.slice(0, MAX_DATA_ROWS);
   const first = records[0];
-  if (!first) return { columns: [], rows: [], truncated: false };
+  if (!first) return { columns: [], rows: [], truncated };
 
   if (Array.isArray(first)) {
     const columns = uniqueHeaders(first.map((_value, index) => `Column ${index + 1}`));
     return {
       columns,
       rows: records.map((record) => Object.fromEntries(columns.map((column, index) => [column, String(record[index] ?? '')]))),
-      truncated: records.length === MAX_DATA_ROWS,
+      truncated,
     };
   }
   if (typeof first !== 'object') {
-    return { columns: ['Value'], rows: records.map((value) => ({ Value: String(value ?? '') })), truncated: records.length === MAX_DATA_ROWS };
+    return { columns: ['Value'], rows: records.map((value) => ({ Value: String(value ?? '') })), truncated };
   }
 
   const columns = [...new Set(records.flatMap((record) => Object.keys(record)))].slice(0, 100);
   return {
     columns,
     rows: records.map((record) => Object.fromEntries(columns.map((column) => [column, String(record[column] ?? '')]))),
-    truncated: records.length === MAX_DATA_ROWS,
+    truncated,
   };
 }
 
@@ -124,14 +128,21 @@ const displayString = (value) => {
   return String(value);
 };
 
+const numericValue = (value) => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  if (typeof value !== 'string' || value.trim() === '') return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
 export function valueFromWorkspaceData(source, node) {
   if (!source) return undefined;
   const field = String(node.dataSourceField || '').trim();
   if (source.kind === 'csv') {
     if (node.type === 'table') return undefined;
-    const key = field || source.columns.find((column) => source.rows.some((row) => Number.isFinite(Number(row[column])))) || source.columns[0];
+    const key = field || source.columns.find((column) => source.rows.some((row) => numericValue(row[column]) !== undefined)) || source.columns[0];
     if (node.type === 'chart') {
-      return source.rows.map((row) => Number(row[key])).filter(Number.isFinite).join(',');
+      return source.rows.map((row) => numericValue(row[key])).filter((value) => value !== undefined).join(',');
     }
     return source.rows[0]?.[key];
   }
@@ -145,7 +156,7 @@ export function valueFromWorkspaceData(source, node) {
       : candidate && typeof candidate === 'object'
         ? Object.values(candidate)
         : [];
-    return values.map(Number).filter(Number.isFinite).join(',');
+    return values.map(numericValue).filter((value) => value !== undefined).join(',');
   }
   const candidate = field ? valueAtPath(root, field) : root?.value ?? root?.data?.value ?? root;
   return displayString(candidate);

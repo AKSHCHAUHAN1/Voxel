@@ -1,5 +1,5 @@
 import { Component, memo, useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate, useParams, Link } from 'react-router-dom';
 import appIcon from '@/assets/app-icon.png';
 import appIconDark from '@/assets/app-icon-dark.png';
@@ -53,6 +53,11 @@ import { VersionHistory } from './VersionHistory';
 import { useYjs } from './use-yjs';
 import { cloneCanvasClipboard, createCanvasClipboard } from './canvas-clipboard';
 import {
+  parseWorkspaceDataFile,
+  tableFromWorkspaceData,
+  valueFromWorkspaceData,
+} from './workspace-data-source';
+import {
   CANVAS_INNER_PADDING,
   CANVAS_PADDING,
   canvasPointToScreen,
@@ -72,6 +77,16 @@ const emptyScene = {
   connections: [],
   gridStyle: 'dots',
 };
+const workspaceDataRenderers = new Set(['metric', 'display', 'chart', 'progress', 'status', 'table']);
+const workspaceDataRefreshIntervals = [
+  { value: 0, label: 'Manual refresh' },
+  { value: 30_000, label: 'Every 30 seconds' },
+  { value: 60_000, label: 'Every minute' },
+  { value: 300_000, label: 'Every 5 minutes' },
+];
+const isWorkspaceDataFile = (file) => /\.(csv|json)$/i.test(file?.name || '');
+const isWorkspaceDataAccessError = (query) => query?.isError && [401, 403, 404].includes(query.error?.statusCode);
+const usableWorkspaceData = (query) => isWorkspaceDataAccessError(query) ? undefined : query?.data;
 
 const sceneOf = (value) => {
   if (!value || typeof value !== 'object') return emptyScene;
@@ -404,6 +419,72 @@ export default function EditorPage() {
     () => sceneOf(yScene || dashboard.data?.scene),
     [dashboard.data?.scene, yScene],
   );
+
+  const workspaceFilesQuery = useQuery({
+    queryKey: ['workspaces', workspaceId, 'files'],
+    queryFn: () => workspaceService.files(workspaceId),
+    enabled: Boolean(workspaceId),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+  });
+  const workspaceDataFiles = (workspaceFilesQuery.data?.files || []).filter(isWorkspaceDataFile);
+  const workspaceFilesById = new Map(workspaceDataFiles.map((file) => [file.id, file]));
+  const workspaceDataNodes = useMemo(
+    () => scene.nodes.filter((node) => (
+      node.valueSource === 'workspace-file'
+      && workspaceDataRenderers.has(getWidgetDefinition(node.type)?.renderer)
+      && typeof node.dataSourceFileId === 'string'
+      && node.dataSourceFileId.length > 0
+    )),
+    [scene.nodes],
+  );
+  const workspaceDataFileIds = useMemo(
+    () => [...new Set(workspaceDataNodes.map((node) => node.dataSourceFileId))],
+    [workspaceDataNodes],
+  );
+  const refreshIntervalsByFileId = useMemo(() => {
+    const intervals = new Map();
+    workspaceDataNodes.forEach((node) => {
+      const interval = Number(node.dataRefreshInterval);
+      if (!Number.isFinite(interval) || interval <= 0) return;
+      const previous = intervals.get(node.dataSourceFileId);
+      intervals.set(node.dataSourceFileId, previous ? Math.min(previous, interval) : interval);
+    });
+    return intervals;
+  }, [workspaceDataNodes]);
+  const workspaceDataQueries = useQueries({
+    queries: workspaceDataFileIds.map((fileId) => ({
+      queryKey: ['workspace-file-data', workspaceId, fileId],
+      queryFn: async () => {
+        const file = workspaceFilesById.get(fileId);
+        if (!file) throw new Error('This workspace file is no longer available.');
+        const blob = await workspaceService.downloadFile(workspaceId, fileId);
+        return parseWorkspaceDataFile(await blob.text(), file);
+      },
+      enabled: Boolean(workspaceId && workspaceFilesById.has(fileId)),
+      staleTime: 30_000,
+      refetchInterval: refreshIntervalsByFileId.get(fileId) || false,
+      refetchIntervalInBackground: false,
+      retry: (failureCount, error) => ![401, 403, 404].includes(error?.statusCode) && failureCount < 1,
+    })),
+  });
+  const workspaceDataQueryByFileId = new Map(workspaceDataFileIds.map((fileId, index) => [
+    fileId,
+    { file: workspaceFilesById.get(fileId), query: workspaceDataQueries[index] },
+  ]));
+  const getWorkspaceDataState = (node) => {
+    if (node.valueSource !== 'workspace-file' || !node.dataSourceFileId) return null;
+    const state = workspaceDataQueryByFileId.get(node.dataSourceFileId);
+    if (state?.file) return state;
+    return {
+      file: null,
+      query: null,
+      fileListLoading: workspaceFilesQuery.isPending,
+      fileListError: workspaceFilesQuery.error,
+      missing: workspaceFilesQuery.isSuccess,
+    };
+  };
 
   useEffect(() => {
     const focusNodeId = location.state?.focusNodeId;
@@ -1072,6 +1153,16 @@ export default function EditorPage() {
         result = Math.max(...values);
       }
       return Number.isInteger(result) ? result.toString() : result.toFixed(2);
+    }
+
+    if (node.valueSource === 'workspace-file') {
+      const sourceState = getWorkspaceDataState(node);
+      const sourceData = usableWorkspaceData(sourceState?.query);
+      if (sourceState?.file && sourceData) {
+        const renderer = getWidgetDefinition(node.type)?.renderer || node.type;
+        return valueFromWorkspaceData(sourceData, { ...node, type: renderer }) ?? '';
+      }
+      return '';
     }
 
     return node.content;
@@ -2429,6 +2520,7 @@ export default function EditorPage() {
                     selectedNodeId={selectedNodeId}
                     onSelectNode={handleSelectNode}
                     resolveNodeValue={resolveNodeValue}
+                    getWorkspaceDataState={getWorkspaceDataState}
                     onDragStart={handleDragStart}
                     onResizeStart={handleResizeStart}
                     onKeyboardMove={handleKeyboardMove}
@@ -2688,6 +2780,11 @@ export default function EditorPage() {
                 if (!selectedNode) return null;
                 const widgetDefinition = getWidgetDefinition(selectedNode.type);
                 const widgetRenderer = widgetDefinition?.renderer;
+                const selectedDataSource = getWorkspaceDataState(selectedNode);
+                const selectedDataFile = workspaceFilesById.get(selectedNode.dataSourceFileId);
+                const selectedDataQuery = selectedDataSource?.query;
+                const selectedSourceData = usableWorkspaceData(selectedDataQuery);
+                const selectedCsvSource = selectedSourceData?.kind === 'csv';
                 return (
                   <>
                     <div className="space-y-5 overflow-y-auto max-h-[calc(100vh-180px)] pb-4">
@@ -2729,16 +2826,134 @@ export default function EditorPage() {
                             </label>
                             <select
                           value={selectedNode.valueSource || 'manual'}
-                          onChange={(e) =>
-                            updateNode(selectedNode.id, { valueSource: e.target.value })
-                          }
+                          onChange={(e) => {
+                            const valueSource = e.target.value;
+                            updateNode(selectedNode.id, {
+                              valueSource,
+                              ...(valueSource === 'workspace-file' && !selectedNode.dataSourceFileId && workspaceDataFiles[0]
+                                ? { dataSourceFileId: workspaceDataFiles[0].id }
+                                : {}),
+                            });
+                          }}
                           className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900"
                         >
                               <option value="manual">Manual Input</option>
                               <option value="connections">Connected Inputs (Aggregation)</option>
+                              {workspaceDataRenderers.has(widgetRenderer) && <option value="workspace-file">Workspace File (CSV or JSON)</option>}
                             </select>
                           </div>
                     )}
+
+                        {workspaceDataRenderers.has(widgetRenderer) && selectedNode.valueSource === 'workspace-file' && (
+                          <section className="space-y-3 rounded-xl border border-violet-200/70 bg-violet-50/50 p-3 dark:border-violet-500/20 dark:bg-violet-500/5" aria-label="Workspace file data source">
+                            <div>
+                              <label htmlFor={`data-source-file-${selectedNode.id}`} className="text-[10px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-300">
+                                CSV or JSON file
+                              </label>
+                              <select
+                                id={`data-source-file-${selectedNode.id}`}
+                                value={selectedNode.dataSourceFileId || ''}
+                                disabled={!canEditDashboard || workspaceFilesQuery.isPending || workspaceFilesQuery.isError}
+                                onChange={(event) => updateNode(selectedNode.id, { dataSourceFileId: event.target.value, dataSourceField: '' })}
+                                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none disabled:opacity-60 dark:border-white/10 dark:bg-slate-900"
+                              >
+                                <option value="">Choose a workspace file…</option>
+                                {workspaceDataFiles.map((file) => (
+                                  <option key={file.id} value={file.id}>{file.name}</option>
+                                ))}
+                                {selectedNode.dataSourceFileId && !selectedDataFile && (
+                                  <option value={selectedNode.dataSourceFileId}>Unavailable file</option>
+                                )}
+                              </select>
+                              {workspaceFilesQuery.isError ? (
+                                <p role="status" className="mt-1 text-[10px] text-rose-600 dark:text-rose-300">
+                                  Workspace files could not be loaded.{' '}
+                                  <button type="button" onClick={() => workspaceFilesQuery.refetch()} className="font-semibold underline">Try again</button>
+                                </p>
+                              ) : workspaceDataFiles.length === 0 && workspaceFilesQuery.isSuccess ? (
+                                <p className="mt-1 text-[10px] leading-4 text-slate-500 dark:text-slate-400">
+                                  Upload a CSV or JSON file in{' '}
+                                  <Link to={`/workspaces/${workspaceId}/dashboards`} className="font-semibold text-violet-600 hover:underline dark:text-violet-300">workspace files</Link>.
+                                </p>
+                              ) : null}
+                            </div>
+
+                            {selectedDataFile && selectedCsvSource && widgetRenderer !== 'table' ? (
+                              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                CSV column
+                                <select
+                                  value={selectedNode.dataSourceField || ''}
+                                  disabled={!canEditDashboard || !selectedSourceData}
+                                  onChange={(event) => updateNode(selectedNode.id, { dataSourceField: event.target.value })}
+                                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-normal normal-case tracking-normal text-slate-800 focus:border-violet-500 focus:outline-none disabled:opacity-60 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200"
+                                >
+                                  <option value="">Auto-detect numeric column</option>
+                                  {selectedSourceData.columns.map((column) => <option key={column} value={column}>{column}</option>)}
+                                  {selectedNode.dataSourceField && !selectedSourceData.columns.includes(selectedNode.dataSourceField) && (
+                                    <option value={selectedNode.dataSourceField}>{selectedNode.dataSourceField} (not found)</option>
+                                  )}
+                                </select>
+                              </label>
+                            ) : selectedDataFile?.name.toLowerCase().endsWith('.json') ? (
+                              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                {widgetRenderer === 'table' ? 'Records path (optional)' : 'JSON property path (optional)'}
+                                <input
+                                  type="text"
+                                  value={selectedNode.dataSourceField || ''}
+                                  disabled={!canEditDashboard}
+                                  onChange={(event) => updateNode(selectedNode.id, { dataSourceField: event.target.value })}
+                                  placeholder={widgetRenderer === 'table' ? 'records' : 'metrics[0].value'}
+                                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-normal normal-case tracking-normal text-slate-800 focus:border-violet-500 focus:outline-none disabled:opacity-60 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200"
+                                />
+                              </label>
+                            ) : selectedDataFile && widgetRenderer === 'table' ? (
+                              <p className="text-[10px] leading-4 text-slate-500 dark:text-slate-400">All CSV columns and rows are shown.</p>
+                            ) : null}
+
+                            <div>
+                              <label htmlFor={`data-refresh-${selectedNode.id}`} className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                Refresh policy
+                              </label>
+                              <select
+                                id={`data-refresh-${selectedNode.id}`}
+                                value={Number(selectedNode.dataRefreshInterval) || 0}
+                                disabled={!canEditDashboard}
+                                onChange={(event) => updateNode(selectedNode.id, { dataRefreshInterval: Number(event.target.value) })}
+                                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-violet-500 focus:outline-none disabled:opacity-60 dark:border-white/10 dark:bg-slate-900"
+                              >
+                                {workspaceDataRefreshIntervals.map((interval) => (
+                                  <option key={interval.value} value={interval.value}>{interval.label}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {selectedDataFile && (
+                              <div className="flex items-start justify-between gap-2 border-t border-violet-200/70 pt-2 dark:border-violet-500/20">
+                                <p role={selectedDataQuery?.isError && !selectedSourceData ? 'alert' : 'status'} className={`min-w-0 text-[10px] leading-4 ${selectedDataQuery?.isError && !selectedSourceData ? 'text-rose-600 dark:text-rose-300' : 'text-slate-500 dark:text-slate-400'}`}>
+                                  {selectedDataSource?.missing ? 'This file is no longer available.'
+                                    : selectedDataQuery?.isError && selectedSourceData ? 'Refresh failed; using the last successful load.'
+                                      : selectedDataQuery?.isError ? selectedDataQuery.error?.message || 'This file could not be loaded.'
+                                        : selectedDataQuery?.isPending ? 'Loading file contents…'
+                                          : selectedDataQuery?.isFetching ? 'Refreshing file contents…'
+                                            : selectedSourceData?.truncated ? 'Loaded with a 1,000 row display limit.'
+                                              : selectedSourceData?.kind === 'csv' ? `${selectedSourceData.rows.length.toLocaleString()} rows ready.`
+                                                : selectedSourceData ? 'JSON data ready.'
+                                                  : 'Waiting for file contents…'}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => selectedDataQuery?.refetch()}
+                                  disabled={!selectedDataQuery || selectedDataQuery.isFetching || !selectedDataSource?.file}
+                                  aria-label={`Refresh ${selectedDataFile.name}`}
+                                  title="Refresh now"
+                                  className="shrink-0 rounded-lg border border-violet-200 bg-white p-1.5 text-violet-600 transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-slate-900 dark:text-violet-300 dark:hover:bg-white/5"
+                                >
+                                  <RefreshCw size={13} className={selectedDataQuery?.isFetching ? 'animate-spin' : ''} />
+                                </button>
+                              </div>
+                            )}
+                          </section>
+                        )}
 
                         {widgetRenderer !== 'logic' &&
                       selectedNode.valueSource === 'connections' && (
@@ -2807,6 +3022,11 @@ export default function EditorPage() {
                           const value = selectedNode[field.key] ?? '';
                           const controlClass = 'w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm focus:outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-900';
                           const connectedValue = field.isValue && selectedNode.valueSource === 'connections';
+                          const workspaceFileValue = field.isValue && selectedNode.valueSource === 'workspace-file';
+                          const suppliedTableField = widgetRenderer === 'table'
+                            && selectedNode.valueSource === 'workspace-file'
+                            && ['columns', 'rows'].includes(field.key);
+                          if (suppliedTableField) return null;
                           return (
                             <label key={field.key} className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                                   {field.label}
@@ -2815,6 +3035,10 @@ export default function EditorPage() {
                                       Resolved from connections:{' '}
                                       <b>{resolveNodeValue(selectedNode)}</b>
                                     </div>
+                              ) : workspaceFileValue ? (
+                                <div className="mt-1 rounded-lg border border-violet-200/70 bg-violet-50/70 p-2.5 text-xs font-medium normal-case tracking-normal text-slate-700 dark:border-violet-500/20 dark:bg-violet-500/5 dark:text-slate-300">
+                                  Resolved from workspace file: <b>{resolveNodeValue(selectedNode) || (selectedDataQuery?.isPending ? 'Loading…' : 'No value loaded')}</b>
+                                </div>
                               ) : field.type === 'node-select' ? (
                                 <select value={value} onChange={(event) => updateNode(selectedNode.id, { [field.key]: event.target.value,
                                         })} className={`${controlClass} mt-1 normal-case tracking-normal`}>
@@ -3377,7 +3601,7 @@ const CanvasOverview = memo(
 );
 
 // --- FREEFORM GRID SETUP ---
-function NodeGrid({ nodes, selectedNodeIds = [], selectedNodeId, onSelectNode, resolveNodeValue, onDragStart, onResizeStart, onKeyboardMove, updateNode, canEdit, awarenessStates, localClientId,
+function NodeGrid({ nodes, selectedNodeIds = [], selectedNodeId, onSelectNode, resolveNodeValue, getWorkspaceDataState, onDragStart, onResizeStart, onKeyboardMove, updateNode, canEdit, awarenessStates, localClientId,
 }) {
   const remoteSelections = useMemo(() => {
     if (!awarenessStates) return {};
@@ -3401,6 +3625,7 @@ function NodeGrid({ nodes, selectedNodeIds = [], selectedNodeId, onSelectNode, r
             remoteSelectedBy={remoteSelections[node.id] || []}
             onSelect={(e) => onSelectNode(node.id, e)}
             resolveNodeValue={resolveNodeValue}
+            getWorkspaceDataState={getWorkspaceDataState}
             onDragStart={onDragStart}
             onResizeStart={onResizeStart}
             onKeyboardMove={onKeyboardMove}
@@ -3448,10 +3673,17 @@ class WidgetErrorBoundary extends Component {
 }
 
 // --- CANVAS CARD COMPONENT ---
-function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveNodeValue, onDragStart, onResizeStart, onKeyboardMove, updateNode, canEdit,
+function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveNodeValue, getWorkspaceDataState, onDragStart, onResizeStart, onKeyboardMove, updateNode, canEdit,
 }) {
   const displayValue = resolveNodeValue(node);
   const nodeDefinition = getWidgetDefinition(node.type);
+  const workspaceDataState = node.valueSource === 'workspace-file' ? getWorkspaceDataState?.(node) : null;
+  const workspaceData = workspaceDataState?.file ? usableWorkspaceData(workspaceDataState.query) : null;
+  const valueSourceCaption = node.valueSource === 'workspace-file'
+    ? 'Workspace file data'
+    : node.valueSource === 'connections'
+      ? 'Connected inputs'
+      : 'Sample value · no data source connected';
   const NodeIcon = widgetIconComponents[nodeDefinition?.icon] || Layers;
   const nodeIcon = (
     <NodeIcon size={18} className={widgetIconColors[node.type] || 'text-slate-500'} />
@@ -3579,7 +3811,7 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
             <span className="text-4xl font-extrabold tracking-tight font-mono">{displayValue}</span>
           </div>
           <span className="text-[10px] text-slate-400 block mt-2">
-            Sample value · no data source connected
+            {valueSourceCaption}
           </span>
         </div>
       )}
@@ -3594,7 +3826,7 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
             {node.description || 'KPI summary'}
           </p>
           <span className="text-[10px] text-slate-400">
-            Sample value · no data source connected
+            {valueSourceCaption}
           </span>
         </div>
       )}
@@ -3679,7 +3911,9 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
               ) : (
                 <div className="flex flex-col items-center justify-center h-[65px] bg-slate-100 dark:bg-white/5 rounded text-center p-2">
                   <span className="text-[20px] font-bold font-mono">{displayValue}</span>
-                  <span className="text-[9px] text-slate-400">Single connected metric value</span>
+                  <span className="text-[9px] text-slate-400">
+                    {node.valueSource === 'workspace-file' ? 'Workspace file data' : node.valueSource === 'connections' ? 'Single connected metric value' : 'Add more values to show a trend'}
+                  </span>
                 </div>
               )}
             </div>
@@ -3799,8 +4033,14 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
 
       {/* 9. Table */}
       {nodeDefinition?.renderer === 'table' && (() => {
-        const cols = (node.columns || '').split(',').map((c) => c.trim()).filter(Boolean);
-        const rows = (node.rows || '').split('\n').map((r) => r.split(',').map((c) => c.trim()));
+        const usesWorkspaceFile = node.valueSource === 'workspace-file';
+        const linkedTable = usesWorkspaceFile && workspaceData ? tableFromWorkspaceData(workspaceData, node.dataSourceField) : null;
+        const cols = usesWorkspaceFile
+          ? linkedTable?.columns || []
+          : (node.columns || '').split(',').map((c) => c.trim()).filter(Boolean);
+        const rows = usesWorkspaceFile
+          ? linkedTable?.rows.map((row) => cols.map((column) => row[column] ?? '')) || []
+          : (node.rows || '').split('\n').map((r) => r.split(',').map((c) => c.trim()));
         return (
           <div className="space-y-2">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
@@ -3818,7 +4058,9 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                    {rows.map((row, rIdx) => (
+                    {rows.length === 0 ? (
+                      <tr><td colSpan={Math.max(cols.length, 1)} className="px-2 py-4 text-center text-slate-400">No rows to display.</td></tr>
+                    ) : rows.map((row, rIdx) => (
                     <tr key={rIdx} className="hover:bg-slate-50/50 dark:hover:bg-white/5">
                         {row.map((cell, cIdx) => (
                         <td key={cIdx} className="px-2 py-1.5 truncate max-w-[120px]">
@@ -3891,6 +4133,20 @@ function CanvasNodeCard({ node, isSelected, remoteSelectedBy, onSelect, resolveN
             Its saved data is preserved. This widget can’t run in the current Voxel version.
           </p>
         </div>
+      )}
+      {node.valueSource === 'workspace-file' && (
+        <p role={workspaceDataState?.query?.isError && !workspaceData ? 'alert' : 'status'} className={`mt-2 border-t pt-2 text-[10px] ${workspaceDataState?.query?.isError && !workspaceData ? 'border-rose-200 text-rose-600 dark:border-rose-900/50 dark:text-rose-300' : 'border-slate-100 text-slate-400 dark:border-white/5'}`}>
+          {workspaceDataState?.fileListLoading ? 'Checking workspace files…'
+            : workspaceDataState?.fileListError ? 'Workspace files could not be loaded.'
+              : workspaceDataState?.missing ? 'Source file is unavailable. Choose another file in the inspector.'
+                : !workspaceDataState?.file ? 'Choose a CSV or JSON file in the inspector.'
+                  : workspaceDataState.query?.isError && workspaceData ? `Refresh failed. Showing the last loaded data from ${workspaceDataState.file.name}.`
+                    : workspaceDataState.query?.isError ? `Could not load ${workspaceDataState.file.name}. ${workspaceDataState.query.error?.message || ''}`
+                      : workspaceDataState.query?.isPending ? `Loading ${workspaceDataState.file.name}…`
+                        : workspaceDataState.query?.isFetching ? `Refreshing ${workspaceDataState.file.name}…`
+                          : workspaceData ? `Live data · ${workspaceDataState.file.name}`
+                            : `Waiting for ${workspaceDataState.file.name}…`}
+        </p>
       )}
       {canEdit && isSelected && (
         <button

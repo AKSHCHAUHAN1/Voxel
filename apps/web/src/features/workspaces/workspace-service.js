@@ -15,7 +15,9 @@ const downloadFile = async (workspaceId, fileId) => {
   const response = await fetch(`${runtime.apiBaseUrl}/api/v1/workspaces/${workspaceId}/files/${fileId}/content`, { credentials: 'include' });
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new Error(payload?.error?.message || 'File could not be downloaded.');
+    const error = new Error(payload?.error?.message || 'File could not be downloaded.');
+    error.statusCode = response.status;
+    throw error;
   }
   return response.blob();
 };

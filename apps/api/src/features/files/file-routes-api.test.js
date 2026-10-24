@@ -28,7 +28,9 @@ vi.mock('../auth/auth-service.js', () => ({ AuthService: class {
 
 const { registerFileRoutes } = await import('./file-routes.js');
 const workspaceId = '9f4f0208-352b-4ed2-9ed9-b12f3cc4c095';
+const workspaceFileId = 'ce0203ef-8302-43c1-b52a-35528caa10cc';
 const image = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]);
+const csv = Buffer.from('Month,Revenue\nJan,12\n');
 const environment = {
   NODE_ENV: 'test',
   VOXEL_STORAGE_ENDPOINT: 'http://minio.test:9000',
@@ -99,6 +101,44 @@ describe('workspace file routes', () => {
     expect(response.statusCode).toBe(403);
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('serves a workspace file only to an active workspace member', async () => {
+    prismaMock.workspaceMember.findUnique.mockResolvedValue(null);
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/workspaces/${workspaceId}/files/${workspaceFileId}/content`,
+      headers: { cookie: 'voxel_access=test-session' },
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(prismaMock.storedFile.findFirst).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('returns workspace file bytes with private, no-store headers for a member', async () => {
+    prismaMock.storedFile.findFirst.mockResolvedValue({
+      id: workspaceFileId,
+      workspaceId,
+      purpose: 'WORKSPACE',
+      storageKey: `workspaces/${workspaceId}/${workspaceFileId}`,
+      originalName: 'report.csv',
+      contentType: 'text/csv',
+      sizeBytes: BigInt(csv.length),
+      deletedAt: null,
+    });
+    fetchMock.mockResolvedValue(new Response(csv, { status: 200 }));
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/workspaces/${workspaceId}/files/${workspaceFileId}/content`,
+      headers: { cookie: 'voxel_access=test-session' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(Buffer.from(response.rawPayload).equals(csv)).toBe(true);
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
   });
 
   it('rejects an upload that would exceed the workspace quota', async () => {

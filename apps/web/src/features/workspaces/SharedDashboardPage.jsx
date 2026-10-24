@@ -4,6 +4,7 @@ import { Check, Edit3, Loader2, LockKeyhole, Save } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { workspaceService } from './workspace-service';
 import { getWidgetDefinition, registerWidgetDefinition, useWidgetDefinitions } from '@/features/editor/widget-registry';
+import { resolveSharedDashboardValues } from './shared-dashboard-values';
 
 const nodeWidth = (size) => ({ small: 220, medium: 280, large: 340, wide: 440 }[size] || 280);
 const typeLabel = (type = 'widget') => type.charAt(0).toUpperCase() + type.slice(1);
@@ -37,13 +38,89 @@ function safeImageUrl(value) {
   return safeExternalUrl(value);
 }
 
-function SharedNode({ node, editing, onUpdate }) {
+function SharedNodeEditor({ node, renderer, nodes, onUpdate }) {
+  const inputClass = 'mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-violet-500 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100';
+  const textField = (key, label, { multiline = false, maxLength = 4000, placeholder = '' } = {}) => (
+    <label key={key} className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+      {label}
+      {multiline ? (
+        <textarea value={node[key] ?? ''} maxLength={maxLength} onChange={(event) => onUpdate(node.id, { [key]: event.target.value })} className={`${inputClass} min-h-20 resize-y font-normal normal-case tracking-normal`} placeholder={placeholder} />
+      ) : (
+        <input value={node[key] ?? ''} maxLength={maxLength} onChange={(event) => onUpdate(node.id, { [key]: event.target.value })} className={`${inputClass} font-normal normal-case tracking-normal`} placeholder={placeholder} />
+      )}
+    </label>
+  );
+
+  const numberField = (key, label, min, max) => (
+    <label key={key} className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+      {label}
+      <input type="number" value={node[key] ?? ''} min={min} max={max} onChange={(event) => onUpdate(node.id, { [key]: Number(event.target.value) || min })} className={`${inputClass} font-normal normal-case tracking-normal`} />
+    </label>
+  );
+
+  const selectField = (key, label, options) => (
+    <label key={key} className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+      {label}
+      <select value={node[key] ?? ''} onChange={(event) => onUpdate(node.id, { [key]: event.target.value })} className={inputClass}>
+        {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+    </label>
+  );
+
+  if (renderer === 'table') {
+    return <div className="space-y-3">{textField('columns', 'Columns', { maxLength: 1000, placeholder: 'Name,Owner,Status' })}{textField('rows', 'Rows', { multiline: true, maxLength: 24000, placeholder: 'One comma-separated row per line' })}</div>;
+  }
+  if (renderer === 'metric') {
+    return <div className="space-y-3">{textField('content', 'Value', { maxLength: 2000 })}{textField('unit', 'Unit', { maxLength: 24, placeholder: '$, %, /s' })}</div>;
+  }
+  if (renderer === 'display') {
+    return <div className="space-y-3">{textField('content', 'Value', { maxLength: 2000 })}{textField('description', 'Supporting text', { maxLength: 280 })}</div>;
+  }
+  if (renderer === 'progress') {
+    return <div className="space-y-3">{textField('content', 'Current value', { maxLength: 80 })}{numberField('target', 'Target', 1, 1_000_000_000)}</div>;
+  }
+  if (renderer === 'status') {
+    return <div className="space-y-3">{textField('content', 'Status message', { maxLength: 280 })}{selectField('statusColor', 'State', [{ value: 'success', label: 'Success' }, { value: 'warning', label: 'Warning' }, { value: 'error', label: 'Error' }])}</div>;
+  }
+  if (renderer === 'note' || renderer === 'chart') {
+    return <div className="space-y-3">{textField('content', renderer === 'chart' ? 'Comma-separated values' : 'Note', { multiline: true, maxLength: renderer === 'chart' ? 12000 : 20000 })}</div>;
+  }
+  if (renderer === 'link') {
+    return <div className="space-y-3">{textField('url', 'Link URL', { maxLength: 2048, placeholder: 'https://…' })}{textField('description', 'Description', { maxLength: 280 })}</div>;
+  }
+  if (renderer === 'image') return <div className="space-y-3">{textField('imageUrl', 'Image URL', { maxLength: 2048, placeholder: 'https://…' })}</div>;
+  if (renderer === 'embed') return <div className="space-y-3">{textField('embedUrl', 'Embed URL', { maxLength: 2048, placeholder: 'https://…' })}</div>;
+  if (renderer === 'code') return <div className="space-y-3">{textField('code', 'Code', { multiline: true, maxLength: 20000 })}{textField('language', 'Language', { maxLength: 40 })}</div>;
+  if (renderer === 'timer') {
+    return <div className="space-y-3">{numberField('duration', 'Duration (seconds)', 1, 86400)}{selectField('timerMode', 'Timer mode', [{ value: 'countdown', label: 'Countdown' }, { value: 'stopwatch', label: 'Stopwatch' }])}</div>;
+  }
+  if (renderer === 'divider') {
+    return <div className="space-y-3">{selectField('dividerStyle', 'Line style', ['solid', 'dashed', 'dotted', 'double'].map((value) => ({ value, label: value })))}</div>;
+  }
+  if (renderer === 'logic') {
+    const availableNodes = nodes.filter((candidate) => candidate.id !== node.id && getWidgetDefinition(candidate.type)?.renderer !== 'note');
+    const nodeOptions = [{ value: '', label: 'Choose a widget' }, ...availableNodes.map((candidate) => ({ value: candidate.id, label: `${candidate.title || candidate.type} · ${candidate.type}` }))];
+    return <div className="space-y-3">{selectField('logicA', 'Input source A', nodeOptions)}{selectField('logicOp', 'Operator', [{ value: '+', label: 'Add (+)' }, { value: '-', label: 'Subtract (−)' }, { value: '*', label: 'Multiply (×)' }, { value: '/', label: 'Divide (÷)' }])}{selectField('logicB', 'Input source B', nodeOptions)}</div>;
+  }
+  return <div className="space-y-3">{textField('content', 'Widget content', { multiline: true, maxLength: 20000 })}</div>;
+}
+
+function SharedNode({ node, nodes, editing, onUpdate, resolvedValue }) {
   const definition = getWidgetDefinition(node.type);
   const renderer = definition?.renderer || node.type;
   const widgetLabel = definition?.title || typeLabel(node.type);
-  const content = displayValue(node.content);
+  const fileSourceUnavailable = node.valueSource === 'workspace-file';
+  const linkedValueUnavailable = (node.valueSource === 'connections' || renderer === 'logic') && resolvedValue == null;
+  const content = displayValue(fileSourceUnavailable ? '' : resolvedValue ?? node.content);
   const numericProgress = Number.parseFloat(content);
   const isProgress = renderer === 'progress' && Number.isFinite(numericProgress);
+  const progressTarget = Number.isFinite(Number(node.target)) && Number(node.target) > 0 ? Number(node.target) : 100;
+  const progressPercent = isProgress ? Math.max(0, Math.min(100, (numericProgress / progressTarget) * 100)) : 0;
+  const timerDuration = Number.isFinite(Number(node.duration)) && Number(node.duration) > 0 ? Math.floor(Number(node.duration)) : 300;
+  const timerHours = Math.floor(timerDuration / 3600);
+  const timerMinutes = Math.floor((timerDuration % 3600) / 60);
+  const timerSeconds = timerDuration % 60;
+  const timerDisplay = `${timerHours ? `${String(timerHours).padStart(2, '0')}:` : ''}${String(timerMinutes).padStart(2, '0')}:${String(timerSeconds).padStart(2, '0')}`;
   const accent = ['emerald', 'rose', 'amber', 'cyan'].includes(node.color) ? node.color : 'violet';
   const chartValues = content.split(',').map((value) => Number.parseFloat(value.trim())).filter(Number.isFinite);
   const chartMin = Math.min(...chartValues, 0);
@@ -54,17 +131,31 @@ function SharedNode({ node, editing, onUpdate }) {
   const rows = (node.rows || '').split('\n').filter(Boolean).map((row) => row.split(',').map((value) => value.trim()));
   let body;
 
-  if (editing && renderer !== 'divider') {
-    body = <textarea value={content} onChange={(event) => onUpdate(node.id, { content: event.target.value })} className="min-h-24 w-full resize-y rounded-lg border border-slate-200 bg-slate-50/70 p-2.5 text-sm leading-6 outline-none focus:border-violet-400 dark:border-white/10 dark:bg-black/10" aria-label="Widget content" />;
+  if (fileSourceUnavailable && editing) {
+    body = <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-400/20 dark:bg-amber-500/5"><p className="text-xs leading-5 text-amber-900 dark:text-amber-100">This share link does not include workspace file contents. Switch to a manual value to show content here.</p><button type="button" onClick={() => onUpdate(node.id, { valueSource: 'manual', dataSourceFileId: '', dataSourceField: '' })} className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100 dark:border-amber-400/20 dark:bg-slate-900 dark:text-amber-100">Switch to a manual value</button></div>;
+  } else if (fileSourceUnavailable) {
+    body = <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900 dark:border-amber-400/20 dark:bg-amber-500/5 dark:text-amber-100">This widget uses a private workspace file. Its contents are not included in this share.</div>;
+  } else if (linkedValueUnavailable && editing) {
+    body = <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-400/20 dark:bg-amber-500/5"><p className="text-xs leading-5 text-amber-900 dark:text-amber-100">A connected value depends on data that is not available through this share.</p>{node.valueSource === 'connections' && <button type="button" onClick={() => onUpdate(node.id, { valueSource: 'manual' })} className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100 dark:border-amber-400/20 dark:bg-slate-900 dark:text-amber-100">Switch to a manual value</button>}{renderer === 'logic' && <SharedNodeEditor node={node} nodes={nodes} renderer={renderer} onUpdate={onUpdate} />}</div>;
+  } else if (linkedValueUnavailable) {
+    body = <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900 dark:border-amber-400/20 dark:bg-amber-500/5 dark:text-amber-100">A connected value depends on data that is not available through this share.</div>;
+  } else if (editing && node.valueSource === 'connections') {
+    body = <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50 p-3 dark:border-violet-400/20 dark:bg-violet-500/5"><p className="text-xs leading-5 text-violet-900 dark:text-violet-100">Calculated from connected widgets · current value: <b>{content}</b></p><button type="button" onClick={() => onUpdate(node.id, { valueSource: 'manual' })} className="rounded-lg border border-violet-300 bg-white px-3 py-2 text-xs font-bold text-violet-800 hover:bg-violet-100 dark:border-violet-400/20 dark:bg-slate-900 dark:text-violet-100">Switch to a manual value</button></div>;
+  } else if (editing) {
+    body = <SharedNodeEditor node={node} nodes={nodes} renderer={renderer} onUpdate={onUpdate} />;
   } else if (renderer === 'divider') {
     body = <div className="mt-5 border-t border-slate-200 dark:border-white/10" style={{ borderTopStyle: ['solid', 'dashed', 'dotted', 'double'].includes(node.dividerStyle) ? node.dividerStyle : 'solid' }} />;
   } else if (isProgress) {
-    body = <div><div className="mb-2 text-3xl font-black">{numericProgress}%</div><div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-white/10"><div className={`h-full rounded-full ${progressClasses[accent]}`} style={{ width: `${Math.max(0, Math.min(100, numericProgress))}%` }} /></div></div>;
+    body = <div><div className="mb-2 flex items-baseline gap-1 font-mono"><span className="text-3xl font-black">{numericProgress}</span><span className="text-xs text-slate-500">/ {progressTarget}</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-white/10"><div className={`h-full rounded-full transition-all ${progressClasses[accent]}`} style={{ width: `${progressPercent}%` }} /></div><p className="mt-2 text-[10px] text-slate-500">{progressPercent.toFixed(1)}% complete</p></div>;
   } else if (renderer === 'metric') {
     body = <div className="text-3xl font-black tracking-tight">{node.unit}{content}</div>;
+  } else if (renderer === 'display') {
+    body = <div><div className="text-3xl font-black tracking-tight">{content}</div><p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{node.description || 'KPI summary'}</p></div>;
   } else if (renderer === 'status') {
     const statusColor = node.statusColor === 'success' ? 'bg-emerald-500' : node.statusColor === 'warning' ? 'bg-amber-500' : 'bg-rose-500';
     body = <div className="flex items-center gap-2 text-sm font-bold"><span className={`size-2.5 rounded-full ${statusColor}`} />{content || 'Status'}</div>;
+  } else if (renderer === 'timer') {
+    body = <div><p className="font-mono text-3xl font-black tracking-tight">{timerDisplay}</p><p className="mt-1 text-[10px] text-slate-500">{node.timerMode === 'stopwatch' ? 'Stopwatch' : 'Countdown'} · Timer controls are available in the workspace editor.</p></div>;
   } else if (renderer === 'chart') {
     body = chartValues.length > 1 ? <svg viewBox="0 0 240 70" className="h-16 w-full"><polyline points={chartPoints} fill="none" stroke="#8b5cf6" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg> : <p className="text-sm text-slate-500">{content || 'No chart values'}</p>;
   } else if (renderer === 'image') {
@@ -146,6 +237,10 @@ export default function SharedDashboardPage() {
       height: Math.max(window.innerHeight - 88, ...nodes.map((node) => (Number(node.y) || 0) + 240)),
     };
   }, [scene]);
+  const sharedValues = useMemo(
+    () => resolveSharedDashboardValues(scene?.nodes || [], scene?.connections || [], (node) => getWidgetDefinition(node.type)?.renderer || node.type),
+    [scene],
+  );
 
   if (dashboard.isPending) return <main className="grid min-h-screen place-items-center bg-slate-50 dark:bg-[#070a13]"><Loader2 className="animate-spin text-violet-500" /></main>;
   if (dashboard.isError) return <main className="grid min-h-screen place-items-center bg-slate-50 p-6 dark:bg-[#070a13]"><section className="max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center dark:border-white/10 dark:bg-slate-900"><LockKeyhole className="mx-auto text-slate-400"/><h1 className="mt-4 text-xl font-black text-slate-900 dark:text-white">This share link is unavailable</h1><p className="mt-2 text-sm text-slate-500">It may have expired, been revoked, or the dashboard may have been archived.</p><Link to="/" className="mt-6 inline-block text-sm font-bold text-violet-600">Go to Voxel</Link></section></main>;
@@ -160,7 +255,7 @@ export default function SharedDashboardPage() {
       {save.isError && <div role="alert" className="mx-4 mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700 sm:mx-8">{save.error.message} Reload the page before making further changes.</div>}
       {saved && <div role="status" className="fixed right-5 top-20 z-30 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-bold text-white shadow-lg"><Check size={14}/> Changes saved</div>}
       <section className="min-h-[calc(100vh-4rem)] overflow-auto bg-[radial-gradient(circle_at_1px_1px,rgba(139,92,246,.17)_1px,transparent_0)] [background-size:24px_24px] dark:bg-[radial-gradient(circle_at_1px_1px,rgba(139,92,246,.18)_1px,transparent_0)]" style={{ backgroundColor: 'rgba(248,250,252,.82)' }}>
-        {scene?.nodes?.length ? <div className="relative" style={{ width: boardDimensions.width, height: boardDimensions.height }}>{scene.nodes.map((node) => <SharedNode key={node.id} node={node} editing={editing} onUpdate={updateNode} />)}</div> : <div className="grid min-h-[calc(100vh-4rem)] place-items-center"><div className="text-center"><h1 className="text-lg font-bold">This canvas is empty</h1><p className="mt-1 text-sm text-slate-500">The owner has not added any widgets yet.</p></div></div>}
+        {scene?.nodes?.length ? <div className="relative" style={{ width: boardDimensions.width, height: boardDimensions.height }}>{scene.nodes.map((node) => <SharedNode key={node.id} node={node} nodes={scene.nodes} editing={editing} onUpdate={updateNode} resolvedValue={sharedValues.get(node.id)} />)}</div> : <div className="grid min-h-[calc(100vh-4rem)] place-items-center"><div className="text-center"><h1 className="text-lg font-bold">This canvas is empty</h1><p className="mt-1 text-sm text-slate-500">The owner has not added any widgets yet.</p></div></div>}
       </section>
       <footer className="border-t border-slate-200 bg-white px-5 py-4 text-center text-[10px] text-slate-500 dark:border-white/10 dark:bg-slate-950">Shared securely with Voxel · <Link to="/" className="font-bold text-violet-600">Create your own workspace</Link></footer>
     </main>
