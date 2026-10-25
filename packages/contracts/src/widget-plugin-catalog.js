@@ -12,6 +12,24 @@ export const widgetPluginCatalog = freezeDeep([
     author: 'Voxel',
     category: 'Operations',
     featured: true,
+    license: 'Not published',
+    lastUpdated: '2026-10-25',
+    compatibility: 'Voxel 0.1 and later',
+    screenshots: [
+      {
+        src: '/marketplace/operations-toolkit.svg',
+        alt: 'Service Health widget preview with an operational status and response time.',
+      },
+    ],
+    documentation: {
+      summary: 'Track one service or environment with a clear, editable health state.',
+      steps: [
+        'Install the pack in a workspace as an owner or admin.',
+        'Add Service Health from the editor widget picker.',
+        'Set the service name, health message, and state in the inspector.',
+      ],
+      accessibility: 'The health state is shown as text and color, so color is never the only signal.',
+    },
     description: 'Add a ready-to-configure service health card for operational dashboards.',
     permissions: [],
     widgets: [
@@ -52,6 +70,24 @@ export const widgetPluginCatalog = freezeDeep([
     version: '1.0.0',
     author: 'Voxel',
     category: 'Analytics',
+    license: 'Not published',
+    lastUpdated: '2026-10-25',
+    compatibility: 'Voxel 0.1 and later',
+    screenshots: [
+      {
+        src: '/marketplace/delivery-metrics.svg',
+        alt: 'Release Progress widget preview with completed items and a target.',
+      },
+    ],
+    documentation: {
+      summary: 'Show progress toward a delivery target using a value and a positive integer goal.',
+      steps: [
+        'Install the pack in a workspace as an owner or admin.',
+        'Add Release Progress from the editor widget picker.',
+        'Enter the completed item count and release target in the inspector.',
+      ],
+      accessibility: 'Progress is presented with a text value and target alongside the visual meter.',
+    },
     description: 'Add a release progress card with a target and current delivery value.',
     permissions: [],
     widgets: [

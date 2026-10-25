@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="420" viewBox="0 0 720 420" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="36" y1="20" x2="674" y2="405" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ECFDF5"/>
+      <stop offset="1" stop-color="#ECFDFB"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="144" y1="316" x2="554" y2="316" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#10B981"/>
+      <stop offset="1" stop-color="#34D399"/>
+    </linearGradient>
+    <filter id="shadow" x="100" y="82" width="520" height="302" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#064E3B" flood-opacity=".12"/>
+    </filter>
+  </defs>
+  <rect width="720" height="420" rx="24" fill="url(#bg)"/>
+  <circle cx="598" cy="74" r="158" fill="#A7F3D0" fill-opacity=".3"/>
+  <rect x="38" y="36" width="160" height="30" rx="15" fill="#fff" fill-opacity=".8"/>
+  <circle cx="56" cy="51" r="4" fill="#059669"/>
+  <text x="68" y="55" fill="#3D6D61" font-family="Inter,Arial,sans-serif" font-size="11" font-weight="700" letter-spacing="1.6">VOXEL · ANALYTICS</text>
+  <text x="38" y="112" fill="#142D2A" font-family="Inter,Arial,sans-serif" font-size="29" font-weight="750">Make progress visible.</text>
+  <text x="39" y="143" fill="#5D7E76" font-family="Inter,Arial,sans-serif" font-size="13">A simple pulse check for the work ahead.</text>
+  <g filter="url(#shadow)">
+    <rect x="120" y="185" width="480" height="168" rx="18" fill="#fff"/>
+    <rect x="120.5" y="185.5" width="479" height="167" rx="17.5" stroke="#E3F1EC"/>
+    <text x="144" y="219" fill="#292E3B" font-family="Inter,Arial,sans-serif" font-size="14" font-weight="700">Release 1.0</text>
+    <rect x="513" y="200" width="63" height="23" rx="11.5" fill="#F0FDF4"/>
+    <text x="526" y="215" fill="#15803D" font-family="Inter,Arial,sans-serif" font-size="9" font-weight="700">ON TRACK</text>
+    <text x="144" y="270" fill="#102D26" font-family="Inter,Arial,sans-serif" font-size="36" font-weight="750">18</text>
+    <text x="180" y="269" fill="#71857F" font-family="Inter,Arial,sans-serif" font-size="13">of 24 items completed</text>
+    <text x="550" y="269" text-anchor="end" fill="#60756E" font-family="Inter,Arial,sans-serif" font-size="12" font-weight="700">75%</text>
+    <rect x="144" y="291" width="408" height="9" rx="4.5" fill="#E8F3EF"/>
+    <rect x="144" y="291" width="306" height="9" rx="4.5" fill="url(#bar)"/>
+    <path d="M144 323H576" stroke="#EEF3F1"/>
+    <circle cx="151" cy="338" r="3" fill="#10B981"/>
+    <text x="161" y="342" fill="#72847E" font-family="Inter,Arial,sans-serif" font-size="10">Update values in the widget inspector</text>
+  </g>
+</svg>

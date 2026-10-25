@@ -70,8 +70,105 @@ export const registerPluginRoutes = async (app, environment) => {
   const auth = new AuthService(prisma, environment);
 
   app.get('/api/v1/marketplace/plugins', async (request, reply) => {
-    await requireUser(request, auth);
-    return reply.send(success(widgetPluginCatalog, createRequestId(request.id)));
+    const user = await requireUser(request, auth);
+    const [installTotals, ratingTotals, userRatings] = await Promise.all([
+      prisma.widgetPluginInstall.groupBy({
+        by: ['pluginId'],
+        _count: { _all: true },
+      }),
+      prisma.widgetPluginReview.groupBy({
+        by: ['pluginId'],
+        _avg: { rating: true },
+        _count: { _all: true },
+      }),
+      prisma.widgetPluginReview.findMany({
+        where: { userId: user.id },
+        select: { pluginId: true, rating: true },
+      }),
+    ]);
+    const installsById = new Map(
+      installTotals.map((entry) => [entry.pluginId, entry._count._all]),
+    );
+    const ratingsById = new Map(ratingTotals.map((entry) => [entry.pluginId, entry]));
+    const userRatingById = new Map(userRatings.map((entry) => [entry.pluginId, entry.rating]));
+    const catalog = widgetPluginCatalog.map((plugin) => {
+      const rating = ratingsById.get(plugin.id);
+      return {
+        ...plugin,
+        installCount: installsById.get(plugin.id) ?? 0,
+        ratingAverage: rating?._avg.rating
+          ? Math.round(rating._avg.rating * 10) / 10
+          : null,
+        ratingCount: rating?._count._all ?? 0,
+        myRating: userRatingById.get(plugin.id) ?? null,
+      };
+    });
+    return reply.send(success(catalog, createRequestId(request.id)));
+  });
+
+  app.put('/api/v1/workspaces/:workspaceId/plugins/:pluginId/rating', async (request, reply) => {
+    const user = await requireUser(request, auth);
+    const params = z
+      .object({ workspaceId: idSchema, pluginId: z.string().min(3).max(120) })
+      .parse(request.params);
+    await requireMembership(params.workspaceId, user.id, [
+      'OWNER',
+      'ADMIN',
+      'EDITOR',
+      'COMMENTER',
+      'VIEWER',
+    ]);
+    if (!pluginById.has(params.pluginId)) {
+      throw new RequestError('This extension is not in the Voxel catalog.', 404);
+    }
+    const input = z.object({ rating: z.number().int().min(1).max(5) }).parse(request.body);
+    const installation = await prisma.workspacePlugin.findUnique({
+      where: {
+        workspaceId_pluginId: { workspaceId: params.workspaceId, pluginId: params.pluginId },
+      },
+      select: { id: true },
+    });
+    if (!installation) {
+      throw new RequestError('Install this widget pack in the workspace before rating it.', 409);
+    }
+
+    await runSerializableTransaction(prisma, async (transaction) => {
+      await transaction.widgetPluginReview.upsert({
+        where: { pluginId_userId: { pluginId: params.pluginId, userId: user.id } },
+        create: { pluginId: params.pluginId, userId: user.id, rating: input.rating },
+        update: { rating: input.rating },
+      });
+      await transaction.auditEvent.create({
+        data: {
+          actorId: user.id,
+          workspaceId: params.workspaceId,
+          action: 'plugin.rated',
+          resourceType: 'widget_plugin',
+          resourceId: params.pluginId,
+          after: { rating: input.rating },
+          ipAddress: request.ip,
+          userAgent: request.headers['user-agent'],
+        },
+      });
+    });
+
+    const [rating] = await prisma.widgetPluginReview.groupBy({
+      by: ['pluginId'],
+      where: { pluginId: params.pluginId },
+      _avg: { rating: true },
+      _count: { _all: true },
+    });
+    return reply.send(
+      success(
+        {
+          pluginId: params.pluginId,
+          myRating: input.rating,
+          ratingAverage: Math.round((rating?._avg.rating ?? input.rating) * 10) / 10,
+          ratingCount: rating?._count._all ?? 1,
+        },
+        createRequestId(request.id),
+      ),
+    );
   });
 
   app.get('/api/v1/workspaces/:workspaceId/plugins', async (request, reply) => {
@@ -110,6 +207,13 @@ export const registerPluginRoutes = async (app, environment) => {
             version: plugin.version,
             widgetTypes: plugin.widgets.map((widget) => widget.type),
             installedById: user.id,
+          },
+        });
+        await transaction.widgetPluginInstall.create({
+          data: {
+            pluginId: plugin.id,
+            version: plugin.version,
+            workspaceId: params.workspaceId,
           },
         });
         await transaction.auditEvent.create({

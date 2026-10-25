@@ -21,6 +21,7 @@ import {
   Loader2,
   Puzzle,
   Search,
+  Star,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -648,6 +649,20 @@ export default function SettingsPage() {
     }
   };
 
+  const handleRatePlugin = async (plugin, rating) => {
+    if (!activeWorkspaceId || pluginActionId || !installedPlugins.some((item) => item.id === plugin.id)) return;
+    setPluginActionId(plugin.id);
+    try {
+      await workspaceService.ratePlugin(activeWorkspaceId, plugin.id, rating);
+      await queryClient.invalidateQueries({ queryKey: ['marketplace', 'plugins'] });
+      addToast(`Your rating for ${plugin.name} was saved.`, 'success');
+    } catch (error) {
+      addToast(error.message || 'Your rating could not be saved.', 'error');
+    } finally {
+      setPluginActionId('');
+    }
+  };
+
   const handleLogoutAll = async (event) => {
     event.preventDefault();
     try {
@@ -874,6 +889,40 @@ export default function SettingsPage() {
                                   ))}
                                 </div>
                                 <p className="mt-4 text-xs leading-5 text-slate-600 dark:text-slate-300">{plugin.description}</p>
+                                {plugin.screenshots?.[0] && (
+                                  <img
+                                    src={plugin.screenshots[0].src}
+                                    alt={plugin.screenshots[0].alt}
+                                    loading="lazy"
+                                    className="mt-4 aspect-[16/9] w-full rounded-xl border border-slate-100 object-cover dark:border-white/10"
+                                  />
+                                )}
+                                <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 dark:bg-white/[0.035]">
+                                  <div>
+                                    <p className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Rating</p>
+                                    <p className="mt-1 flex items-center gap-1 text-xs font-bold text-slate-700 dark:text-slate-200">
+                                      <Star size={13} className="fill-amber-400 text-amber-400" aria-hidden="true" />
+                                      {plugin.ratingAverage == null ? 'New' : plugin.ratingAverage.toFixed(1)}
+                                      <span className="font-medium text-slate-400">({plugin.ratingCount || 0})</span>
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Workspace installs</p>
+                                    <p className="mt-1 text-xs font-bold text-slate-700 dark:text-slate-200">{(plugin.installCount || 0).toLocaleString()}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Compatibility</p>
+                                    <p className="mt-1 text-xs font-semibold text-slate-700 dark:text-slate-200">{plugin.compatibility}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400">License</p>
+                                    <p className="mt-1 text-xs font-semibold text-slate-700 dark:text-slate-200">{plugin.license}</p>
+                                  </div>
+                                  <div className="col-span-2">
+                                    <p className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Last updated</p>
+                                    <p className="mt-1 text-xs font-semibold text-slate-700 dark:text-slate-200">{new Date(`${plugin.lastUpdated}T00:00:00`).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                                  </div>
+                                </div>
                                 <div className="mt-4 border-t border-slate-100 pt-3 dark:border-white/5">
                                   <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Included widgets</p>
                                   <ul className="mt-2 space-y-1.5">
@@ -887,6 +936,36 @@ export default function SettingsPage() {
                                   <p className="mt-3 text-[10px] text-slate-500 dark:text-slate-400">
                                     Permissions: {plugin.permissions.length ? plugin.permissions.join(', ') : 'none'}
                                   </p>
+                                  {installed && (
+                                    <div className="mt-3 flex items-center justify-between gap-3">
+                                      <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">Your rating</span>
+                                      <div role="group" aria-label={`Rate ${plugin.name}`} className="flex items-center gap-0.5">
+                                        {[1, 2, 3, 4, 5].map((rating) => (
+                                          <button
+                                            key={rating}
+                                            type="button"
+                                            disabled={Boolean(pluginActionId)}
+                                            aria-label={`${rating} out of 5 stars`}
+                                            aria-pressed={plugin.myRating === rating}
+                                            onClick={() => handleRatePlugin(plugin, rating)}
+                                            className="rounded p-1 text-amber-500 outline-none transition hover:bg-amber-50 focus-visible:ring-2 focus-visible:ring-amber-500 disabled:opacity-50 dark:hover:bg-amber-400/10"
+                                          >
+                                            <Star size={14} className={plugin.myRating >= rating ? 'fill-current' : ''} aria-hidden="true" />
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {plugin.documentation && (
+                                    <details className="mt-3 rounded-xl bg-slate-50 px-3 py-2.5 text-xs dark:bg-white/[0.035]">
+                                      <summary className="cursor-pointer font-bold text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:text-slate-200">Pack documentation</summary>
+                                      <p className="mt-2 leading-5 text-slate-600 dark:text-slate-300">{plugin.documentation.summary}</p>
+                                      <ol className="mt-2 list-decimal space-y-1 pl-4 leading-5 text-slate-600 dark:text-slate-300">
+                                        {plugin.documentation.steps.map((step) => <li key={step}>{step}</li>)}
+                                      </ol>
+                                      <p className="mt-2 border-t border-slate-200 pt-2 leading-5 text-slate-500 dark:border-white/10 dark:text-slate-400">Accessibility: {plugin.documentation.accessibility}</p>
+                                    </details>
+                                  )}
                                   {installed?.updateAvailable && (
                                     <p role="status" className="mt-2 text-[11px] font-semibold text-amber-700 dark:text-amber-300">An update is available. Existing widgets are checked before retired types are removed.</p>
                                   )}

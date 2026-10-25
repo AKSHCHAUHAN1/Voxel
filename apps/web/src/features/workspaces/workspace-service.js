@@ -39,6 +39,7 @@ export const workspaceService = {
   installPlugin: (workspaceId, pluginId) => request(`/api/v1/workspaces/${workspaceId}/plugins`, { method: 'POST', body: JSON.stringify({ pluginId }) }),
   updatePlugin: (workspaceId, pluginId) => request(`/api/v1/workspaces/${workspaceId}/plugins/${encodeURIComponent(pluginId)}`, { method: 'PUT' }),
   uninstallPlugin: (workspaceId, pluginId) => request(`/api/v1/workspaces/${workspaceId}/plugins/${encodeURIComponent(pluginId)}`, { method: 'DELETE' }),
+  ratePlugin: (workspaceId, pluginId, rating) => request(`/api/v1/workspaces/${workspaceId}/plugins/${encodeURIComponent(pluginId)}/rating`, { method: 'PUT', body: JSON.stringify({ rating }) }),
   files: (workspaceId) => request(`/api/v1/workspaces/${workspaceId}/files`),
   restData: (dashboardId, url) => request(`/api/v1/dashboards/${dashboardId}/data-sources/rest`, {
     method: 'POST',

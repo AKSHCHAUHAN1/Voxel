@@ -8,6 +8,8 @@ const { prismaMock, userId } = vi.hoisted(() => ({
   prismaMock: {
     workspaceMember: { findUnique: vi.fn() },
     workspacePlugin: { create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    widgetPluginInstall: { create: vi.fn(), groupBy: vi.fn() },
+    widgetPluginReview: { findMany: vi.fn(), groupBy: vi.fn(), upsert: vi.fn() },
     dashboard: { findMany: vi.fn() },
     dashboardTemplate: { findMany: vi.fn() },
     auditEvent: { create: vi.fn() },
@@ -36,6 +38,10 @@ beforeEach(async () => {
     workspace: { archivedAt: null, deletedAt: null },
   });
   prismaMock.auditEvent.create.mockResolvedValue({});
+  prismaMock.widgetPluginInstall.groupBy.mockResolvedValue([]);
+  prismaMock.widgetPluginReview.findMany.mockResolvedValue([]);
+  prismaMock.widgetPluginReview.groupBy.mockResolvedValue([]);
+  prismaMock.widgetPluginReview.upsert.mockResolvedValue({});
   prismaMock.dashboardTemplate.findMany.mockResolvedValue([]);
   prismaMock.$transaction.mockImplementation(async (action) =>
     typeof action === 'function' ? action(prismaMock) : Promise.all(action),
@@ -68,6 +74,96 @@ describe('workspace widget packs', () => {
       'voxel.operations-toolkit',
       'voxel.delivery-metrics',
     ]);
+    expect(response.json().data[0]).toMatchObject({
+      license: 'Not published',
+      compatibility: 'Voxel 0.1 and later',
+      installCount: 0,
+      ratingAverage: null,
+      ratingCount: 0,
+      myRating: null,
+      screenshots: [{ src: '/marketplace/operations-toolkit.svg' }],
+    });
+  });
+
+  it('returns aggregate installation and rating details without exposing other users’ ratings', async () => {
+    prismaMock.widgetPluginInstall.groupBy.mockResolvedValue([
+      { pluginId, _count: { _all: 7 } },
+    ]);
+    prismaMock.widgetPluginReview.groupBy.mockResolvedValue([
+      { pluginId, _avg: { rating: 4.26 }, _count: { _all: 5 } },
+    ]);
+    prismaMock.widgetPluginReview.findMany.mockResolvedValue([{ pluginId, rating: 5 }]);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/marketplace/plugins',
+      headers: { cookie: 'voxel_access=test-session' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data[0]).toMatchObject({
+      installCount: 7,
+      ratingAverage: 4.3,
+      ratingCount: 5,
+      myRating: 5,
+    });
+    expect(prismaMock.widgetPluginReview.findMany).toHaveBeenCalledWith({
+      where: { userId },
+      select: { pluginId: true, rating: true },
+    });
+  });
+
+  it('allows an installed-pack member to rate and update their rating once', async () => {
+    prismaMock.workspacePlugin.findUnique.mockResolvedValue({ id: 'installed-pack' });
+    prismaMock.widgetPluginReview.groupBy.mockResolvedValue([
+      { pluginId, _avg: { rating: 4.5 }, _count: { _all: 2 } },
+    ]);
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/workspaces/${workspaceId}/plugins/${pluginId}/rating`,
+      headers: { cookie: 'voxel_access=test-session' },
+      payload: { rating: 5 },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toEqual({
+      pluginId,
+      myRating: 5,
+      ratingAverage: 4.5,
+      ratingCount: 2,
+    });
+    expect(prismaMock.widgetPluginReview.upsert).toHaveBeenCalledWith({
+      where: { pluginId_userId: { pluginId, userId } },
+      create: { pluginId, userId, rating: 5 },
+      update: { rating: 5 },
+    });
+    expect(prismaMock.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'plugin.rated', after: { rating: 5 } }),
+      }),
+    );
+  });
+
+  it('requires a workspace installation and rejects ratings outside the five-star scale', async () => {
+    prismaMock.workspacePlugin.findUnique.mockResolvedValue(null);
+    const notInstalled = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/workspaces/${workspaceId}/plugins/${pluginId}/rating`,
+      headers: { cookie: 'voxel_access=test-session' },
+      payload: { rating: 5 },
+    });
+    expect(notInstalled.statusCode).toBe(409);
+
+    prismaMock.workspacePlugin.findUnique.mockResolvedValue({ id: 'installed-pack' });
+    const invalid = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/workspaces/${workspaceId}/plugins/${pluginId}/rating`,
+      headers: { cookie: 'voxel_access=test-session' },
+      payload: { rating: 6 },
+    });
+    expect(invalid.statusCode).toBe(422);
+    expect(prismaMock.widgetPluginReview.upsert).not.toHaveBeenCalled();
   });
 
   it('limits installation to workspace owners and admins', async () => {
@@ -116,6 +212,9 @@ describe('workspace widget packs', () => {
         widgetTypes: ['voxel.operations.service-health'],
         installedById: userId,
       }),
+    });
+    expect(prismaMock.widgetPluginInstall.create).toHaveBeenCalledWith({
+      data: { pluginId, version: '1.0.0', workspaceId },
     });
     expect(prismaMock.auditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
