@@ -36,6 +36,22 @@ const schema = z.object({
   name: z.string().trim().min(2, 'Use at least 2 characters.').max(120),
   description: z.string().trim().max(280).optional(),
 });
+const tagTextSchema = z.string().max(200).superRefine((value, context) => {
+  const tags = [...new Set(value.split(',').map((tag) => tag.trim().toLowerCase()).filter(Boolean))];
+  if (tags.length > 8) context.addIssue({ code: 'custom', message: 'Use no more than 8 tags.' });
+  if (tags.some((tag) => tag.length > 24)) context.addIssue({ code: 'custom', message: 'Each tag must be 24 characters or fewer.' });
+});
+const dashboardMetadataSchema = schema.extend({ tagsText: tagTextSchema.optional() });
+const createDashboardSchema = schema.extend({
+  workspaceId: z.string().uuid('Choose a workspace.'),
+  templateId: z.string().optional(),
+  gridStyle: z.enum(['dots', 'lines', 'radial', 'blank']),
+  gridColorPreset: z.enum(['slate', 'blue', 'violet', 'indigo', 'cyan', 'rose', 'emerald']),
+  visibility: z.enum(['WORKSPACE', 'VIEW_LINK', 'EDIT_LINK']),
+  expiresInDays: z.coerce.number().int().min(1).max(365),
+  tagsText: tagTextSchema,
+});
+const parseDashboardTags = (value = '') => [...new Set(value.split(',').map((tag) => tag.trim().toLowerCase()).filter(Boolean))];
 
 const cardExportColors = {
   slate: '#ffffff', violet: '#eef2ff', emerald: '#ecfdf5', rose: '#fff1f2',
@@ -159,6 +175,7 @@ export default function WorkspaceDashboardsPage() {
   const addNotification = useNotificationStore((s) => s.add);
   const { workspaceId } = useParams();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [createWorkspaceId, setCreateWorkspaceId] = useState(workspaceId || '');
   const [showDeleted, setShowDeleted] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -212,11 +229,21 @@ export default function WorkspaceDashboardsPage() {
     enabled: Boolean(workspaceId),
   });
   const workspaceList = useQuery({ queryKey: ['workspaces'], queryFn: workspaceService.list });
+  const creationTemplates = useQuery({
+    queryKey: ['workspaces', createWorkspaceId, 'templates'],
+    queryFn: () => workspaceService.templates(createWorkspaceId),
+    enabled: Boolean(dialogOpen && createWorkspaceId),
+  });
   const workspaceRole = workspaceList.data?.find((workspace) => workspace.id === workspaceId)?.role;
   const activeWorkspace = workspaceList.data?.find((workspace) => workspace.id === workspaceId);
   const canEditWorkspace = ['OWNER', 'ADMIN', 'EDITOR'].includes(workspaceRole);
   const canManageWorkspace = ['OWNER', 'ADMIN'].includes(workspaceRole);
   const canPublishTemplate = ['OWNER', 'ADMIN'].includes(workspaceRole);
+  const editableWorkspaces = (workspaceList.data || []).filter((workspace) => ['OWNER', 'ADMIN', 'EDITOR'].includes(workspace.role));
+
+  useEffect(() => {
+    if (workspaceId) setCreateWorkspaceId(workspaceId);
+  }, [workspaceId]);
   const activity = useQuery({
     queryKey: ['workspaces', workspaceId, 'activity'],
     queryFn: () => workspaceService.activity(workspaceId),
@@ -262,7 +289,7 @@ export default function WorkspaceDashboardsPage() {
     onError: (error) => addNotification(error.message || 'Workspace cover could not be uploaded.', 'warning'),
   });
   const visibleDashboards = [...(dashboards.data || [])]
-    .filter((dashboard) => `${dashboard.name} ${dashboard.description || ''}`.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+    .filter((dashboard) => `${dashboard.name} ${dashboard.description || ''} ${(dashboard.tags || []).join(' ')}`.toLowerCase().includes(searchQuery.trim().toLowerCase()))
     .filter((dashboard) => showDeleted || statusFilter === 'ALL' || (statusFilter === 'FAVORITES' ? dashboard.isFavorite : dashboard.status === statusFilter))
     .sort((a, b) => {
       if (sortBy === 'name') return a.name.localeCompare(b.name);
@@ -278,17 +305,34 @@ export default function WorkspaceDashboardsPage() {
         : Number(b.isFavorite) - Number(a.isFavorite) || new Date(b.updatedAt) - new Date(a.updatedAt));
 
   const create = useMutation({
-    mutationFn: (input) => workspaceService.createDashboard(workspaceId, input),
-    onSuccess: async (dashboard) => {
-      await queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'dashboards'] });
-      addNotification(`Created dashboard "${dashboard.name}"`, 'success');
-      navigate(`/workspaces/${workspaceId}/dashboards/${dashboard.id}`);
+    mutationFn: async ({ targetWorkspaceId, visibility, expiresInDays, ...input }) => {
+      const dashboard = await workspaceService.createDashboard(targetWorkspaceId, input);
+      if (visibility === 'WORKSPACE') return { dashboard, targetWorkspaceId };
+      const permission = visibility === 'EDIT_LINK' ? 'EDIT' : 'VIEW';
+      try {
+        const share = await workspaceService.createShare(dashboard.id, { permission, expiresInDays });
+        return { dashboard, targetWorkspaceId, shareUrl: share.shareUrl, sharePermission: permission, shareExpiresAt: share.expiresAt };
+      } catch (error) {
+        return { dashboard, targetWorkspaceId, shareError: error };
+      }
+    },
+    onSuccess: async ({ dashboard, targetWorkspaceId, shareUrl, sharePermission, shareExpiresAt, shareError }) => {
+      await queryClient.invalidateQueries({ queryKey: ['workspaces', targetWorkspaceId, 'dashboards'] });
+      setDialogOpen(false);
+      if (shareUrl) {
+        addNotification(`Created “${dashboard.name}” and prepared its share link.`, 'success');
+        navigate(`/workspaces/${targetWorkspaceId}/dashboards/${dashboard.id}`, { state: { createdShareUrl: shareUrl, createdSharePermission: sharePermission, createdShareExpiresAt: shareExpiresAt } });
+      } else {
+        if (shareError) addNotification(`Dashboard created, but its share link could not be made: ${shareError.message}`, 'warning');
+        else addNotification(`Created dashboard “${dashboard.name}”.`, 'success');
+        navigate(`/workspaces/${targetWorkspaceId}/dashboards/${dashboard.id}`);
+      }
     },
   });
 
   const rename = useMutation({
-    mutationFn: ({ id, name, description, version }) =>
-      workspaceService.updateDashboard(id, { name, description: description ?? null, version }),
+    mutationFn: ({ id, name, description, tags, version }) =>
+      workspaceService.updateDashboard(id, { name, description: description ?? null, tags, version }),
     onSuccess: async (_res, variables) => {
       await queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'dashboards'] });
       addNotification(`Updated dashboard "${variables.name}"`, 'info');
@@ -479,6 +523,7 @@ export default function WorkspaceDashboardsPage() {
       dashboard: {
         name: dashboard.name,
         description: dashboard.description,
+        tags: dashboard.tags || [],
         scene: dashboard.scene || { schemaVersion: 2, nodes: [], connections: [] },
       },
     };
@@ -822,6 +867,9 @@ export default function WorkspaceDashboardsPage() {
               <p className="mt-2 min-h-10 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
                 {dashboard.description || 'A visual system for metrics, pipeline logic, and live telemetry.'}
               </p>
+              {(dashboard.tags || []).length > 0 && <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Dashboard tags">
+                {dashboard.tags.map((tag) => <span key={tag} className="rounded-md bg-violet-500/10 px-2 py-1 text-[10px] font-semibold text-violet-700 dark:text-violet-300">{tag}</span>)}
+              </div>}
               <span className="mt-4 inline-flex items-center gap-2 text-xs font-bold text-violet-600 dark:text-violet-400 group-hover:text-violet-500">
                 {dashboard.deletedAt ? canEditWorkspace ? <><RotateCcw size={14} /> Restore to open</> : 'Restore requires an editor' : <>Open canvas <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" /></>}
               </span>
@@ -960,6 +1008,11 @@ export default function WorkspaceDashboardsPage() {
         <DashboardDialog
           pending={create.isPending}
           error={create.error?.message}
+          initialWorkspaceId={workspaceId}
+          workspaceOptions={editableWorkspaces}
+          templates={creationTemplates.data || []}
+          templatesPending={creationTemplates.isPending}
+          onWorkspaceChange={setCreateWorkspaceId}
           onClose={() => setDialogOpen(false)}
           onSubmit={(values) => create.mutate(values)}
         />
@@ -978,9 +1031,7 @@ export default function WorkspaceDashboardsPage() {
           dashboard={editDashboard}
           pending={rename.isPending}
           onClose={() => setEditDashboard(null)}
-          onSubmit={(name, description) =>
-            rename.mutate({ id: editDashboard.id, name, description: description ?? null, version: editDashboard.version })
-          }
+          onSubmit={(values) => rename.mutate({ ...values, id: editDashboard.id, version: editDashboard.version })}
         />
       )}
 
@@ -1487,10 +1538,41 @@ function formatActivityAction(action = '') {
     .replace(/^\w/, (letter) => letter.toUpperCase());
 }
 
-function DashboardDialog({ pending, error, onClose, onSubmit }) {
+function DashboardDialog({
+  pending,
+  error,
+  initialWorkspaceId,
+  workspaceOptions,
+  templates,
+  templatesPending,
+  onWorkspaceChange,
+  onClose,
+  onSubmit,
+}) {
   const form = useForm({
-    resolver: zodResolver(schema),
-    defaultValues: { name: '', description: '' },
+    resolver: zodResolver(createDashboardSchema),
+    defaultValues: {
+      name: '',
+      description: '',
+      workspaceId: initialWorkspaceId || '',
+      templateId: '',
+      gridStyle: 'dots',
+      gridColorPreset: 'violet',
+      visibility: 'WORKSPACE',
+      expiresInDays: 30,
+      tagsText: '',
+    },
+  });
+  const handleSubmit = form.handleSubmit((values) => {
+    const { workspaceId: targetWorkspaceId, templateId, visibility, expiresInDays, tagsText, ...dashboard } = values;
+    onSubmit({
+      targetWorkspaceId,
+      visibility,
+      expiresInDays,
+      ...dashboard,
+      tags: parseDashboardTags(tagsText),
+      ...(templateId ? { templateId } : {}),
+    });
   });
   return (
     <div
@@ -1498,15 +1580,15 @@ function DashboardDialog({ pending, error, onClose, onSubmit }) {
       onMouseDown={onClose}
     >
       <form
-        onSubmit={form.handleSubmit(onSubmit)}
+        onSubmit={handleSubmit}
         onMouseDown={(event) => event.stopPropagation()}
-        className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900"
+        className="max-h-[min(92vh,760px)] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900"
       >
         <div className="flex justify-between">
           <div>
-            <h2 className="text-lg font-semibold">Create dashboard</h2>
+            <h2 className="text-lg font-semibold">Create a dashboard</h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Begin with a blank Voxel canvas.
+              Choose a workspace, starting point, and access level. You can change these later.
             </p>
           </div>
           <button
@@ -1517,7 +1599,37 @@ function DashboardDialog({ pending, error, onClose, onSubmit }) {
             <X size={18} />
           </button>
         </div>
-        <label className="mt-6 block text-sm font-medium">
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm font-medium">
+            Workspace
+            <select
+              {...form.register('workspaceId', { onChange: (event) => {
+                form.setValue('templateId', '');
+                onWorkspaceChange(event.target.value);
+              } })}
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-violet-400 dark:border-white/10 dark:bg-slate-950"
+            >
+              <option value="">Choose a workspace</option>
+              {workspaceOptions.map((workspace) => (
+                <option key={workspace.id} value={workspace.id}>{workspace.name}</option>
+              ))}
+            </select>
+            {form.formState.errors.workspaceId && <span className="mt-1 block text-xs text-rose-500">{form.formState.errors.workspaceId.message}</span>}
+          </label>
+          <label className="block text-sm font-medium">
+            Starting layout
+            <select
+              {...form.register('templateId')}
+              disabled={templatesPending || !form.watch('workspaceId')}
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-violet-400 disabled:opacity-60 dark:border-white/10 dark:bg-slate-950"
+            >
+              <option value="">Blank canvas</option>
+              {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+            </select>
+            <span className="mt-1 block text-xs font-normal text-slate-500">{templatesPending ? 'Loading workspace templates…' : 'Use a published template or one of your private drafts.'}</span>
+          </label>
+        </div>
+        <label className="mt-4 block text-sm font-medium">
           Name
           <input
             {...form.register('name')}
@@ -1539,6 +1651,44 @@ function DashboardDialog({ pending, error, onClose, onSubmit }) {
           />
         </label>
         {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm font-medium">
+            Canvas grid
+            <select {...form.register('gridStyle')} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-white/10 dark:bg-slate-950">
+              <option value="dots">Dots</option><option value="lines">Lines</option><option value="radial">Radial</option><option value="blank">Blank</option>
+            </select>
+          </label>
+          <label className="block text-sm font-medium">
+            Grid color
+            <select {...form.register('gridColorPreset')} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-white/10 dark:bg-slate-950">
+              <option value="violet">Violet</option><option value="indigo">Indigo</option><option value="blue">Blue</option><option value="cyan">Cyan</option><option value="emerald">Emerald</option><option value="rose">Rose</option><option value="slate">Slate</option>
+            </select>
+          </label>
+        </div>
+        <label className="mt-4 block text-sm font-medium">
+          Tags <span className="font-normal text-slate-400">(comma separated, up to 8)</span>
+          <input {...form.register('tagsText')} placeholder="operations, weekly, launch" className="mt-2 w-full rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-400 dark:border-white/10" />
+        </label>
+        {form.formState.errors.tagsText && <p className="mt-1 text-xs text-rose-500">{form.formState.errors.tagsText.message}</p>}
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm font-medium">
+            Visibility
+            <select {...form.register('visibility')} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-white/10 dark:bg-slate-950">
+              <option value="WORKSPACE">Workspace members only</option>
+              <option value="VIEW_LINK">Anyone with a view link</option>
+              <option value="EDIT_LINK">Anyone with an edit link</option>
+            </select>
+          </label>
+          {form.watch('visibility') !== 'WORKSPACE' && (
+            <label className="block text-sm font-medium">
+              Link expires in
+              <select {...form.register('expiresInDays')} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-white/10 dark:bg-slate-950">
+                <option value={1}>1 day</option><option value={7}>7 days</option><option value={30}>30 days</option><option value={90}>90 days</option><option value={365}>1 year</option>
+              </select>
+            </label>
+          )}
+        </div>
+        <p className="mt-2 text-xs leading-5 text-slate-500">Link access uses a revocable, expiring share token. You can manage it from the workspace dashboard list.</p>
         <div className="mt-6 flex justify-end gap-2">
           <button
             type="button"
@@ -1609,9 +1759,9 @@ function TemplateDialog({ dashboard, pending, canPublish, onClose, onSubmit }) {
 }
 
 function EditDashboardDialog({ dashboard, pending, onClose, onSubmit }) {
-  const { register, handleSubmit } = useForm({
-    resolver: zodResolver(schema),
-    defaultValues: { name: dashboard.name, description: dashboard.description || '' },
+  const { register, handleSubmit, formState } = useForm({
+    resolver: zodResolver(dashboardMetadataSchema),
+    defaultValues: { name: dashboard.name, description: dashboard.description || '', tagsText: (dashboard.tags || []).join(', ') },
   });
 
   return (
@@ -1620,7 +1770,11 @@ function EditDashboardDialog({ dashboard, pending, onClose, onSubmit }) {
       onMouseDown={onClose}
     >
       <form
-        onSubmit={handleSubmit((data) => onSubmit(data.name, data.description ?? null))}
+        onSubmit={handleSubmit((data) => onSubmit({
+          name: data.name,
+          description: data.description ?? null,
+          tags: parseDashboardTags(data.tagsText),
+        }))}
         onMouseDown={(e) => e.stopPropagation()}
         className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900"
       >
@@ -1650,6 +1804,11 @@ function EditDashboardDialog({ dashboard, pending, onClose, onSubmit }) {
             className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 outline-none ring-violet-400 focus:ring-2 dark:border-white/10"
           />
         </label>
+        <label className="mt-4 block text-sm font-medium">
+          Tags <span className="font-normal text-slate-400">(comma separated, up to 8)</span>
+          <input {...register('tagsText')} className="mt-2 w-full rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-400 dark:border-white/10" />
+        </label>
+        {formState.errors.tagsText && <p className="mt-1 text-xs text-rose-500">{formState.errors.tagsText.message}</p>}
         <div className="mt-6 flex justify-end gap-2">
           <button
             type="button"

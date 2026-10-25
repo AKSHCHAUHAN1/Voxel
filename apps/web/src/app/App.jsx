@@ -1,7 +1,8 @@
-import { useEffect, lazy, Suspense } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { MotionConfig } from 'framer-motion';
-import { useThemeStore } from '@/store/theme-store';
+import { Wifi, WifiOff } from 'lucide-react';
+import { useEffectiveTheme } from '@/store/theme-store';
 import { useSettingsStore } from '@/store/settings-store';
 import { AppShell } from '@/components/layout/AppShell';
 import { LoginPage } from '@/features/auth/LoginPage';
@@ -23,25 +24,65 @@ const ForgotPasswordPage = lazy(() => import('@/features/auth/ForgotPasswordPage
 const PasswordResetPage = lazy(() => import('@/features/auth/PasswordResetPage'));
 
 export default function App() {
-  const theme = useThemeStore((s) => s.theme);
+  const theme = useEffectiveTheme();
+  const accentColor = useSettingsStore((s) => s.accentColor);
   const reducedMotion = useSettingsStore((s) => s.reducedMotion);
+  const [networkStatus, setNetworkStatus] = useState(() => (
+    typeof navigator === 'undefined' || navigator.onLine ? 'online' : 'offline'
+  ));
 
   useEffect(() => {
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const applyTheme = () => document.documentElement.classList.toggle('dark', theme === 'dark' || (theme === 'system' && media.matches));
-    applyTheme();
-    if (theme !== 'system') return undefined;
-    media.addEventListener('change', applyTheme);
-    return () => media.removeEventListener('change', applyTheme);
+    document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
+
+  useEffect(() => {
+    const supportedAccents = new Set(['violet', 'indigo', 'cyan', 'emerald', 'rose']);
+    document.documentElement.dataset.voxelAccent = supportedAccents.has(accentColor) ? accentColor : 'violet';
+  }, [accentColor]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('reduce-motion', reducedMotion);
   }, [reducedMotion]);
 
+  useEffect(() => {
+    let restoredTimer;
+    const handleOffline = () => {
+      window.clearTimeout(restoredTimer);
+      setNetworkStatus('offline');
+    };
+    const handleOnline = () => {
+      setNetworkStatus('restored');
+      window.clearTimeout(restoredTimer);
+      restoredTimer = window.setTimeout(() => setNetworkStatus('online'), 4_000);
+    };
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+      window.clearTimeout(restoredTimer);
+    };
+  }, []);
+
   return (
     <MotionConfig reducedMotion={reducedMotion ? 'always' : 'user'}>
     <ErrorBoundary>
+      {networkStatus !== 'online' && (
+        <div
+          role={networkStatus === 'offline' ? 'alert' : 'status'}
+          aria-live={networkStatus === 'offline' ? 'assertive' : 'polite'}
+          className={`pointer-events-none fixed inset-x-0 bottom-4 z-[100] mx-auto flex w-fit max-w-[calc(100%-2rem)] items-center gap-2 rounded-full border px-4 py-2.5 text-xs font-semibold shadow-xl backdrop-blur-xl ${networkStatus === 'offline'
+            ? 'border-rose-200 bg-rose-50/95 text-rose-800 dark:border-rose-500/30 dark:bg-rose-950/95 dark:text-rose-100'
+            : 'border-emerald-200 bg-emerald-50/95 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-950/95 dark:text-emerald-100'
+          }`}
+        >
+          {networkStatus === 'offline' ? <WifiOff size={15} aria-hidden="true" /> : <Wifi size={15} aria-hidden="true" />}
+          {networkStatus === 'offline'
+            ? 'You are offline. Changes may not sync until your connection returns.'
+            : 'Connection restored. Voxel is reconnecting to sync.'}
+        </div>
+      )}
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<LandingPage />} />

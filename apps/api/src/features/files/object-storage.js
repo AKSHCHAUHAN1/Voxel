@@ -27,7 +27,7 @@ export const createObjectStorage = ({
     throw new Error('Object storage endpoint must not include credentials, query parameters, or a fragment.');
   }
 
-  const request = async (method, key, body, contentType) => {
+  const request = async (method, key, body, contentType, timeoutMs = 15_000) => {
     const url = new URL(base);
     const prefix = url.pathname.replace(/\/$/, '');
     url.pathname = `${prefix}/${encodeURIComponent(bucket)}/${encodePath(key)}`;
@@ -37,7 +37,7 @@ export const createObjectStorage = ({
     const date = amzDate.slice(0, 8);
     const canonicalHeaders = `${contentType ? `content-type:${contentType}\n` : ''}host:${url.host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
     const signedHeaders = `${contentType ? 'content-type;' : ''}host;x-amz-content-sha256;x-amz-date`;
-    const canonicalRequest = `${method}\n${url.pathname}\n\n${canonicalHeaders}${signedHeaders}\n${payloadHash}`;
+    const canonicalRequest = `${method}\n${url.pathname}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
     const scope = `${date}/${region}/s3/aws4_request`;
     const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${scope}\n${sha256(canonicalRequest)}`;
     const dateKey = hmac(`AWS4${secretKey}`, date);
@@ -54,17 +54,34 @@ export const createObjectStorage = ({
 
     let response;
     try {
-      response = await fetchImpl(url, { method, headers, ...(body ? { body } : {}), redirect: 'error' });
+      response = await fetchImpl(url, {
+        method,
+        headers,
+        ...(body ? { body } : {}),
+        redirect: 'error',
+        signal: AbortSignal.timeout(timeoutMs),
+      });
     } catch (error) {
       throw new ObjectStorageError(`Object storage is unavailable: ${error.message}`);
     }
     if (!response.ok && response.status !== 404) {
-      throw new ObjectStorageError(`Object storage rejected the ${method} request.`, 502);
+      const errorBody = await response.text().catch(() => '');
+      const serviceCode = errorBody.match(/<Code>([^<]+)<\/Code>/)?.[1];
+      const reason = serviceCode ? ` (${serviceCode})` : '';
+      throw new ObjectStorageError(`Object storage rejected the ${method} request with HTTP ${response.status}${reason}.`, 502);
     }
     return response;
   };
 
   return {
+    check: async () => {
+      // HEAD a reserved object key so deployments need object-read permission,
+      // not broad bucket-list permission. A missing key proves the bucket answered.
+      const response = await request('HEAD', '__voxel_system__/readiness', undefined, undefined, 3_000);
+      if (!response.ok && response.status !== 404) {
+        throw new ObjectStorageError('Object storage bucket is unavailable.');
+      }
+    },
     put: async (key, body, contentType) => request('PUT', key, body, contentType),
     get: async (key) => {
       const response = await request('GET', key);

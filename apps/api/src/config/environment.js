@@ -36,6 +36,15 @@ const environmentSchema = z.object({
   (environment) => environment.NODE_ENV !== 'production' || environment.MFA_ENCRYPTION_KEY.length >= 32,
   { message: 'Production requires a stable MFA_ENCRYPTION_KEY of at least 32 characters.' },
 ).refine(
+  (environment) => environment.NODE_ENV !== 'production' || (
+    environment.SESSION_SECRET !== environment.MFA_ENCRYPTION_KEY
+    && [environment.SESSION_SECRET, environment.MFA_ENCRYPTION_KEY].every((secret) => (
+    !secret.toLowerCase().includes('replace-with')
+      && new Set(secret).size >= 16
+    ))
+  ),
+  { message: 'Production requires separate session and MFA secrets, not example placeholders.' },
+).refine(
   (environment) => environment.NODE_ENV !== 'production' || [
     environment.VOXEL_EMAIL_DELIVERY_URL,
     environment.VOXEL_EMAIL_DELIVERY_TOKEN,
@@ -48,6 +57,24 @@ const environmentSchema = z.object({
 ).refine(
   (environment) => environment.NODE_ENV !== 'production' || (Boolean(environment.VOXEL_STORAGE_ENDPOINT) && new URL(environment.VOXEL_STORAGE_ENDPOINT).protocol === 'https:'),
   { message: 'Production object storage must use HTTPS.' },
+).refine(
+  (environment) => environment.NODE_ENV !== 'production' || (
+    new URL(environment.VOXEL_PUBLIC_APP_URL).protocol === 'https:'
+    && new URL(environment.VOXEL_API_PUBLIC_URL).protocol === 'https:'
+  ),
+  { message: 'Production application and API public URLs must use HTTPS.' },
 );
 
-export const parseEnvironment = (input) => environmentSchema.parse(input);
+export const parseEnvironment = (input) => {
+  const environment = environmentSchema.parse(input);
+  if (environment.NODE_ENV === 'production') return environment;
+
+  return {
+    ...environment,
+    VOXEL_STORAGE_ENDPOINT: environment.VOXEL_STORAGE_ENDPOINT || 'http://localhost:9000',
+    VOXEL_STORAGE_BUCKET: environment.VOXEL_STORAGE_BUCKET || 'voxel-assets',
+    VOXEL_STORAGE_REGION: environment.VOXEL_STORAGE_REGION || 'us-east-1',
+    VOXEL_STORAGE_ACCESS_KEY: environment.VOXEL_STORAGE_ACCESS_KEY || 'voxel',
+    VOXEL_STORAGE_SECRET_KEY: environment.VOXEL_STORAGE_SECRET_KEY || 'voxel-development-only',
+  };
+};

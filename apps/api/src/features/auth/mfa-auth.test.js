@@ -22,7 +22,7 @@ const makeDatabase = () => {
       createMany: vi.fn().mockResolvedValue({ count: 10 }),
       deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
-    user: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    user: { findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     session: { findFirst: vi.fn(), create: vi.fn().mockResolvedValue({ id: 'session-id' }), updateMany: vi.fn() },
     refreshToken: { updateMany: vi.fn() },
   };
@@ -114,6 +114,32 @@ describe('TOTP sign-in lifecycle', () => {
     expect(database.session.create).not.toHaveBeenCalled();
   });
 
+  it('rejects reuse of a TOTP time step across sign-in challenges', async () => {
+    const database = makeDatabase();
+    const secret = createTotpSecret();
+    database.mfaChallenge.findUnique.mockResolvedValue({
+      id: 'challenge-id',
+      userId: 'user-id',
+      consumedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      user: {
+        id: 'user-id',
+        email: 'alex@example.com',
+        emailVerified: true,
+        deletedAt: null,
+        mfaTotpEnabledAt: new Date(),
+        mfaTotpSecretEnc: encryptTotpSecret(secret, environment.MFA_ENCRYPTION_KEY),
+        mfaTotpLastUsedStep: BigInt(Math.floor(Date.now() / 30_000)),
+      },
+    });
+    database.user.updateMany.mockResolvedValue({ count: 0 });
+    const auth = new AuthService(database, environment);
+
+    await expect(auth.completeMfaChallenge('challenge-token', getTotpCode(secret), {}))
+      .rejects.toMatchObject({ statusCode: 401, message: expect.stringContaining('already been used') });
+    expect(database.session.create).not.toHaveBeenCalled();
+  });
+
   it('consumes a recovery code atomically before creating a session', async () => {
     const database = makeDatabase();
     const recoveryCode = '12345678-9ABC-DEF0-12345678';
@@ -146,6 +172,56 @@ describe('TOTP sign-in lifecycle', () => {
     }));
     expect(database.mfaRecoveryCode.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'recovery-code-id', userId: 'user-id', usedAt: null },
+    }));
+  });
+
+  it('requires a second factor to change a password on an MFA account and consumes the TOTP step', async () => {
+    const database = makeDatabase();
+    const secret = createTotpSecret();
+    database.user.findFirst.mockResolvedValue({
+      id: 'user-id',
+      passwordHash: hashPassword('LongEnoughPassword123!'),
+      mfaTotpEnabledAt: new Date(),
+      mfaTotpSecretEnc: encryptTotpSecret(secret, environment.MFA_ENCRYPTION_KEY),
+      mfaTotpLastUsedStep: null,
+    });
+    const auth = new AuthService(database, environment);
+
+    await expect(auth.updatePassword('user-id', 'session-id', 'LongEnoughPassword123!', 'OtherLongPassword123!'))
+      .rejects.toMatchObject({ statusCode: 401 });
+    await auth.updatePassword('user-id', 'session-id', 'LongEnoughPassword123!', 'OtherLongPassword123!', getTotpCode(secret));
+
+    expect(database.user.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'user-id' }),
+      data: { mfaTotpLastUsedStep: expect.any(BigInt) },
+    }));
+    expect(database.user.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'user-id' },
+      data: { passwordHash: expect.any(String) },
+    }));
+  });
+
+  it('requires a second factor and fresh reauthentication to disable MFA', async () => {
+    const database = makeDatabase();
+    const secret = createTotpSecret();
+    database.user.findUnique.mockResolvedValue({
+      id: 'user-id',
+      passwordHash: hashPassword('LongEnoughPassword123!'),
+      mfaTotpEnabledAt: new Date(),
+      mfaTotpSecretEnc: encryptTotpSecret(secret, environment.MFA_ENCRYPTION_KEY),
+      mfaTotpLastUsedStep: null,
+    });
+    const auth = new AuthService(database, environment);
+
+    await expect(auth.disableTotp('user-id', 'session-id', { currentPassword: 'LongEnoughPassword123!' }))
+      .rejects.toMatchObject({ statusCode: 401 });
+    await auth.disableTotp('user-id', 'session-id', {
+      currentPassword: 'LongEnoughPassword123!',
+      code: getTotpCode(secret),
+    });
+
+    expect(database.user.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { mfaTotpSecretEnc: null, mfaTotpEnabledAt: null, mfaTotpLastUsedStep: null },
     }));
   });
 });

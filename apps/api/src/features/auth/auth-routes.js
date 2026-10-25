@@ -2,7 +2,7 @@ import oauthPlugin from '@fastify/oauth2';
 import { z } from 'zod';
 import { prisma } from '../../database/prisma.js';
 import { createRequestId } from '@voxel/contracts';
-import { success } from '../../lib/api-response.js';
+import { failure, success } from '../../lib/api-response.js';
 import { AuthService } from './auth-service.js';
 import { sendEmailChangeVerificationEmail, sendPasswordResetEmail, sendVerificationEmail } from './email-delivery.js';
 
@@ -34,23 +34,53 @@ const passwordResetRequestSchema = z.object({
 });
 const emailChangeRequestSchema = z.object({
   email: z.string().trim().email('Please enter a valid email address.').transform((email) => email.toLowerCase()),
-});
+  mfaCode: z.string().trim().min(6).max(32).optional(),
+}).strict();
 const passwordResetSchema = z.object({
   token: z.string().min(40).max(100),
   password: z.string().min(12, 'Password must be at least 12 characters.').max(128),
 }).strict();
 const mfaCodeSchema = z.object({ code: z.string().trim().min(6).max(32) });
 const mfaSetupSchema = z.object({ currentPassword: z.string().max(128).optional() });
-const mfaDisableSchema = z.object({ code: z.string().trim().max(32).optional(), currentPassword: z.string().max(128).optional() })
-  .refine((input) => input.code || input.currentPassword, 'An authenticator code or current password is required.');
+const mfaDisableSchema = z.object({ code: z.string().trim().min(6).max(32), currentPassword: z.string().max(128).optional() }).strict();
+const deleteAccountSchema = z.object({
+  confirmation: z.literal('DELETE MY ACCOUNT'),
+  mfaCode: z.string().trim().min(6).max(32).optional(),
+}).strict();
+
+const parseProfileUrl = (value) => {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+};
+const httpsProfileUrlSchema = z.string().trim().max(2048).url().refine((value) => {
+  const url = parseProfileUrl(value);
+  return Boolean(url && url.protocol === 'https:' && !url.username && !url.password);
+}, 'Profile links must use HTTPS and cannot contain embedded credentials.');
+const socialProfileUrl = (domains) => httpsProfileUrlSchema.refine(
+  (value) => {
+    const url = parseProfileUrl(value);
+    return Boolean(url && domains.includes(url.hostname.toLowerCase()));
+  },
+  'Social profile links must point to the matching service.',
+);
+const socialLinksSchema = z.object({
+  github: socialProfileUrl(['github.com', 'www.github.com']).nullable().optional(),
+  linkedin: socialProfileUrl(['linkedin.com', 'www.linkedin.com']).nullable().optional(),
+  x: socialProfileUrl(['x.com', 'www.x.com', 'twitter.com', 'www.twitter.com']).nullable().optional(),
+}).strict();
 
 const profileUpdateSchema = z.object({
   displayName: z.string().trim().min(2).max(80).optional(),
   jobTitle: z.string().trim().max(100).nullable().optional(),
   bio: z.string().trim().max(280).nullable().optional(),
+  website: httpsProfileUrlSchema.nullable().optional(),
+  socialLinks: socialLinksSchema.optional(),
   timezone: z.string().trim().min(1).max(80).optional(),
   locale: z.string().trim().min(2).max(64).optional(),
-}).refine((input) => Object.keys(input).length > 0, 'At least one profile field is required.');
+}).strict().refine((input) => Object.keys(input).length > 0, 'At least one profile field is required.');
 
 const preferencesSchema = z.object({
   theme: z.enum(['light', 'dark', 'system']).optional(),
@@ -109,8 +139,48 @@ const applyMfaChallengeCookie = (reply, challengeToken, environment) => {
   });
 };
 
-export const registerAuthRoutes = async (app, environment) => {
+const allowCredentialRateLimit = async () => ({ allowed: true, retryAfterSeconds: 1 });
+
+const credentialRateLimit = (accountRateLimiter, { scope, max, windowSeconds, timeWindow, getIdentifier }) => ({
+  config: { rateLimit: { max, timeWindow } },
+  preHandler: async (request, reply) => {
+    try {
+      const requestedIdentifier = await getIdentifier(request);
+      const identifier = typeof requestedIdentifier === 'string' && requestedIdentifier.trim()
+        ? requestedIdentifier
+        : `ip:${request.ip}`;
+      const result = await accountRateLimiter({ scope, identifier, max, windowSeconds });
+      if (result.allowed) return;
+      reply.header('retry-after', String(result.retryAfterSeconds));
+      return reply.status(429).send(failure(
+        createRequestId(request.id),
+        'RATE_LIMITED',
+        'Too many attempts. Try again later.',
+        [],
+      ));
+    } catch (error) {
+      request.log.error({ err: error, scope }, 'Credential rate limit could not be checked');
+      return reply.status(503).send(failure(
+        createRequestId(request.id),
+        'SERVICE_UNAVAILABLE',
+        'Sign-in services are temporarily unavailable. Try again shortly.',
+        [],
+      ));
+    }
+  },
+});
+
+const requestEmail = (request) => request.body?.email;
+const requestToken = (request) => request.body?.token;
+
+export const registerAuthRoutes = async (app, environment, { accountRateLimiter = allowCredentialRateLimit } = {}) => {
   const authService = new AuthService(prisma, environment);
+  const getSessionContext = async (request) => {
+    if (request.voxelSessionContext !== undefined) return request.voxelSessionContext;
+    request.voxelSessionContext = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+    return request.voxelSessionContext;
+  };
+  const getSessionAccountId = async (request) => (await getSessionContext(request))?.user.id;
 
   const googleOAuthEnabled = Boolean(environment.GOOGLE_CLIENT_ID && environment.GOOGLE_CLIENT_SECRET);
   if (googleOAuthEnabled) {
@@ -128,7 +198,7 @@ export const registerAuthRoutes = async (app, environment) => {
         },
       },
       startRedirectPath: '/api/v1/auth/google',
-      callbackUri: `${environment.VOXEL_PUBLIC_APP_URL}/api/v1/auth/google/callback`,
+      callbackUri: `${environment.VOXEL_API_PUBLIC_URL}/api/v1/auth/google/callback`,
       pkce: 'S256',
     });
 
@@ -169,7 +239,9 @@ export const registerAuthRoutes = async (app, environment) => {
     app.get('/api/v1/auth/google/callback', unavailable);
   }
 
-  app.post('/api/v1/auth/signup', { config: { rateLimit: { max: 8, timeWindow: '15 minutes' } } }, async (request, reply) => {
+  app.post('/api/v1/auth/signup', credentialRateLimit(accountRateLimiter, {
+    scope: 'signup', max: 8, windowSeconds: 15 * 60, timeWindow: '15 minutes', getIdentifier: requestEmail,
+  }), async (request, reply) => {
     const input = signupSchema.parse(request.body);
     const result = await authService.signUpWithEmail(input);
     let delivery = { delivered: false };
@@ -191,7 +263,9 @@ export const registerAuthRoutes = async (app, environment) => {
     }, createRequestId(request.id)));
   });
 
-  app.post('/api/v1/auth/email-verification/resend', { config: { rateLimit: { max: 4, timeWindow: '1 hour' } } }, async (request, reply) => {
+  app.post('/api/v1/auth/email-verification/resend', credentialRateLimit(accountRateLimiter, {
+    scope: 'verification-resend', max: 4, windowSeconds: 60 * 60, timeWindow: '1 hour', getIdentifier: requestEmail,
+  }), async (request, reply) => {
     const { email } = resendVerificationSchema.parse(request.body);
     const user = await prisma.user.findFirst({ where: { email, deletedAt: null }, select: { id: true, email: true, displayName: true, passwordHash: true, emailVerified: true } });
     if (user?.passwordHash && !user.emailVerified) {
@@ -205,7 +279,9 @@ export const registerAuthRoutes = async (app, environment) => {
     return reply.send(success({ sent: true }, createRequestId(request.id)));
   });
 
-  app.post('/api/v1/auth/email-verification/verify', async (request, reply) => {
+  app.post('/api/v1/auth/email-verification/verify', credentialRateLimit(accountRateLimiter, {
+    scope: 'email-verification', max: 8, windowSeconds: 5 * 60, timeWindow: '5 minutes', getIdentifier: requestToken,
+  }), async (request, reply) => {
     const { token } = emailVerificationSchema.parse(request.body);
     const user = await authService.verifyEmailToken(token);
     const result = await authService.generateSessionForUser(user, {
@@ -216,11 +292,14 @@ export const registerAuthRoutes = async (app, environment) => {
     return reply.send(success({ authenticated: true, user: result.user }, createRequestId(request.id)));
   });
 
-  app.post('/api/v1/auth/email-change/request', { config: { rateLimit: { max: 3, timeWindow: '1 hour' } } }, async (request, reply) => {
-    const context = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+  app.post('/api/v1/auth/email-change/request', credentialRateLimit(accountRateLimiter, {
+    scope: 'email-change-request', max: 3, windowSeconds: 60 * 60, timeWindow: '1 hour',
+    getIdentifier: async (request) => (await getSessionAccountId(request)) ?? requestEmail(request),
+  }), async (request, reply) => {
+    const context = await getSessionContext(request);
     if (!context) throw new AuthenticationError('Authentication is required.');
-    const { email } = emailChangeRequestSchema.parse(request.body);
-    const change = await authService.issueEmailChangeToken(context.user.id, context.sessionId, email);
+    const { email, mfaCode } = emailChangeRequestSchema.parse(request.body);
+    const change = await authService.issueEmailChangeToken(context.user.id, context.sessionId, email, mfaCode);
     if (environment.NODE_ENV === 'production') {
       if (change) {
         void sendEmailChangeVerificationEmail({
@@ -252,13 +331,17 @@ export const registerAuthRoutes = async (app, environment) => {
     }, createRequestId(request.id)));
   });
 
-  app.post('/api/v1/auth/email-change/verify', { config: { rateLimit: { max: 8, timeWindow: '5 minutes' } } }, async (request, reply) => {
+  app.post('/api/v1/auth/email-change/verify', credentialRateLimit(accountRateLimiter, {
+    scope: 'email-change-verify', max: 8, windowSeconds: 5 * 60, timeWindow: '5 minutes', getIdentifier: requestToken,
+  }), async (request, reply) => {
     const { token } = emailVerificationSchema.parse(request.body);
     const result = await authService.verifyEmailChangeToken(token);
     return reply.send(success(result, createRequestId(request.id)));
   });
 
-  app.post('/api/v1/auth/password-reset/request', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
+  app.post('/api/v1/auth/password-reset/request', credentialRateLimit(accountRateLimiter, {
+    scope: 'password-reset-request', max: 5, windowSeconds: 60 * 60, timeWindow: '1 hour', getIdentifier: requestEmail,
+  }), async (request, reply) => {
     const { email } = passwordResetRequestSchema.parse(request.body);
     if (environment.NODE_ENV === 'production') {
       void (async () => {
@@ -294,13 +377,17 @@ export const registerAuthRoutes = async (app, environment) => {
     }, createRequestId(request.id)));
   });
 
-  app.post('/api/v1/auth/password-reset/complete', { config: { rateLimit: { max: 8, timeWindow: '5 minutes' } } }, async (request, reply) => {
+  app.post('/api/v1/auth/password-reset/complete', credentialRateLimit(accountRateLimiter, {
+    scope: 'password-reset-complete', max: 8, windowSeconds: 5 * 60, timeWindow: '5 minutes', getIdentifier: requestToken,
+  }), async (request, reply) => {
     const { token, password } = passwordResetSchema.parse(request.body);
     const result = await authService.resetPassword(token, password);
     return reply.send(success(result, createRequestId(request.id)));
   });
 
-  app.post('/api/v1/auth/login', { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } }, async (request, reply) => {
+  app.post('/api/v1/auth/login', credentialRateLimit(accountRateLimiter, {
+    scope: 'login', max: 10, windowSeconds: 15 * 60, timeWindow: '15 minutes', getIdentifier: requestEmail,
+  }), async (request, reply) => {
     const input = loginSchema.parse(request.body);
     const result = await authService.loginWithEmail(input, {
       ip: request.ip,
@@ -323,7 +410,10 @@ export const registerAuthRoutes = async (app, environment) => {
     );
   });
 
-  app.post('/api/v1/auth/mfa/verify', { config: { rateLimit: { max: 8, timeWindow: '5 minutes' } } }, async (request, reply) => {
+  app.post('/api/v1/auth/mfa/verify', credentialRateLimit(accountRateLimiter, {
+    scope: 'mfa-verify', max: 8, windowSeconds: 5 * 60, timeWindow: '5 minutes',
+    getIdentifier: (request) => request.cookies[MFA_COOKIE],
+  }), async (request, reply) => {
     const challengeToken = request.cookies[MFA_COOKIE];
     if (!challengeToken) throw new AuthenticationError('A valid sign-in challenge is required.');
     const { code } = mfaCodeSchema.parse(request.body);
@@ -349,31 +439,37 @@ export const registerAuthRoutes = async (app, environment) => {
   });
 
   app.post('/api/v1/auth/mfa/totp/setup', async (request, reply) => {
-    const context = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+    const context = await getSessionContext(request);
     if (!context) throw new AuthenticationError('Authentication is required.');
     const { currentPassword } = mfaSetupSchema.parse(request.body ?? {});
     const setup = await authService.startTotpSetup(context.user.id, context.sessionId, currentPassword);
     return reply.send(success(setup, createRequestId(request.id)));
   });
 
-  app.post('/api/v1/auth/mfa/totp/confirm', { config: { rateLimit: { max: 8, timeWindow: '5 minutes' } } }, async (request, reply) => {
-    const context = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+  app.post('/api/v1/auth/mfa/totp/confirm', credentialRateLimit(accountRateLimiter, {
+    scope: 'mfa-totp-confirm', max: 8, windowSeconds: 5 * 60, timeWindow: '5 minutes', getIdentifier: getSessionAccountId,
+  }), async (request, reply) => {
+    const context = await getSessionContext(request);
     if (!context) throw new AuthenticationError('Authentication is required.');
     const { code } = mfaCodeSchema.parse(request.body);
     const result = await authService.confirmTotpSetup(context.user.id, context.sessionId, code);
     return reply.send(success(result, createRequestId(request.id)));
   });
 
-  app.post('/api/v1/auth/mfa/recovery-codes', { config: { rateLimit: { max: 5, timeWindow: '5 minutes' } } }, async (request, reply) => {
-    const context = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+  app.post('/api/v1/auth/mfa/recovery-codes', credentialRateLimit(accountRateLimiter, {
+    scope: 'mfa-recovery-codes', max: 5, windowSeconds: 5 * 60, timeWindow: '5 minutes', getIdentifier: getSessionAccountId,
+  }), async (request, reply) => {
+    const context = await getSessionContext(request);
     if (!context) throw new AuthenticationError('Authentication is required.');
     const { code } = mfaCodeSchema.parse(request.body);
     const result = await authService.rotateMfaRecoveryCodes(context.user.id, code);
     return reply.send(success(result, createRequestId(request.id)));
   });
 
-  app.post('/api/v1/auth/mfa/disable', { config: { rateLimit: { max: 5, timeWindow: '5 minutes' } } }, async (request, reply) => {
-    const context = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+  app.post('/api/v1/auth/mfa/disable', credentialRateLimit(accountRateLimiter, {
+    scope: 'mfa-disable', max: 5, windowSeconds: 5 * 60, timeWindow: '5 minutes', getIdentifier: getSessionAccountId,
+  }), async (request, reply) => {
+    const context = await getSessionContext(request);
     if (!context) throw new AuthenticationError('Authentication is required.');
     const input = mfaDisableSchema.parse(request.body);
     const result = await authService.disableTotp(context.user.id, context.sessionId, input);
@@ -461,6 +557,8 @@ export const registerAuthRoutes = async (app, environment) => {
           avatarUrl: user.avatarUrl,
           jobTitle: user.jobTitle,
           bio: user.bio,
+          website: user.website,
+          socialLinks: user.socialLinks,
           timezone: user.timezone,
           locale: user.locale,
           preferences: user.preferences,
@@ -475,9 +573,16 @@ export const registerAuthRoutes = async (app, environment) => {
     const context = await authService.getAuthenticatedContext(accessToken);
     if (!context) throw new AuthenticationError('Authentication is required.');
     const input = profileUpdateSchema.parse(request.body);
+    const profileData = { ...input };
+    if (input.socialLinks) {
+      const previousLinks = context.user.socialLinks && typeof context.user.socialLinks === 'object'
+        ? context.user.socialLinks
+        : {};
+      profileData.socialLinks = { ...previousLinks, ...input.socialLinks };
+    }
     const user = await prisma.user.update({
       where: { id: context.user.id },
-      data: input,
+      data: profileData,
       select: {
         id: true,
         email: true,
@@ -485,6 +590,8 @@ export const registerAuthRoutes = async (app, environment) => {
         avatarUrl: true,
         jobTitle: true,
         bio: true,
+        website: true,
+        socialLinks: true,
         timezone: true,
         locale: true,
         preferences: true,
@@ -515,18 +622,22 @@ export const registerAuthRoutes = async (app, environment) => {
     return reply.send(success(user.preferences, createRequestId(request.id)));
   });
 
-  app.post('/api/v1/auth/password', { config: { rateLimit: { max: 5, timeWindow: '15 minutes' } } }, async (request, reply) => {
-    const context = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+  app.post('/api/v1/auth/password', credentialRateLimit(accountRateLimiter, {
+    scope: 'password-change', max: 5, windowSeconds: 15 * 60, timeWindow: '15 minutes', getIdentifier: getSessionAccountId,
+  }), async (request, reply) => {
+    const context = await getSessionContext(request);
     if (!context) throw new AuthenticationError('Authentication is required.');
     const input = z.object({
       currentPassword: z.string().min(1),
       newPassword: z.string().min(12, 'Password must be at least 12 characters.').max(128),
-    }).parse(request.body);
+      mfaCode: z.string().trim().min(6).max(32).optional(),
+    }).strict().parse(request.body);
     await authService.updatePassword(
       context.user.id,
       context.sessionId,
       input.currentPassword,
       input.newPassword,
+      input.mfaCode,
     );
     return reply.send(success({ updated: true, otherSessionsRevoked: true }, createRequestId(request.id)));
   });
@@ -551,20 +662,26 @@ export const registerAuthRoutes = async (app, environment) => {
     return reply.send(success({ revoked: true }, createRequestId(request.id)));
   });
 
-  app.post('/api/v1/auth/logout-all', async (request, reply) => {
-    const context = await authService.getAuthenticatedContext(request.cookies[ACCESS_COOKIE]);
+  app.post('/api/v1/auth/logout-all', credentialRateLimit(accountRateLimiter, {
+    scope: 'logout-all', max: 3, windowSeconds: 15 * 60, timeWindow: '15 minutes', getIdentifier: getSessionAccountId,
+  }), async (request, reply) => {
+    const context = await getSessionContext(request);
     if (!context) throw new AuthenticationError('Authentication is required.');
-    await authService.revokeAllSessions(context.user.id);
+    const { mfaCode } = z.object({ mfaCode: z.string().trim().min(6).max(32).optional() }).strict().parse(request.body ?? {});
+    await authService.revokeAllSessions(context.user.id, context.sessionId, mfaCode);
     reply.clearCookie(ACCESS_COOKIE, { path: '/' });
     reply.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
     return reply.send(success({ loggedOut: true }, createRequestId(request.id)));
   });
 
-  app.delete('/api/v1/auth/me', async (request, reply) => {
-    const user = await authService.getAuthenticatedUser(request.cookies[ACCESS_COOKIE]);
-    if (!user) throw new AuthenticationError('Authentication is required.');
+  app.delete('/api/v1/auth/me', credentialRateLimit(accountRateLimiter, {
+    scope: 'account-delete', max: 3, windowSeconds: 15 * 60, timeWindow: '15 minutes', getIdentifier: getSessionAccountId,
+  }), async (request, reply) => {
+    const context = await getSessionContext(request);
+    if (!context) throw new AuthenticationError('Authentication is required.');
+    const input = deleteAccountSchema.parse(request.body);
 
-    await authService.deleteAccount(user.id);
+    await authService.deleteAccount(context.user.id, context.sessionId, { mfaCode: input.mfaCode });
     reply.clearCookie(ACCESS_COOKIE, { path: '/' });
     reply.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
     return reply.send(success({ deleted: true }, createRequestId(request.id)));

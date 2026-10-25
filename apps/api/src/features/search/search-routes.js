@@ -11,7 +11,7 @@ class RequestError extends Error {
   }
 }
 
-const searchQuerySchema = z.object({ q: z.string().trim().min(2).max(80) });
+const searchQuerySchema = z.object({ q: z.string().trim().min(2).max(80).transform((query) => query.toLowerCase()) });
 const limit = 8;
 
 export const registerSearchRoutes = async (app, environment) => {
@@ -57,13 +57,14 @@ export const registerSearchRoutes = async (app, environment) => {
         where: {
           workspaceId: { in: workspaceIds },
           deletedAt: null,
-          OR: [{ name: searchableText }, { description: searchableText }],
+          OR: [{ name: searchableText }, { description: searchableText }, { tags: { has: query } }],
         },
         select: {
           id: true,
           workspaceId: true,
           name: true,
           description: true,
+          tags: true,
           status: true,
           updatedAt: true,
           workspace: { select: { name: true } },

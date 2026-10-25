@@ -12,6 +12,7 @@ const makeDatabase = () => {
   const transaction = {
     emailChangeToken: {
       findUnique: vi.fn(),
+      upsert: vi.fn().mockResolvedValue({}),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     user: { update: vi.fn().mockResolvedValue({}) },
@@ -26,7 +27,6 @@ const makeDatabase = () => {
     database: {
       session: { findFirst: vi.fn() },
       user: { findUnique: vi.fn() },
-      emailChangeToken: { upsert: vi.fn().mockResolvedValue({}) },
       $transaction: vi.fn(async (operation) => operation(transaction)),
     },
   };
@@ -34,7 +34,7 @@ const makeDatabase = () => {
 
 describe('email change token lifecycle', () => {
   it('issues a one-use token digest only after recent authentication for an available address', async () => {
-    const { database } = makeDatabase();
+    const { database, transaction } = makeDatabase();
     database.session.findFirst.mockResolvedValue({ createdAt: new Date(Date.now() - 60_000) });
     database.user.findUnique
       .mockResolvedValueOnce({
@@ -52,7 +52,7 @@ describe('email change token lifecycle', () => {
 
     expect(result).toMatchObject({ email: 'new@example.com', displayName: 'Alex Rivers' });
     expect(result.token).toMatch(/^[A-Za-z0-9_-]{40,}$/);
-    expect(database.emailChangeToken.upsert).toHaveBeenCalledWith({
+    expect(transaction.emailChangeToken.upsert).toHaveBeenCalledWith({
       where: { userId: 'user-id' },
       create: expect.objectContaining({
         userId: 'user-id',
@@ -65,7 +65,7 @@ describe('email change token lifecycle', () => {
         tokenHash: createHash('sha256').update(result.token).digest('hex'),
       }),
     });
-    const expiry = database.emailChangeToken.upsert.mock.calls[0][0].create.expiresAt;
+    const expiry = transaction.emailChangeToken.upsert.mock.calls[0][0].create.expiresAt;
     expect(expiry.getTime()).toBeGreaterThan(Date.now() + 23 * 60 * 60 * 1_000);
   });
 
@@ -75,7 +75,7 @@ describe('email change token lifecycle', () => {
     const staleAuth = new AuthService(stale.database, environment);
     await expect(staleAuth.issueEmailChangeToken('user-id', 'session-id', 'new@example.com'))
       .rejects.toMatchObject({ statusCode: 403 });
-    expect(stale.database.emailChangeToken.upsert).not.toHaveBeenCalled();
+    expect(stale.transaction.emailChangeToken.upsert).not.toHaveBeenCalled();
 
     const google = makeDatabase();
     google.database.session.findFirst.mockResolvedValue({ createdAt: new Date() });
@@ -84,7 +84,7 @@ describe('email change token lifecycle', () => {
     });
     const googleAuth = new AuthService(google.database, environment);
     await expect(googleAuth.issueEmailChangeToken('user-id', 'session-id', 'new@example.com')).resolves.toBeNull();
-    expect(google.database.emailChangeToken.upsert).not.toHaveBeenCalled();
+    expect(google.transaction.emailChangeToken.upsert).not.toHaveBeenCalled();
   });
 
   it('confirms the address atomically and revokes sessions and outstanding security links', async () => {

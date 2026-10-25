@@ -60,6 +60,8 @@ import {
   Target,
   MessageSquare,
   Send,
+  Check,
+  Copy,
   RefreshCw,
   CheckCircle2,
   CornerDownRight,
@@ -322,6 +324,8 @@ export default function EditorPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [createdShare, setCreatedShare] = useState(null);
+  const [createdShareCopied, setCreatedShareCopied] = useState(false);
 
   const widgetDefinitions = useWidgetDefinitions();
 
@@ -337,6 +341,18 @@ export default function EditorPage() {
     if (!location.state?.openComments) return;
     setLeftPanelOpen(true);
     setLeftPanelTab('comments');
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.key, location.pathname, location.state, navigate]);
+
+  useEffect(() => {
+    const shareUrl = location.state?.createdShareUrl;
+    if (typeof shareUrl !== 'string' || !shareUrl) return;
+    setCreatedShare({
+      url: shareUrl,
+      permission: location.state?.createdSharePermission === 'EDIT' ? 'EDIT' : 'VIEW',
+      expiresAt: location.state?.createdShareExpiresAt,
+    });
+    setCreatedShareCopied(false);
     navigate(location.pathname, { replace: true, state: null });
   }, [location.key, location.pathname, location.state, navigate]);
 
@@ -3866,6 +3882,48 @@ export default function EditorPage() {
             </div>
           );
         })}
+
+      {createdShare && (
+        <div className="fixed inset-0 z-[140] grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="created-share-title"
+            onKeyDown={(event) => { if (event.key === 'Escape') setCreatedShare(null); }}
+            className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-violet-600 dark:text-violet-300">Link ready</p>
+                <h2 id="created-share-title" className="mt-1 text-xl font-bold text-slate-900 dark:text-white">Dashboard created and shared</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-300">
+                  This link grants {createdShare.permission === 'EDIT' ? 'edit' : 'view'} access and expires {createdShare.expiresAt ? new Date(createdShare.expiresAt).toLocaleDateString() : 'as configured'}.
+                </p>
+              </div>
+              <button type="button" autoFocus onClick={() => setCreatedShare(null)} aria-label="Close share link details" className="grid size-9 shrink-0 place-items-center rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10">
+                <X size={17} />
+              </button>
+            </div>
+            <label htmlFor="created-share-url" className="mt-5 block text-xs font-bold text-slate-600 dark:text-slate-300">Share link</label>
+            <input id="created-share-url" readOnly value={createdShare.url} onFocus={(event) => event.currentTarget.select()} className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-700 outline-none focus:border-violet-400 dark:border-white/10 dark:bg-slate-950 dark:text-slate-200" />
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button type="button" onClick={() => setCreatedShare(null)} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300">Continue editing</button>
+              <button type="button" onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(createdShare.url);
+                  setCreatedShareCopied(true);
+                } catch {
+                  setCreatedShareCopied(false);
+                }
+              }} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-500">
+                {createdShareCopied ? <Check size={15} /> : <Copy size={15} />}
+                {createdShareCopied ? 'Copied link' : 'Copy link'}
+              </button>
+            </div>
+            <p className="mt-4 text-xs leading-5 text-slate-500">You can revoke this link later from the dashboard’s Share settings. Anyone who has it can use it until it expires or you revoke it.</p>
+          </section>
+        </div>
+      )}
     </section>
   );
 }

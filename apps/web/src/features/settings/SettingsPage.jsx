@@ -219,6 +219,8 @@ export default function SettingsPage() {
   const [timezone, setTimezone] = useState('America/Los_Angeles');
   const [language, setLanguage] = useState('English (US)');
   const [bio, setBio] = useState('Designing interactive canvas workspaces and visual telemetry systems.');
+  const [website, setWebsite] = useState('');
+  const [socialLinks, setSocialLinks] = useState({ github: '', linkedin: '', x: '' });
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
   const avatarInputRef = useRef(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -230,6 +232,12 @@ export default function SettingsPage() {
       setTimezone(user.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
       setLanguage(user.locale === 'en' ? 'English (US)' : user.locale || 'English (US)');
       setBio(user.bio || '');
+      setWebsite(user.website || '');
+      setSocialLinks({
+        github: user.socialLinks?.github || '',
+        linkedin: user.socialLinks?.linkedin || '',
+        x: user.socialLinks?.x || '',
+      });
     }
   }, [user]);
 
@@ -245,10 +253,8 @@ export default function SettingsPage() {
     if (preferences.autosaveInterval) setAutosaveInterval(preferences.autosaveInterval);
     if (typeof preferences.autosaveEnabled === 'boolean') setAutosaveEnabled(preferences.autosaveEnabled);
     const notifications = preferences.notifications || {};
-    if (typeof notifications.emailDigest === 'boolean') setNotifEmailDigest(notifications.emailDigest);
     if (typeof notifications.mentions === 'boolean') setNotifMentions(notifications.mentions);
     if (typeof notifications.desktop === 'boolean') setNotifDesktop(notifications.desktop);
-    if (typeof notifications.productUpdates === 'boolean') setNotifUpdates(notifications.productUpdates);
   }, [user, setTheme, setAutosaveEnabled, setAutosaveInterval, setAccentColor, setDefaultGridStyle, setSnapToGrid, setReducedMotion]);
 
   // Workspace & Team State
@@ -257,6 +263,8 @@ export default function SettingsPage() {
     userId: member.userId,
     name: member.user.displayName,
     email: member.user.email,
+    website: member.user.website,
+    socialLinks: member.user.socialLinks || {},
     role: member.role,
     avatar: (member.user.displayName || member.user.email || 'VM').slice(0, 2).toUpperCase(),
     color: member.role === 'OWNER' ? 'bg-violet-600' : 'bg-indigo-600',
@@ -309,6 +317,7 @@ export default function SettingsPage() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [passwordMfaCode, setPasswordMfaCode] = useState('');
   const [showPass, setShowPass] = useState(false);
 
   // Fetch workspace audit logs
@@ -321,16 +330,21 @@ export default function SettingsPage() {
   const auditLogs = auditEventsData || [];
 
   // Notifications State
-  const [notifEmailDigest, setNotifEmailDigest] = useState(true);
   const [notifMentions, setNotifMentions] = useState(true);
   const [notifDesktop, setNotifDesktop] = useState(false);
-  const [notifUpdates, setNotifUpdates] = useState(true);
+  const [desktopPermission, setDesktopPermission] = useState(() => (
+    typeof window !== 'undefined' && 'Notification' in window ? window.Notification.permission : 'unsupported'
+  ));
 
   // Danger Zone State
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [deleteMfaCode, setDeleteMfaCode] = useState('');
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [isResettingGuest, setIsResettingGuest] = useState(false);
+  const [emailChangeMfaCode, setEmailChangeMfaCode] = useState('');
+  const [logoutAllModalOpen, setLogoutAllModalOpen] = useState(false);
+  const [logoutAllMfaCode, setLogoutAllMfaCode] = useState('');
 
   const handleResetGuest = async () => {
     setIsResettingGuest(true);
@@ -354,9 +368,10 @@ export default function SettingsPage() {
   const handleDeleteAccount = async () => {
     try {
       setIsDeletingAccount(true);
-      await authService.deleteAccount();
+      await authService.deleteAccount({ confirmation: deleteConfirmation, ...(deleteMfaCode.trim() ? { mfaCode: deleteMfaCode.trim() } : {}) });
       queryClient.clear();
       setDeleteModalOpen(false);
+      setDeleteMfaCode('');
       addToast('Your account and all associated workspace data have been permanently deleted.', 'info');
       navigate('/login');
     } catch (err) {
@@ -376,6 +391,12 @@ export default function SettingsPage() {
         timezone,
         locale: language,
         bio: bio || null,
+        website: website.trim() || null,
+        socialLinks: {
+          github: socialLinks.github.trim() || null,
+          linkedin: socialLinks.linkedin.trim() || null,
+          x: socialLinks.x.trim() || null,
+        },
       });
       queryClient.setQueryData(['auth', 'me'], (previous) => ({ ...previous, ...updated }));
       addToast('Profile saved to your account.', 'success');
@@ -390,9 +411,13 @@ export default function SettingsPage() {
     setEmailChangePending(true);
     setEmailChangeUrl('');
     try {
-      const result = await authService.requestEmailChange(nextEmail);
+      const result = await authService.requestEmailChange({
+        email: nextEmail,
+        ...(emailChangeMfaCode.trim() ? { mfaCode: emailChangeMfaCode.trim() } : {}),
+      });
       setEmailChangeUrl(result.verificationUrl || '');
       setEmailChangeDraft('');
+      setEmailChangeMfaCode('');
       addToast('If this address can be used, a confirmation link has been sent. Your current address stays active until you confirm.', 'info');
     } catch (error) {
       addToast(error.message || 'Email change could not be requested.', 'error');
@@ -429,10 +454,8 @@ export default function SettingsPage() {
       autosaveInterval,
       ...(includeNotifications ? {
         notifications: {
-          emailDigest: notifEmailDigest,
           mentions: notifMentions,
           desktop: notifDesktop,
-          productUpdates: notifUpdates,
         },
       } : {}),
     };
@@ -448,6 +471,33 @@ export default function SettingsPage() {
     }
   };
 
+  const handleDesktopAlertsChange = async (enabled) => {
+    if (!enabled) {
+      setNotifDesktop(false);
+      return;
+    }
+    if (desktopPermission === 'unsupported' || !window.isSecureContext) {
+      addToast('Browser desktop alerts require a supported browser and a secure HTTPS connection.', 'warning');
+      return;
+    }
+    let permission = desktopPermission;
+    if (permission === 'default') {
+      try {
+        permission = await window.Notification.requestPermission();
+        setDesktopPermission(permission);
+      } catch (_error) {
+        permission = 'denied';
+        setDesktopPermission(permission);
+      }
+    }
+    if (permission === 'granted') {
+      setNotifDesktop(true);
+      return;
+    }
+    setNotifDesktop(false);
+    addToast('Allow notifications for Voxel in your browser settings to enable desktop alerts.', 'warning');
+  };
+
   const handleSavePassword = async (e) => {
     e.preventDefault();
     if (newPassword.length < 12) {
@@ -459,10 +509,11 @@ export default function SettingsPage() {
       return;
     }
     try {
-      await authService.updatePassword({ currentPassword, newPassword });
+      await authService.updatePassword({ currentPassword, newPassword, ...(passwordMfaCode.trim() ? { mfaCode: passwordMfaCode.trim() } : {}) });
       setCurrentPassword('');
       setNewPassword('');
       setConfirmNewPassword('');
+      setPasswordMfaCode('');
       await queryClient.invalidateQueries({ queryKey: ['auth', 'sessions'] });
       addToast('Password updated. Other active sessions were signed out.', 'success');
     } catch (error) {
@@ -597,9 +648,10 @@ export default function SettingsPage() {
     }
   };
 
-  const handleLogoutAll = async () => {
+  const handleLogoutAll = async (event) => {
+    event.preventDefault();
     try {
-      await authService.logoutAll();
+      await authService.logoutAll(logoutAllMfaCode.trim() ? { mfaCode: logoutAllMfaCode.trim() } : {});
       queryClient.clear();
       navigate('/login');
     } catch (error) {
@@ -981,6 +1033,16 @@ export default function SettingsPage() {
                                   Send confirmation
                                 </button>
                               </div>
+                              <label htmlFor="email-change-mfa-code" className="mt-3 block text-[10px] font-semibold text-slate-600 dark:text-slate-300">Authenticator or recovery code (required when two factor authentication is enabled)</label>
+                              <input
+                                id="email-change-mfa-code"
+                                autoComplete="one-time-code"
+                                maxLength={32}
+                                value={emailChangeMfaCode}
+                                onChange={(event) => setEmailChangeMfaCode(event.target.value.replace(/[^a-z0-9-]/gi, '').slice(0, 32))}
+                                placeholder="App code or recovery code"
+                                className="mt-1.5 w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none focus:border-violet-500 dark:border-white/10 dark:bg-white/5"
+                              />
                               <p id="account-email-note" className="mt-1 text-[10px] leading-4 text-slate-500">Sign in again first if your session is more than 10 minutes old. The new address must be confirmed within 24 hours. You will sign in again after the change.</p>
                               {emailChangeUrl && (
                                 <a href={emailChangeUrl} className="mt-2 inline-flex text-[10px] font-semibold text-violet-600 underline underline-offset-2 dark:text-violet-300">Open local verification link</a>
@@ -1080,6 +1142,63 @@ export default function SettingsPage() {
                       />
                     </div>
 
+                    <div className="grid gap-5 sm:grid-cols-2">
+                      <div>
+                        <label htmlFor="profile-website" className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">Website</label>
+                        <input
+                          id="profile-website"
+                          type="url"
+                          inputMode="url"
+                          autoComplete="url"
+                          maxLength={2048}
+                          value={website}
+                          onChange={(event) => setWebsite(event.target.value)}
+                          placeholder="https://example.com"
+                          className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-white/10"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="profile-github" className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">GitHub profile</label>
+                        <input
+                          id="profile-github"
+                          type="url"
+                          inputMode="url"
+                          maxLength={2048}
+                          value={socialLinks.github}
+                          onChange={(event) => setSocialLinks((previous) => ({ ...previous, github: event.target.value }))}
+                          placeholder="https://github.com/username"
+                          className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-white/10"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="profile-linkedin" className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">LinkedIn profile</label>
+                        <input
+                          id="profile-linkedin"
+                          type="url"
+                          inputMode="url"
+                          maxLength={2048}
+                          value={socialLinks.linkedin}
+                          onChange={(event) => setSocialLinks((previous) => ({ ...previous, linkedin: event.target.value }))}
+                          placeholder="https://www.linkedin.com/in/username"
+                          className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-white/10"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="profile-x" className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">X profile</label>
+                        <input
+                          id="profile-x"
+                          type="url"
+                          inputMode="url"
+                          maxLength={2048}
+                          value={socialLinks.x}
+                          onChange={(event) => setSocialLinks((previous) => ({ ...previous, x: event.target.value }))}
+                          placeholder="https://x.com/username"
+                          className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-white/10"
+                        />
+                      </div>
+                      <p className="sm:col-span-2 text-xs text-slate-500">Profile links must use HTTPS. Only links you choose to share are visible to workspace teammates.</p>
+                    </div>
+
                     <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex justify-end">
                       <button
                         type="submit"
@@ -1117,6 +1236,7 @@ export default function SettingsPage() {
                       <button
                         type="button"
                         onClick={() => setTheme('light')}
+                        aria-pressed={theme === 'light'}
                         className={`flex items-center justify-center gap-2 py-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
                           theme === 'light'
                             ? 'border-violet-600 bg-violet-50 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200 shadow-sm'
@@ -1128,6 +1248,7 @@ export default function SettingsPage() {
                       <button
                         type="button"
                         onClick={() => setTheme('dark')}
+                        aria-pressed={theme === 'dark'}
                         className={`flex items-center justify-center gap-2 py-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
                           theme === 'dark'
                             ? 'border-violet-600 bg-violet-500/20 text-violet-200 shadow-sm'
@@ -1139,6 +1260,7 @@ export default function SettingsPage() {
                       <button
                         type="button"
                         onClick={() => setTheme('system')}
+                        aria-pressed={theme === 'system'}
                         className={`flex items-center justify-center gap-2 py-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
                           theme === 'system'
                             ? 'border-violet-600 bg-violet-500/20 text-violet-700 dark:text-violet-200 shadow-sm'
@@ -1167,6 +1289,7 @@ export default function SettingsPage() {
                           key={item.id}
                           type="button"
                           onClick={() => setAccentColor(item.id)}
+                          aria-pressed={accentColor === item.id}
                           className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                             accentColor === item.id
                               ? 'border-violet-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
@@ -1423,6 +1546,14 @@ export default function SettingsPage() {
                                     <div>
                                       <div className="font-bold text-slate-800 dark:text-slate-200">{member.name}</div>
                                       <div className="text-[10px] text-slate-400">{member.email}</div>
+                                      {(member.website || member.socialLinks.github || member.socialLinks.linkedin || member.socialLinks.x) && (
+                                        <div className="mt-1 flex flex-wrap gap-x-2 text-[10px] font-semibold">
+                                          {member.website && <a href={member.website} target="_blank" rel="noopener noreferrer" className="text-violet-600 underline-offset-2 hover:underline dark:text-violet-300">Website</a>}
+                                          {member.socialLinks.github && <a href={member.socialLinks.github} target="_blank" rel="noopener noreferrer" className="text-violet-600 underline-offset-2 hover:underline dark:text-violet-300">GitHub</a>}
+                                          {member.socialLinks.linkedin && <a href={member.socialLinks.linkedin} target="_blank" rel="noopener noreferrer" className="text-violet-600 underline-offset-2 hover:underline dark:text-violet-300">LinkedIn</a>}
+                                          {member.socialLinks.x && <a href={member.socialLinks.x} target="_blank" rel="noopener noreferrer" className="text-violet-600 underline-offset-2 hover:underline dark:text-violet-300">X</a>}
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 </td>
@@ -1575,6 +1706,20 @@ export default function SettingsPage() {
                             className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-white/10"
                           />
                         </div>
+                        <div>
+                          <label htmlFor="password-mfa-code" className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
+                            Authenticator or Recovery Code (if enabled)
+                          </label>
+                          <input
+                            id="password-mfa-code"
+                            autoComplete="one-time-code"
+                            maxLength={32}
+                            value={passwordMfaCode}
+                            onChange={(event) => setPasswordMfaCode(event.target.value.replace(/[^a-z0-9-]/gi, '').slice(0, 32))}
+                            placeholder="App code or recovery code"
+                            className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none ring-violet-500 focus:ring-2 dark:border-white/10"
+                          />
+                        </div>
 
                         <button
                           type="submit"
@@ -1594,7 +1739,7 @@ export default function SettingsPage() {
                           <div className="w-1.5 h-6 bg-violet-600 rounded-full" />
                           <h2 className="text-lg font-extrabold tracking-tight">Active Browser & Device Sessions</h2>
                         </div>
-                        {!isGuestUser && <button type="button" onClick={handleLogoutAll} className="rounded-xl border border-rose-200 px-3 py-2 text-[10px] font-bold text-rose-600 hover:bg-rose-50 dark:border-rose-500/20 dark:text-rose-400 dark:hover:bg-rose-500/10">Sign out everywhere</button>}
+                        {!isGuestUser && <button type="button" onClick={() => setLogoutAllModalOpen(true)} className="rounded-xl border border-rose-200 px-3 py-2 text-[10px] font-bold text-rose-600 hover:bg-rose-50 dark:border-rose-500/20 dark:text-rose-400 dark:hover:bg-rose-500/10">Sign out everywhere</button>}
                       </div>
 
                       <div className="space-y-3">
@@ -1733,27 +1878,22 @@ export default function SettingsPage() {
                         <h2 className="text-lg font-extrabold tracking-tight">Notification Preferences</h2>
                     </div>
                     <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
-                      These preferences are saved to your account. Email digests, mention delivery, and browser push are not enabled in this deployment.
+                      Mention alerts appear in Voxel. Optional desktop alerts work while Voxel is open in a background tab. Email digests, alerts while the app is closed, and product announcements are not available yet.
                     </p>
 
                     <div className="space-y-3">
-                      <label className="flex items-center justify-between p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5 cursor-pointer">
+                      <div className="flex items-center justify-between gap-4 p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
                         <div>
-                          <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Email Digest Notifications</div>
-                          <div className="text-[11px] text-slate-500">Receive weekly summaries of workspace canvas updates</div>
+                          <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Email digest</div>
+                          <div className="text-[11px] text-slate-500">Weekly workspace summaries are not available yet.</div>
                         </div>
-                        <input
-                          type="checkbox"
-                          checked={notifEmailDigest}
-                          onChange={(e) => setNotifEmailDigest(e.target.checked)}
-                          className="size-4 accent-violet-600 cursor-pointer"
-                        />
-                      </label>
+                        <span className="shrink-0 rounded-full border border-slate-200 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-slate-400">Unavailable</span>
+                      </div>
 
                       <label className="flex items-center justify-between p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5 cursor-pointer">
                         <div>
-                          <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Team Collaboration Mentions</div>
-                          <div className="text-[11px] text-slate-500">Alert when a team peer mentions @you in a card node or comment</div>
+                          <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Mention alerts</div>
+                          <div className="text-[11px] text-slate-500">Show an in-app notification when a teammate mentions you in a dashboard discussion.</div>
                         </div>
                         <input
                           type="checkbox"
@@ -1765,29 +1905,25 @@ export default function SettingsPage() {
 
                       <label className="flex items-center justify-between p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5 cursor-pointer">
                         <div>
-                          <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Real-time Desktop Alerts</div>
-                          <div className="text-[11px] text-slate-500">Pop up push notifications for live canvas events</div>
+                          <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Desktop alerts</div>
+                          <div className="text-[11px] text-slate-500">Show new Voxel notifications while the app is open in a background tab. {desktopPermission === 'denied' ? 'Browser permission is blocked; update it in site settings.' : 'Browser notification permission is required.'}</div>
                         </div>
                         <input
                           type="checkbox"
                           checked={notifDesktop}
-                          onChange={(e) => setNotifDesktop(e.target.checked)}
-                          className="size-4 accent-violet-600 cursor-pointer"
+                          disabled={desktopPermission === 'unsupported'}
+                          onChange={(e) => { void handleDesktopAlertsChange(e.target.checked); }}
+                          className="size-4 accent-violet-600 enabled:cursor-pointer disabled:opacity-50"
                         />
                       </label>
 
-                      <label className="flex items-center justify-between p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5 cursor-pointer">
+                      <div className="flex items-center justify-between gap-4 p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/5">
                         <div>
-                          <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Platform Feature & Security Updates</div>
-                          <div className="text-[11px] text-slate-500">Get notified about new Voxel features, API versions, and system releases</div>
+                          <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Product announcements</div>
+                          <div className="text-[11px] text-slate-500">Product update announcements are not available yet.</div>
                         </div>
-                        <input
-                          type="checkbox"
-                          checked={notifUpdates}
-                          onChange={(e) => setNotifUpdates(e.target.checked)}
-                          className="size-4 accent-violet-600 cursor-pointer"
-                        />
-                      </label>
+                        <span className="shrink-0 rounded-full border border-slate-200 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-slate-400">Unavailable</span>
+                      </div>
                     </div>
 
                     <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex justify-end">
@@ -1949,6 +2085,38 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {logoutAllModalOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-sm" onMouseDown={() => setLogoutAllModalOpen(false)}>
+          <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="logout-all-title"
+            onSubmit={handleLogoutAll}
+            onMouseDown={(event) => event.stopPropagation()}
+            className="w-full max-w-md space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-slate-900"
+          >
+            <div>
+              <h3 id="logout-all-title" className="text-base font-extrabold">Sign out all devices</h3>
+              <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-300">For accounts with two factor authentication, enter your current app code or an unused recovery code. Sign in again first if your session is more than 10 minutes old.</p>
+            </div>
+            <label htmlFor="logout-all-mfa-code" className="block text-xs font-semibold">Authenticator or recovery code (if enabled)</label>
+            <input
+              id="logout-all-mfa-code"
+              autoComplete="one-time-code"
+              maxLength={32}
+              value={logoutAllMfaCode}
+              onChange={(event) => setLogoutAllMfaCode(event.target.value.replace(/[^a-z0-9-]/gi, '').slice(0, 32))}
+              placeholder="App code or recovery code"
+              className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-500 dark:border-white/10"
+            />
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setLogoutAllModalOpen(false)} className="rounded-xl px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5">Cancel</button>
+              <button type="submit" className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-rose-500">Sign out everywhere</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Delete Account Confirmation Modal */}
       {deleteModalOpen && (
         <div
@@ -1963,14 +2131,26 @@ export default function SettingsPage() {
               Confirm Account Deletion
             </h3>
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              This permanently deletes your account and workspaces you own. Dashboards in other workspaces are reassigned to their owners. Transfer ownership or remove other members from your workspaces first. Type <b className="font-mono text-rose-600">DELETE MY ACCOUNT</b> to confirm.
+              This permanently deletes your account and workspaces you own. Dashboards in other workspaces are reassigned to their owners. Transfer ownership or remove other members from your workspaces first. For security, you must have signed in within the last 10 minutes. If two factor authentication is enabled, enter an app code or unused recovery code. Type <b className="font-mono text-rose-600">DELETE MY ACCOUNT</b> to confirm.
             </p>
             <input
               type="text"
+              aria-label="Type DELETE MY ACCOUNT to confirm account deletion"
+              autoComplete="off"
               value={deleteConfirmation}
               onChange={(e) => setDeleteConfirmation(e.target.value)}
               placeholder="DELETE MY ACCOUNT"
               className="w-full rounded-xl border border-rose-300 bg-transparent px-3.5 py-2.5 text-xs font-mono outline-none focus:ring-2 focus:ring-rose-500 dark:border-rose-500/40"
+            />
+            <label htmlFor="delete-account-mfa-code" className="block text-xs font-semibold">Authenticator or recovery code (if enabled)</label>
+            <input
+              id="delete-account-mfa-code"
+              autoComplete="one-time-code"
+              maxLength={32}
+              value={deleteMfaCode}
+              onChange={(event) => setDeleteMfaCode(event.target.value.replace(/[^a-z0-9-]/gi, '').slice(0, 32))}
+              placeholder="App code or recovery code"
+              className="w-full rounded-xl border border-rose-300 bg-transparent px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-rose-500 dark:border-rose-500/40"
             />
             <div className="flex justify-end gap-2 pt-2">
               <button

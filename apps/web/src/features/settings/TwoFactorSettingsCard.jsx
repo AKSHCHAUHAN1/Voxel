@@ -151,17 +151,19 @@ export function TwoFactorSettingsCard({ addToast }) {
       )}
 
       {!isPending && status?.enabled && !recoveryCodes && (
-        <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
           <form onSubmit={handleRotateCodes} className="space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4 dark:border-white/10 dark:bg-white/5">
             <div><h3 className="text-xs font-bold">Recovery codes</h3><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{status.recoveryCodesRemaining} unused codes remain. Create new codes to invalidate the previous set.</p></div>
             <input inputMode="numeric" autoComplete="one-time-code" value={recoveryCodesAuthenticatorCode} onChange={(event) => setRecoveryCodesAuthenticatorCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Current six digit app code" className={fieldClass} />
             <button type="submit" disabled={Boolean(busyAction) || recoveryCodesAuthenticatorCode.length !== 6} className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold hover:bg-white disabled:opacity-50 dark:border-white/15 dark:hover:bg-white/10">{busyAction === 'rotate' ? 'Creating codes…' : 'Replace recovery codes'}</button>
           </form>
           <form onSubmit={handleDisable} className="space-y-3 rounded-2xl border border-rose-200/80 bg-rose-50/50 p-4 dark:border-rose-500/20 dark:bg-rose-500/5">
-            <div><h3 className="text-xs font-bold text-rose-800 dark:text-rose-200">Turn off two factor authentication</h3><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Confirm with your current app code or account password. Other signed-in sessions will be revoked.</p></div>
-            <input value={disableAuthenticatorCode} onChange={(event) => setDisableAuthenticatorCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Current six digit app code" className={fieldClass} />
-            <input type="password" autoComplete="current-password" value={disablePassword} onChange={(event) => setDisablePassword(event.target.value)} placeholder="Current account password" className={fieldClass} />
-            <button type="submit" disabled={Boolean(busyAction) || (!disableAuthenticatorCode && !disablePassword)} className="rounded-xl border border-rose-300 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10">{busyAction === 'disable' ? 'Turning off…' : 'Turn off 2FA'}</button>
+            <div><h3 className="text-xs font-bold text-rose-800 dark:text-rose-200">Turn off two factor authentication</h3><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Confirm with a current app code or an unused recovery code. A recent sign-in or your current password is also required. Other signed-in sessions will be revoked.</p></div>
+            <label className="block text-xs font-semibold" htmlFor="voxel-totp-disable-code">Authenticator or recovery code</label>
+            <input id="voxel-totp-disable-code" autoComplete="one-time-code" value={disableAuthenticatorCode} onChange={(event) => setDisableAuthenticatorCode(event.target.value.replace(/[^a-z0-9-]/gi, '').slice(0, 32))} placeholder="App code or recovery code" className={fieldClass} />
+            <label className="block text-xs font-semibold" htmlFor="voxel-totp-disable-password">Current password (if your sign-in was over 10 minutes ago)</label>
+            <input id="voxel-totp-disable-password" type="password" autoComplete="current-password" value={disablePassword} onChange={(event) => setDisablePassword(event.target.value)} placeholder="Current account password" className={fieldClass} />
+            <button type="submit" disabled={Boolean(busyAction) || !disableAuthenticatorCode.trim()} className="rounded-xl border border-rose-300 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10">{busyAction === 'disable' ? 'Turning off…' : 'Turn off 2FA'}</button>
           </form>
         </div>
       )}

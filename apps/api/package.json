@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "echo 'No build step needed for JS backend'",
-    "dev": "node --watch src/server.js",
+    "dev": "node --watch-path=src src/server.js",
     "start": "node src/server.js",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",

@@ -11,7 +11,21 @@ const baseEnvironment = {
 
 describe('environment security requirements', () => {
   it('allows local development without production storage or email providers', () => {
-    expect(parseEnvironment({ ...baseEnvironment, NODE_ENV: 'development', VOXEL_EMAIL_DELIVERY_URL: '', VOXEL_EMAIL_DELIVERY_TOKEN: '', VOXEL_EMAIL_FROM: '' }).NODE_ENV).toBe('development');
+    const environment = parseEnvironment({
+      ...baseEnvironment,
+      NODE_ENV: 'development',
+      VOXEL_EMAIL_DELIVERY_URL: '',
+      VOXEL_EMAIL_DELIVERY_TOKEN: '',
+      VOXEL_EMAIL_FROM: '',
+    });
+    expect(environment.NODE_ENV).toBe('development');
+    expect(environment).toMatchObject({
+      VOXEL_STORAGE_ENDPOINT: 'http://localhost:9000',
+      VOXEL_STORAGE_BUCKET: 'voxel-assets',
+      VOXEL_STORAGE_REGION: 'us-east-1',
+      VOXEL_STORAGE_ACCESS_KEY: 'voxel',
+      VOXEL_STORAGE_SECRET_KEY: 'voxel-development-only',
+    });
   });
 
   it('requires S3-compatible storage and an HTTPS email webhook in production', () => {

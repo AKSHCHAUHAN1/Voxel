@@ -15,7 +15,7 @@ import {
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { authService } from './auth-service';
-import { useThemeStore } from '@/store/theme-store';
+import { useThemeStore, useEffectiveTheme } from '@/store/theme-store';
 import { useNotificationStore } from '@/store/notification-store';
 import appIcon from '@/assets/app-icon.png';
 import appIconDark from '@/assets/app-icon-dark.png';
@@ -27,7 +27,8 @@ import { getDeviceOSString } from '@/utils/device-info';
 export function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { theme, setTheme } = useThemeStore();
+  const setTheme = useThemeStore((state) => state.setTheme);
+  const theme = useEffectiveTheme();
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
   // Mode: 'signin' | 'signup'

@@ -21,6 +21,9 @@ class RequestError extends Error {
 }
 
 const idSchema = z.string().uuid();
+const dashboardTagsSchema = z.array(
+  z.string().trim().min(1).max(24).transform((tag) => tag.toLowerCase()),
+).max(8).transform((tags) => [...new Set(tags)]);
 const TRASH_RETENTION_DAYS = 30;
 const workspaceInputSchema = z.object({
   name: z.string().trim().min(2).max(80),
@@ -37,6 +40,10 @@ const workspaceUpdateSchema = z.object({
 const dashboardInputSchema = z.object({
   name: z.string().trim().min(2).max(120),
   description: z.string().trim().max(280).optional(),
+  tags: dashboardTagsSchema.default([]),
+  templateId: idSchema.optional(),
+  gridStyle: z.enum(['dots', 'lines', 'radial', 'blank']).optional(),
+  gridColorPreset: z.enum(['slate', 'blue', 'violet', 'indigo', 'cyan', 'rose', 'emerald']).optional(),
 });
 const widgetNodeSchema = z.record(z.string(), z.unknown()).superRefine((node, context) => {
   for (const field of ['id', 'type']) {
@@ -71,11 +78,13 @@ const dashboardSceneSchema = z.object({
 const dashboardImportSchema = z.object({
   name: z.string().trim().min(2).max(120),
   description: z.string().trim().max(280).optional(),
+  tags: dashboardTagsSchema.default([]),
   scene: dashboardSceneSchema,
 });
 const dashboardUpdateSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
   description: z.string().trim().max(280).nullable().optional(),
+  tags: dashboardTagsSchema.optional(),
   scene: dashboardSceneSchema.optional(),
   version: z.number().int().positive(),
 });
@@ -211,6 +220,7 @@ const serializeDashboard = (dashboard) => ({
   workspaceId: dashboard.workspaceId,
   name: dashboard.name,
   description: dashboard.description,
+  tags: dashboard.tags ?? [],
   status: dashboard.status,
   scene: dashboard.scene,
   version: dashboard.version,
@@ -427,7 +437,18 @@ export const registerWorkspaceRoutes = async (app, environment) => {
     await requireMembership(params.workspaceId, user.id, ['OWNER', 'ADMIN', 'EDITOR', 'COMMENTER', 'VIEWER']);
     const members = await prisma.workspaceMember.findMany({
       where: { workspaceId: params.workspaceId },
-      include: { user: { select: { id: true, email: true, displayName: true, avatarUrl: true } } },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+            avatarUrl: true,
+            website: true,
+            socialLinks: true,
+          },
+        },
+      },
       orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
     });
     return reply.send(success(members.map((member) => ({
@@ -700,7 +721,7 @@ export const registerWorkspaceRoutes = async (app, environment) => {
       name: z.string().trim().min(2).max(120),
       description: z.string().trim().max(280).optional(),
       category: z.string().trim().min(1).max(40).default('General'),
-      tags: z.array(z.string().trim().min(1).max(24)).max(8).default([]),
+      tags: dashboardTagsSchema.default([]),
       isPublished: z.boolean().default(false),
     }).parse(request.body);
     const membership = await requireMembership(params.workspaceId, user.id, ['OWNER', 'ADMIN', 'EDITOR']);
@@ -750,7 +771,7 @@ export const registerWorkspaceRoutes = async (app, environment) => {
       name: z.string().trim().min(2).max(120).optional(),
       description: z.string().trim().max(280).nullable().optional(),
       category: z.string().trim().min(1).max(40).optional(),
-      tags: z.array(z.string().trim().min(1).max(24)).max(8).optional(),
+      tags: dashboardTagsSchema.optional(),
       isPublished: z.boolean().optional(),
     }).refine((value) => Object.keys(value).length > 0, 'At least one template field is required.').parse(request.body);
     const membership = await requireMembership(params.workspaceId, user.id, ['OWNER', 'ADMIN', 'EDITOR']);
@@ -826,6 +847,7 @@ export const registerWorkspaceRoutes = async (app, environment) => {
           name,
           slug: uniqueSlug(name),
           description: template.description,
+          tags: template.tags ?? [],
           scene: template.scene,
         },
       });
@@ -847,21 +869,46 @@ export const registerWorkspaceRoutes = async (app, environment) => {
     const params = z.object({ workspaceId: idSchema }).parse(request.params);
     const input = dashboardInputSchema.parse(request.body);
     await requireMembership(params.workspaceId, user.id, ['OWNER', 'ADMIN', 'EDITOR']);
+    const template = input.templateId
+      ? await prisma.dashboardTemplate.findFirst({
+        where: {
+          id: input.templateId,
+          workspaceId: params.workspaceId,
+          OR: [{ isPublished: true }, { createdById: user.id }],
+        },
+      })
+      : null;
+    if (input.templateId && !template) throw new RequestError('Template was not found.', 404);
+    const defaultGridStyle = user.preferences?.defaultGridStyle === 'mesh'
+      ? 'radial'
+      : (user.preferences?.defaultGridStyle || 'dots');
+    const templateScene = template?.scene && typeof template.scene === 'object'
+      ? template.scene
+      : {
+        schemaVersion: 2,
+        nodes: [],
+        connections: [],
+        gridSize: 24,
+      };
+    const scene = {
+      ...templateScene,
+      schemaVersion: 2,
+      nodes: Array.isArray(templateScene.nodes) ? templateScene.nodes : [],
+      connections: Array.isArray(templateScene.connections) ? templateScene.connections : [],
+      gridStyle: input.gridStyle || templateScene.gridStyle || defaultGridStyle,
+      gridColorPreset: input.gridColorPreset || templateScene.gridColorPreset || user.preferences?.accentColor || 'violet',
+      gridSize: templateScene.gridSize || 24,
+    };
+    await validateInstalledPluginNodes(params.workspaceId, scene);
     const dashboard = await prisma.dashboard.create({
       data: {
         workspaceId: params.workspaceId,
         ownerId: user.id,
         name: input.name,
         slug: uniqueSlug(input.name),
-        ...(input.description ? { description: input.description } : {}),
-        scene: {
-          schemaVersion: 2,
-          nodes: [],
-          connections: [],
-          gridStyle: user.preferences?.defaultGridStyle === 'mesh' ? 'radial' : (user.preferences?.defaultGridStyle || 'dots'),
-          gridColorPreset: user.preferences?.accentColor || 'violet',
-          gridSize: 24,
-        },
+        ...(input.description ? { description: input.description } : template?.description ? { description: template.description } : {}),
+        tags: input.tags,
+        scene,
       },
     });
 
@@ -895,6 +942,7 @@ export const registerWorkspaceRoutes = async (app, environment) => {
           name: input.name,
           slug: uniqueSlug(input.name),
           ...(input.description ? { description: input.description } : {}),
+          tags: input.tags,
           scene: input.scene,
         },
       });
@@ -968,6 +1016,7 @@ export const registerWorkspaceRoutes = async (app, environment) => {
           name: copyName,
           slug: uniqueSlug(copyName),
           description: source.description,
+          tags: source.tags ?? [],
           status: 'DRAFT',
           scene: source.scene,
         },
@@ -1502,10 +1551,12 @@ export const registerWorkspaceRoutes = async (app, environment) => {
     await requireMembership(dashboard.workspaceId, user.id, ['OWNER', 'ADMIN', 'EDITOR']);
     const requestedName = input.name ?? dashboard.name;
     const requestedDescription = input.description === undefined ? dashboard.description : input.description;
+    const requestedTags = input.tags ?? dashboard.tags ?? [];
     const requestedScene = input.scene ?? dashboard.scene;
     if (
       requestedName === dashboard.name &&
       requestedDescription === dashboard.description &&
+      canonicalJson(requestedTags) === canonicalJson(dashboard.tags ?? []) &&
       canonicalJson(requestedScene) === canonicalJson(dashboard.scene)
     ) {
       return reply.send(success(serializeDashboard(dashboard), createRequestId(request.id)));
@@ -1517,6 +1568,7 @@ export const registerWorkspaceRoutes = async (app, environment) => {
       version: { increment: 1 },
       ...(input.name ? { name: input.name } : {}),
       ...(input.description !== undefined ? { description: input.description } : {}),
+      ...(input.tags !== undefined ? { tags: input.tags } : {}),
       ...(input.scene ? { scene: input.scene } : {}),
     };
     const updated = await runSerializableTransaction(prisma, async (transaction) => {

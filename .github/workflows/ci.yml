@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate application
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://voxel:voxel@localhost:5432/voxel?schema=public
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: voxel
+          POSTGRES_USER: voxel
+          POSTGRES_PASSWORD: voxel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U voxel -d voxel"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npm run prisma:generate -w @voxel/api
+
+      - name: Apply database migrations
+        run: npm run prisma:deploy -w @voxel/api
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run automated tests
+        run: npm test
+
+      - name: Validate Prisma schema
+        run: npm exec --workspace @voxel/api -- prisma validate --schema prisma/schema.prisma
+
+      - name: Build production workspaces
+        run: npm run build

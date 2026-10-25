@@ -4,6 +4,7 @@ import {
   createTotpSecret,
   decryptTotpSecret,
   encryptTotpSecret,
+  findValidTotpStep,
   getTotpCode,
   normalizeRecoveryCode,
   verifyTotp,
@@ -19,6 +20,8 @@ describe('TOTP authentication primitives', () => {
     const time = 1_750_000_000_000;
     expect(verifyTotp(secret, getTotpCode(secret, time), time)).toBe(true);
     expect(verifyTotp(secret, 'not-a-code', time)).toBe(false);
+    expect(findValidTotpStep(secret, getTotpCode(secret, time), time)).toBe(Math.floor(time / 30_000));
+    expect(findValidTotpStep(secret, 'not-a-code', time)).toBeNull();
   });
 
   it('encrypts authenticator secrets and detects tampering', () => {

@@ -58,6 +58,82 @@ afterEach(async () => {
 });
 
 describe('workspace template and activity routes', () => {
+  it('creates a dashboard from a selected template with chosen grid theme and tags', async () => {
+    const templateId = 'f6168c12-922e-4b03-b333-4fc2a8791a70';
+    const templateScene = {
+      schemaVersion: 2,
+      nodes: [{ id: 'node-1', type: 'metric', content: '42' }],
+      connections: [],
+      gridSize: 32,
+    };
+    const createdAt = new Date('2026-10-11T10:00:00.000Z');
+    prismaMock.dashboardTemplate.findFirst.mockResolvedValue({
+      id: templateId,
+      workspaceId,
+      name: 'Operations starter',
+      description: 'A reusable operations view',
+      scene: templateScene,
+      isPublished: true,
+    });
+    prismaMock.dashboard.create.mockResolvedValue({
+      id: dashboardId,
+      workspaceId,
+      ownerId: userId,
+      name: 'Launch health',
+      description: 'Track launch readiness',
+      tags: ['launch', 'weekly'],
+      status: 'DRAFT',
+      scene: { ...templateScene, gridStyle: 'lines', gridColorPreset: 'cyan' },
+      version: 1,
+      createdAt,
+      updatedAt: createdAt,
+      deletedAt: null,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/workspaces/${workspaceId}/dashboards`,
+      headers: { cookie: 'voxel_access=test-session' },
+      payload: {
+        name: 'Launch health',
+        description: 'Track launch readiness',
+        tags: ['Launch', 'WEEKLY'],
+        templateId,
+        gridStyle: 'lines',
+        gridColorPreset: 'cyan',
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().data).toMatchObject({
+      id: dashboardId,
+      tags: ['launch', 'weekly'],
+      scene: { gridStyle: 'lines', gridColorPreset: 'cyan', nodes: templateScene.nodes },
+    });
+    expect(prismaMock.dashboardTemplate.findFirst).toHaveBeenCalledWith({
+      where: { id: templateId, workspaceId, OR: [{ isPublished: true }, { createdById: userId }] },
+    });
+    expect(prismaMock.dashboard.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        tags: ['launch', 'weekly'],
+        description: 'Track launch readiness',
+        scene: { ...templateScene, gridStyle: 'lines', gridColorPreset: 'cyan' },
+      }),
+    });
+  });
+
+  it('rejects invalid dashboard tag counts before creating a dashboard', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/workspaces/${workspaceId}/dashboards`,
+      headers: { cookie: 'voxel_access=test-session' },
+      payload: { name: 'Too many tags', tags: Array.from({ length: 9 }, (_, index) => `tag-${index}`) },
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(prismaMock.dashboard.create).not.toHaveBeenCalled();
+  });
+
   it('redacts private data source configuration from read-only share payloads', async () => {
     const token = 'a'.repeat(40);
     prismaMock.dashboardShare.findUnique.mockResolvedValue({

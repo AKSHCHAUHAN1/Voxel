@@ -30,6 +30,90 @@
 :root {
   font-family: var(--font-sans);
   color-scheme: light dark;
+  --voxel-accent: #6d28d9;
+  --voxel-accent-hover: #5b21b6;
+  --voxel-accent-light: #c4b5fd;
+}
+
+html[data-voxel-accent='indigo'] {
+  --voxel-accent: #4338ca;
+  --voxel-accent-hover: #3730a3;
+  --voxel-accent-light: #a5b4fc;
+}
+
+html[data-voxel-accent='cyan'] {
+  --voxel-accent: #0e7490;
+  --voxel-accent-hover: #155e75;
+  --voxel-accent-light: #67e8f9;
+}
+
+html[data-voxel-accent='emerald'] {
+  --voxel-accent: #047857;
+  --voxel-accent-hover: #065f46;
+  --voxel-accent-light: #6ee7b7;
+}
+
+html[data-voxel-accent='rose'] {
+  --voxel-accent: #be123c;
+  --voxel-accent-hover: #9f1239;
+  --voxel-accent-light: #fda4af;
+}
+
+html[data-voxel-accent]:not([data-voxel-accent='violet']) .bg-violet-600 {
+  background-color: var(--voxel-accent);
+}
+
+html[data-voxel-accent]:not([data-voxel-accent='violet']) [class~='hover:bg-violet-500']:hover {
+  background-color: var(--voxel-accent-hover);
+}
+
+html.dark[data-voxel-accent]:not([data-voxel-accent='violet']) [class~='dark:hover:bg-violet-500']:hover {
+  background-color: var(--voxel-accent-hover);
+}
+
+html[data-voxel-accent]:not([data-voxel-accent='violet']) .text-violet-600,
+html[data-voxel-accent]:not([data-voxel-accent='violet']) .text-violet-700,
+html[data-voxel-accent]:not([data-voxel-accent='violet']) [class~='hover:text-violet-600']:hover {
+  color: var(--voxel-accent);
+}
+
+html.dark[data-voxel-accent]:not([data-voxel-accent='violet']) .text-violet-600,
+html.dark[data-voxel-accent]:not([data-voxel-accent='violet']) .text-violet-700,
+html.dark[data-voxel-accent]:not([data-voxel-accent='violet']) [class~='dark:text-violet-300'],
+html.dark[data-voxel-accent]:not([data-voxel-accent='violet']) [class~='dark:text-violet-400'],
+html.dark[data-voxel-accent]:not([data-voxel-accent='violet']) [class~='dark:hover:text-violet-300']:hover,
+html.dark[data-voxel-accent]:not([data-voxel-accent='violet']) [class~='dark:hover:text-violet-400']:hover {
+  color: var(--voxel-accent-light);
+}
+
+html[data-voxel-accent]:not([data-voxel-accent='violet']) .border-violet-500,
+html[data-voxel-accent]:not([data-voxel-accent='violet']) .border-violet-600 {
+  border-color: var(--voxel-accent);
+}
+
+html.dark[data-voxel-accent]:not([data-voxel-accent='violet']) .border-violet-500,
+html.dark[data-voxel-accent]:not([data-voxel-accent='violet']) .border-violet-600 {
+  border-color: var(--voxel-accent-light);
+}
+
+html[data-voxel-accent]:not([data-voxel-accent='violet']) [class~='focus:border-violet-500']:focus {
+  border-color: var(--voxel-accent);
+}
+
+html.dark[data-voxel-accent]:not([data-voxel-accent='violet']) [class~='focus:border-violet-500']:focus {
+  border-color: var(--voxel-accent-light);
+}
+
+html[data-voxel-accent]:not([data-voxel-accent='violet']) [class~='focus:ring-violet-500']:focus {
+  --tw-ring-color: var(--voxel-accent);
+}
+
+html.dark[data-voxel-accent]:not([data-voxel-accent='violet']) [class~='focus:ring-violet-500']:focus {
+  --tw-ring-color: var(--voxel-accent-light);
+}
+
+html[data-voxel-accent]:not([data-voxel-accent='violet']) .accent-violet-600 {
+  accent-color: var(--voxel-accent);
 }
 
 html {

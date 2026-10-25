@@ -16,7 +16,7 @@ import {
   Layers,
   Users,
 } from 'lucide-react';
-import { useThemeStore } from '@/store/theme-store';
+import { useThemeStore, useEffectiveTheme } from '@/store/theme-store';
 import { useNotificationStore } from '@/store/notification-store';
 import { workspaceService } from '@/features/workspaces/workspace-service';
 import { authService } from '@/features/auth/auth-service';
@@ -74,7 +74,7 @@ export function CommandPalette({ open, onClose, onLogout, userId }) {
   const listRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const theme = useThemeStore((s) => s.theme);
+  const theme = useEffectiveTheme();
   const setTheme = useThemeStore((s) => s.setTheme);
 
   // Fetch workspaces for navigation

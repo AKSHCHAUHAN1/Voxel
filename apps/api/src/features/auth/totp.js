@@ -88,14 +88,18 @@ export function getTotpCode(secret, time = Date.now()) {
   return String(binary % 1_000_000).padStart(6, '0');
 }
 
-export function verifyTotp(secret, code, time = Date.now()) {
-  if (!/^\d{6}$/.test(code)) return false;
+export function findValidTotpStep(secret, code, time = Date.now()) {
+  if (!/^\d{6}$/.test(code)) return null;
   const provided = Buffer.from(code);
   for (const timeOffset of [-30_000, 0, 30_000]) {
     const expected = Buffer.from(getTotpCode(secret, time + timeOffset));
-    if (timingSafeEqual(provided, expected)) return true;
+    if (timingSafeEqual(provided, expected)) return Math.floor((time + timeOffset) / 30_000);
   }
-  return false;
+  return null;
+}
+
+export function verifyTotp(secret, code, time = Date.now()) {
+  return findValidTotpStep(secret, code, time) !== null;
 }
 
 export function createRecoveryCodes(count = 10) {

@@ -11,6 +11,8 @@ const { prismaMock, authMock } = vi.hoisted(() => ({
     generateSessionForUser: vi.fn(), loginWithEmail: vi.fn(), completeMfaChallenge: vi.fn(),
     getAuthenticatedContext: vi.fn(), getMfaStatus: vi.fn(), startTotpSetup: vi.fn(),
     confirmTotpSetup: vi.fn(), rotateMfaRecoveryCodes: vi.fn(), disableTotp: vi.fn(),
+    deleteAccount: vi.fn(),
+    revokeAllSessions: vi.fn(),
   },
 }));
 
@@ -32,9 +34,12 @@ vi.mock('./auth-service.js', () => ({ AuthService: class {
     confirmTotpSetup(...args) { return authMock.confirmTotpSetup(...args); }
   rotateMfaRecoveryCodes(...args) { return authMock.rotateMfaRecoveryCodes(...args); }
   disableTotp(...args) { return authMock.disableTotp(...args); }
+  deleteAccount(...args) { return authMock.deleteAccount(...args); }
+  revokeAllSessions(...args) { return authMock.revokeAllSessions(...args); }
 } }));
 
 const { registerAuthRoutes } = await import('./auth-routes.js');
+const accountRateLimiter = vi.fn();
 
 const environment = {
   NODE_ENV: 'test',
@@ -47,9 +52,10 @@ let app;
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  accountRateLimiter.mockResolvedValue({ allowed: true, retryAfterSeconds: 1 });
   app = Fastify({ logger: false });
   await app.register(cookie);
-  await registerAuthRoutes(app, environment);
+  await registerAuthRoutes(app, environment, { accountRateLimiter });
 });
 
 afterEach(async () => {
@@ -128,7 +134,7 @@ describe('email change routes', () => {
     expect(response.statusCode).toBe(202);
     expect(response.json().data.verificationUrl).toContain('/change-email#token=');
     expect(new URL(response.json().data.verificationUrl).search).toBe('');
-    expect(authMock.issueEmailChangeToken).toHaveBeenCalledWith('user-id', 'session-id', 'new@example.com');
+    expect(authMock.issueEmailChangeToken).toHaveBeenCalledWith('user-id', 'session-id', 'new@example.com', undefined);
   });
 
   it('confirms the one-time token without issuing a new session', async () => {
@@ -222,6 +228,39 @@ describe('password reset routes', () => {
 });
 
 describe('multi-factor authentication routes', () => {
+  it('limits login attempts by normalized account identifier in addition to the IP limit', async () => {
+    accountRateLimiter.mockResolvedValue({ allowed: false, retryAfterSeconds: 241 });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { email: ' Alex@Example.com ', password: 'LongEnoughPassword123!' },
+    });
+
+    expect(response.statusCode).toBe(429);
+    expect(response.headers['retry-after']).toBe('241');
+    expect(response.json().error.code).toBe('RATE_LIMITED');
+    expect(accountRateLimiter).toHaveBeenCalledWith({
+      scope: 'login',
+      identifier: ' Alex@Example.com ',
+      max: 10,
+      windowSeconds: 15 * 60,
+    });
+    expect(authMock.loginWithEmail).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the credential limiter cannot reach Redis', async () => {
+    accountRateLimiter.mockRejectedValue(new Error('Redis unavailable'));
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { email: 'alex@example.com', password: 'LongEnoughPassword123!' },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json().error.code).toBe('SERVICE_UNAVAILABLE');
+    expect(authMock.loginWithEmail).not.toHaveBeenCalled();
+  });
+
   it('keeps a password login in a short-lived challenge until the authenticator code is verified', async () => {
     authMock.loginWithEmail.mockResolvedValue({ mfaRequired: true, challengeToken: 'challenge-token' });
     const response = await app.inject({
@@ -255,5 +294,35 @@ describe('multi-factor authentication routes', () => {
       'challenge-token', '123456', expect.objectContaining({ ip: expect.any(String) }),
     );
     expect(response.headers['set-cookie']).toEqual(expect.arrayContaining([expect.stringContaining('voxel_access=access')]));
+  });
+});
+
+describe('sensitive account changes', () => {
+  it('requires an explicit account deletion confirmation and forwards the second factor', async () => {
+    authMock.getAuthenticatedContext.mockResolvedValue({ user: { id: 'user-id' }, sessionId: 'session-id' });
+    authMock.deleteAccount.mockResolvedValue(undefined);
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/api/v1/auth/me',
+      headers: { cookie: 'voxel_access=access-token' },
+      payload: { confirmation: 'DELETE MY ACCOUNT', mfaCode: '123456' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(authMock.deleteAccount).toHaveBeenCalledWith('user-id', 'session-id', { mfaCode: '123456' });
+  });
+
+  it('requires a current second factor when signing out every device', async () => {
+    authMock.getAuthenticatedContext.mockResolvedValue({ user: { id: 'user-id' }, sessionId: 'session-id' });
+    authMock.revokeAllSessions.mockResolvedValue(undefined);
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/logout-all',
+      headers: { cookie: 'voxel_access=access-token' },
+      payload: { mfaCode: 'recovery-code-12345678' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(authMock.revokeAllSessions).toHaveBeenCalledWith('user-id', 'session-id', 'recovery-code-12345678');
   });
 });

@@ -15,6 +15,16 @@ export async function purgeExpiredTrash(now = new Date()) {
 
   await prisma.$transaction(async (transaction) => {
     if (workspaceIds.length > 0) {
+      const files = await transaction.storedFile.findMany({
+        where: { workspaceId: { in: workspaceIds } },
+        select: { storageKey: true },
+      });
+      if (files.length) {
+        await transaction.storageDeletionJob.createMany({
+          data: files.map(({ storageKey }) => ({ storageKey })),
+          skipDuplicates: true,
+        });
+      }
       await transaction.auditEvent.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
       await transaction.workspace.deleteMany({ where: { id: { in: workspaceIds } } });
     }
@@ -24,4 +34,28 @@ export async function purgeExpiredTrash(now = new Date()) {
   });
 
   return { workspaces: workspaceIds.length, dashboards: dashboardIds.length };
+}
+
+export async function processStorageDeletionQueue(storage, { database = prisma, onError = () => {}, batchSize = 100 } = {}) {
+  const jobs = await database.storageDeletionJob.findMany({
+    orderBy: { createdAt: 'asc' },
+    take: batchSize,
+  });
+  let deleted = 0;
+
+  for (const job of jobs) {
+    try {
+      await storage.delete(job.storageKey);
+      await database.storageDeletionJob.deleteMany({ where: { id: job.id } });
+      deleted += 1;
+    } catch (error) {
+      await database.storageDeletionJob.updateMany({
+        where: { id: job.id },
+        data: { attempts: { increment: 1 }, lastAttemptAt: new Date() },
+      });
+      onError(error, job.id);
+    }
+  }
+
+  return { processed: jobs.length, deleted };
 }

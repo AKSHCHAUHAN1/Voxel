@@ -1,5 +1,6 @@
 import { Server } from '@hocuspocus/server';
 import { Redis } from '@hocuspocus/extension-redis';
+import { redis as sharedRedis } from '../../lib/redis.js';
 import { prisma } from '../../database/prisma.js';
 import { runSerializableTransaction } from '../../lib/serializable-transaction.js';
 import { AuthService } from '../auth/auth-service.js';
@@ -47,8 +48,7 @@ export const createHocuspocusServer = () => {
     
     extensions: [
       new Redis({
-        host: new URL(environment.REDIS_URL).hostname,
-        port: Number(new URL(environment.REDIS_URL).port || 6379),
+        redis: sharedRedis,
       }),
     ],
 

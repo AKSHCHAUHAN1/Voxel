@@ -60,4 +60,13 @@ describe('S3-compatible object storage', () => {
     const storage = createObjectStorage({ endpoint: 'http://minio.local', bucket: 'voxel-assets', accessKey: 'a', secretKey: 'b', fetchImpl });
     await expect(storage.delete('missing')).resolves.toBeUndefined();
   });
+
+  it('checks object-level readiness without requiring bucket listing', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 404 }));
+    const storage = createObjectStorage({ endpoint: 'http://rustfs.local', bucket: 'voxel-assets', accessKey: 'a', secretKey: 'b', fetchImpl });
+
+    await expect(storage.check()).resolves.toBeUndefined();
+    expect(fetchImpl.mock.calls[0][0].pathname).toBe('/voxel-assets/__voxel_system__/readiness');
+    expect(fetchImpl.mock.calls[0][1].method).toBe('HEAD');
+  });
 });

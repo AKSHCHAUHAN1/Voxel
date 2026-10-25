@@ -31,7 +31,7 @@ import {
   LoaderCircle,
 } from 'lucide-react';
 import { authService } from '@/features/auth/auth-service';
-import { useThemeStore } from '@/store/theme-store';
+import { useThemeStore, useEffectiveTheme } from '@/store/theme-store';
 import { toggleThemeWithRipple } from '@/utils/theme-ripple';
 import { workspaceService } from '@/features/workspaces/workspace-service';
 import { CommandPalette } from '@/components/command/CommandPalette';
@@ -95,7 +95,7 @@ export function AppShell() {
   const normalizedSearch = searchQuery.trim().toLowerCase();
   const [debouncedSearch, setDebouncedSearch] = useState('');
   // Theme state and bubble animation state
-  const theme = useThemeStore((state) => state.theme);
+  const theme = useEffectiveTheme();
   const setTheme = useThemeStore((state) => state.setTheme);
 
   const queryClient = useQueryClient();
@@ -107,6 +107,7 @@ export function AppShell() {
   const searchInputRef = useRef(null);
   const notifRef = useRef(null);
   const userMenuRef = useRef(null);
+  const desktopAlertTrackerRef = useRef({ userId: null, initialized: false, seenIds: new Set() });
 
   const toasts = useNotificationStore((s) => s.toasts);
   const removeToast = useNotificationStore((s) => s.removeToast);
@@ -119,6 +120,10 @@ export function AppShell() {
   });
 
   const user = userQuery.data;
+  const desktopAlertsEnabled = user?.preferences?.notifications?.desktop === true
+    && typeof window !== 'undefined'
+    && 'Notification' in window
+    && window.Notification.permission === 'granted';
   const notificationQuery = useQuery({
     queryKey: ['notifications', user?.id, notificationScope],
     queryFn: () => notificationService.list(notificationScope),
@@ -126,6 +131,14 @@ export function AppShell() {
     staleTime: 10_000,
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
+  });
+  const desktopNotificationQuery = useQuery({
+    queryKey: ['notifications', user?.id, 'desktop-alerts'],
+    queryFn: () => notificationService.list('all'),
+    enabled: Boolean(user?.id) && desktopAlertsEnabled,
+    staleTime: 10_000,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: true,
   });
   const notificationQueryKey = ['notifications', user?.id];
   const updateNotification = useMutation({
@@ -212,15 +225,6 @@ export function AppShell() {
     }
   }, [user?.id]);
 
-  // Sync theme with document.documentElement classList
-  useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [theme]);
-
   // Initialize global shortcuts listener
   useEffect(() => {
     attachGlobalShortcuts();
@@ -285,7 +289,56 @@ export function AppShell() {
     }
   };
 
-  // Nothing OS Screen Power Ripple Theme Transition
+  useEffect(() => {
+    desktopAlertTrackerRef.current = {
+      userId: user?.id ?? null,
+      initialized: false,
+      seenIds: new Set(),
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    const items = desktopNotificationQuery.data?.items;
+    if (!user?.id || !items) return;
+    let tracker = desktopAlertTrackerRef.current;
+    if (tracker.userId !== user.id) {
+      tracker = { userId: user.id, initialized: false, seenIds: new Set() };
+      desktopAlertTrackerRef.current = tracker;
+    }
+    if (!tracker.initialized) {
+      items.forEach((notification) => tracker.seenIds.add(notification.id));
+      tracker.initialized = true;
+      return;
+    }
+
+    for (const notification of items) {
+      if (tracker.seenIds.has(notification.id)) continue;
+      tracker.seenIds.add(notification.id);
+      if (!desktopAlertsEnabled || notification.read || notification.archivedAt || document.visibilityState === 'visible') continue;
+      if (!('Notification' in window) || window.Notification.permission !== 'granted') continue;
+      try {
+        const alert = new window.Notification(notification.title, {
+          body: (notification.message || '').slice(0, 240),
+          icon: appIcon,
+          tag: `voxel-${notification.id}`,
+          renotify: false,
+        });
+        alert.onclick = () => {
+          window.focus();
+          openNotification(notification);
+          alert.close();
+        };
+      } catch (_error) {
+        // Permission may be revoked by the browser while this tab is open.
+      }
+    }
+    if (tracker.seenIds.size > 500) {
+      tracker.seenIds.clear();
+      items.forEach((notification) => tracker.seenIds.add(notification.id));
+    }
+  }, [desktopNotificationQuery.data?.items, desktopAlertsEnabled, user?.id]);
+
+  // Switch from the visible mode, including when the saved preference is system.
   const handleThemeToggle = (e) => {
     toggleThemeWithRipple(e, theme, setTheme);
   };
@@ -637,6 +690,7 @@ export function AppShell() {
             {/* Sun/Moon Theme Toggle */}
             <button
               aria-label="Toggle theme"
+              aria-pressed={theme === 'dark'}
               onClick={handleThemeToggle}
               className="grid size-10 rounded-xl place-items-center text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all duration-200 cursor-pointer"
             >

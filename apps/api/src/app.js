@@ -33,7 +33,10 @@ const mapErrorCode = (statusCode) => {
 const isHttpError = (error) =>
   error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number';
 
-export const buildApp = async (environment) => {
+export const buildApp = async (environment, { readinessChecks = {}, accountRateLimiter, rateLimitRedis } = {}) => {
+  if (environment.NODE_ENV === 'production' && (typeof accountRateLimiter !== 'function' || !rateLimitRedis)) {
+    throw new Error('Redis-backed credential and source address rate limiters are required in production');
+  }
   const app = Fastify({
     logger: {
       level: environment.NODE_ENV === 'production' ? 'info' : 'warn',
@@ -44,7 +47,7 @@ export const buildApp = async (environment) => {
   });
 
   await app.register(helmet, {
-    contentSecurityPolicy: false,
+    ...(environment.NODE_ENV === 'production' ? {} : { contentSecurityPolicy: false }),
     crossOriginResourcePolicy: { policy: 'same-site' },
   });
   await app.register(cookie);
@@ -55,44 +58,71 @@ export const buildApp = async (environment) => {
   await app.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
+    ...(rateLimitRedis ? { redis: rateLimitRedis } : {}),
   });
   app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer', bodyLimit: 10 * 1024 * 1024 }, (_request, body, done) => done(null, body));
 
-  await app.register(swagger, {
-    openapi: {
-      info: {
-        title: 'Voxel API',
-        description: 'Voxel platform API documentation',
-        version: '0.1.0',
-      },
-      servers: [
-        {
-          url: environment.VOXEL_API_PUBLIC_URL,
+  if (environment.NODE_ENV !== 'production') {
+    await app.register(swagger, {
+      openapi: {
+        info: {
+          title: 'Voxel API',
+          description: 'Voxel platform API documentation',
+          version: '0.1.0',
         },
-      ],
-      components: {
-        securitySchemes: {
-          cookieAuth: {
-            type: 'apiKey',
-            in: 'cookie',
-            name: 'sessionId',
+        servers: [
+          {
+            url: environment.VOXEL_API_PUBLIC_URL,
+          },
+        ],
+        components: {
+          securitySchemes: {
+            cookieAuth: {
+              type: 'apiKey',
+              in: 'cookie',
+              name: 'sessionId',
+            },
           },
         },
       },
-    },
-  });
+    });
 
-  await app.register(swaggerUi, {
-    routePrefix: '/api/docs',
-    uiConfig: {
-      docExpansion: 'list',
-      deepLinking: false,
-    },
-    staticCSP: true,
-  });
+    await app.register(swaggerUi, {
+      routePrefix: '/api/docs',
+      uiConfig: {
+        docExpansion: 'list',
+        deepLinking: false,
+      },
+      staticCSP: true,
+    });
+  }
 
   app.addHook('onRequest', async (request, reply) => {
     reply.header('x-request-id', request.id);
+  });
+
+  app.addHook('onRequest', async (request, reply) => {
+    if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) return;
+    const origin = request.headers.origin;
+    const fetchSite = request.headers['sec-fetch-site'];
+    const hasAuthenticationCookie = Boolean(
+      request.cookies?.voxel_access
+      || request.cookies?.voxel_refresh
+      || request.cookies?.voxel_mfa_challenge,
+    );
+    const requestOrigin = new URL(environment.VOXEL_PUBLIC_APP_URL).origin;
+    if (
+      (origin && origin !== requestOrigin)
+      || fetchSite === 'cross-site'
+      || (hasAuthenticationCookie && !origin)
+    ) {
+      return reply.status(403).send(failure(
+        toRequestId(request.id),
+        'CSRF_ORIGIN_REJECTED',
+        'This request origin is not allowed.',
+        [],
+      ));
+    }
   });
 
   app.setErrorHandler((error, request, reply) => {
@@ -127,14 +157,31 @@ export const buildApp = async (environment) => {
   app.get('/health/live', { config: { rateLimit: false } }, async (request) =>
     success({ status: 'live' }, toRequestId(request.id)),
   );
-  app.get('/health/ready', { config: { rateLimit: false } }, async (request) =>
-    success({ status: 'ready' }, toRequestId(request.id)),
-  );
+  app.get('/health/ready', { config: { rateLimit: false } }, async (request, reply) => {
+    const checks = {
+      database: async () => prisma.$queryRaw`SELECT 1`,
+      ...readinessChecks,
+    };
+    const results = await Promise.all(Object.entries(checks).map(async ([name, check]) => {
+      try {
+        await check();
+        return [name, 'ok'];
+      } catch (error) {
+        request.log.error({ err: error, dependency: name, requestId: request.id }, 'Readiness dependency check failed');
+        return [name, 'unavailable'];
+      }
+    }));
+    const dependencyStatus = Object.fromEntries(results);
+    const ready = results.every(([, status]) => status === 'ok');
+    return reply
+      .status(ready ? 200 : 503)
+      .send(success({ status: ready ? 'ready' : 'not_ready', dependencies: dependencyStatus }, toRequestId(request.id)));
+  });
   app.get('/api/v1/health', { config: { rateLimit: false } }, async (request) =>
     success({ service: 'voxel-api', status: 'ok' }, toRequestId(request.id)),
   );
 
-  await registerAuthRoutes(app, environment);
+  await registerAuthRoutes(app, environment, { accountRateLimiter });
   await registerNotificationRoutes(app, environment);
   await registerFileRoutes(app, environment);
   await registerWorkspaceRoutes(app, environment);

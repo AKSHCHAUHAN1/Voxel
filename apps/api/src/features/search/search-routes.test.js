@@ -101,7 +101,7 @@ describe('global search', () => {
 
     const response = await app.inject({
       method: 'GET',
-      url: '/api/v1/search?q=metrics',
+      url: '/api/v1/search?q=METRICS',
       headers: { cookie: 'voxel_access=test-session' },
     });
 
@@ -121,6 +121,7 @@ describe('global search', () => {
       where: expect.objectContaining({ workspaceId: { in: [workspaceId] }, deletedAt: null }),
       select: expect.not.objectContaining({ scene: true }),
     }));
+    expect(prismaMock.dashboard.findMany.mock.calls[0][0].where.OR).toContainEqual({ tags: { has: 'metrics' } });
     const templateVisibility = prismaMock.dashboardTemplate.findMany.mock.calls[0][0].where.AND[1].OR;
     expect(templateVisibility).toEqual([
       { workspaceId: { in: [] } },

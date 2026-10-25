@@ -34,3 +34,66 @@ describe('health routes', () => {
     });
   });
 });
+
+describe('production rate limit configuration', () => {
+  it('refuses to start without both Redis-backed account and source-address limits', async () => {
+    await expect(buildApp({ ...environment, NODE_ENV: 'production' }))
+      .rejects.toThrow(/Redis-backed credential and source address rate limiters/);
+  });
+});
+
+describe('browser request origin protection', () => {
+  it('rejects cross-origin mutations before they reach route handlers', async () => {
+    app = await buildApp(environment);
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/logout',
+      headers: { origin: 'https://malicious.example', 'sec-fetch-site': 'cross-site' },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      success: false,
+      error: { code: 'CSRF_ORIGIN_REJECTED' },
+    });
+  });
+
+  it('allows same-origin browser mutations to proceed to authentication', async () => {
+    app = await buildApp(environment);
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/password',
+      headers: { origin: environment.VOXEL_PUBLIC_APP_URL, 'sec-fetch-site': 'same-site' },
+      payload: { currentPassword: 'old-password', newPassword: 'a-secure-new-password' },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json().error.code).toBe('AUTHENTICATION_REQUIRED');
+  });
+
+  it('rejects cookie-authenticated mutations when the browser origin is missing', async () => {
+    app = await buildApp(environment);
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/password',
+      headers: { cookie: 'voxel_access=opaque-session-cookie' },
+      payload: { currentPassword: 'old-password', newPassword: 'a-secure-new-password' },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json().error.code).toBe('CSRF_ORIGIN_REJECTED');
+  });
+
+  it('allows unauthenticated mutations without browser origin metadata to reach authentication', async () => {
+    app = await buildApp(environment);
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/password',
+      payload: { currentPassword: 'old-password', newPassword: 'a-secure-new-password' },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json().error.code).toBe('AUTHENTICATION_REQUIRED');
+  });
+});

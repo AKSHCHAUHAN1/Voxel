@@ -41,12 +41,15 @@ model User {
   avatarUrl     String?
   jobTitle      String?
   bio           String?
+  website       String?
+  socialLinks   Json      @default("{}")
   timezone      String    @default("UTC")
   locale        String    @default("en")
   preferences   Json      @default("{}")
   emailVerified Boolean   @default(false)
   mfaTotpSecretEnc String?
   mfaTotpEnabledAt DateTime?
+  mfaTotpLastUsedStep BigInt?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
@@ -229,6 +232,7 @@ model Dashboard {
   name        String
   slug        String
   description String?
+  tags        String[]        @default([])
   status      DashboardStatus @default(DRAFT)
   scene       Json            @default("{}")
   version     Int             @default(1)
@@ -417,4 +421,14 @@ model AuditEvent {
 
   @@index([workspaceId, createdAt])
   @@index([resourceType, resourceId])
+}
+
+model StorageDeletionJob {
+  id            String   @id @default(uuid()) @db.Uuid
+  storageKey    String   @unique
+  attempts      Int      @default(0)
+  lastAttemptAt DateTime?
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
 }

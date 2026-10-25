@@ -6,8 +6,8 @@ import {
   createTotpUri,
   decryptTotpSecret,
   encryptTotpSecret,
+  findValidTotpStep,
   normalizeRecoveryCode,
-  verifyTotp,
 } from './totp.js';
 
 const ACCESS_TOKEN_LIFETIME_SECONDS = 15 * 60;
@@ -25,6 +25,38 @@ const mfaError = (message = 'The authenticator code is invalid or has expired.')
   const error = new Error(message);
   error.statusCode = 401;
   return error;
+};
+
+const consumeMfaFactor = async (transaction, user, code, environment) => {
+  if (!user?.mfaTotpEnabledAt || !user.mfaTotpSecretEnc || typeof code !== 'string') throw mfaError();
+  const secret = decryptTotpSecret(user.mfaTotpSecretEnc, mfaEncryptionSecret(environment));
+  const step = findValidTotpStep(secret, code);
+  if (step !== null) {
+    const consumed = await transaction.user.updateMany({
+      where: {
+        id: user.id,
+        OR: [
+          { mfaTotpLastUsedStep: null },
+          { mfaTotpLastUsedStep: { lt: BigInt(step) } },
+        ],
+      },
+      data: { mfaTotpLastUsedStep: BigInt(step) },
+    });
+    if (consumed.count !== 1) throw mfaError('This authenticator code has already been used. Wait for a new code.');
+    return 'totp';
+  }
+
+  const normalizedCode = normalizeRecoveryCode(code);
+  const recoveryCode = await transaction.mfaRecoveryCode.findFirst({
+    where: { userId: user.id, codeHash: digest(normalizedCode), usedAt: null },
+  });
+  if (!recoveryCode) throw mfaError();
+  const consumed = await transaction.mfaRecoveryCode.updateMany({
+    where: { id: recoveryCode.id, userId: user.id, usedAt: null },
+    data: { usedAt: new Date() },
+  });
+  if (consumed.count !== 1) throw mfaError();
+  return 'recovery';
 };
 
 export function hashPassword(password) {
@@ -146,7 +178,7 @@ export class AuthService {
     return user;
   }
 
-  async issueEmailChangeToken(userId, sessionId, requestedEmail) {
+  async issueEmailChangeToken(userId, sessionId, requestedEmail, mfaCode) {
     const session = await this.database.session.findFirst({
       where: { id: sessionId, userId },
       select: { createdAt: true },
@@ -159,7 +191,10 @@ export class AuthService {
 
     const user = await this.database.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, displayName: true, passwordHash: true, googleSubject: true, deletedAt: true },
+      select: {
+        id: true, email: true, displayName: true, passwordHash: true, googleSubject: true, deletedAt: true,
+        mfaTotpEnabledAt: true, mfaTotpSecretEnc: true, mfaTotpLastUsedStep: true,
+      },
     });
     if (!user || user.deletedAt || !user.passwordHash || user.googleSubject) return null;
 
@@ -173,21 +208,24 @@ export class AuthService {
 
     const token = randomBytes(32).toString('base64url');
     const now = new Date();
-    await this.database.emailChangeToken.upsert({
-      where: { userId },
-      create: {
-        userId,
-        email,
-        tokenHash: digest(token),
-        expiresAt: new Date(now.getTime() + EMAIL_CHANGE_LIFETIME_HOURS * 60 * 60 * 1_000),
-      },
-      update: {
-        email,
-        tokenHash: digest(token),
-        expiresAt: new Date(now.getTime() + EMAIL_CHANGE_LIFETIME_HOURS * 60 * 60 * 1_000),
-        consumedAt: null,
-        createdAt: now,
-      },
+    await this.database.$transaction(async (transaction) => {
+      if (user.mfaTotpEnabledAt) await consumeMfaFactor(transaction, user, mfaCode, this.environment);
+      await transaction.emailChangeToken.upsert({
+        where: { userId },
+        create: {
+          userId,
+          email,
+          tokenHash: digest(token),
+          expiresAt: new Date(now.getTime() + EMAIL_CHANGE_LIFETIME_HOURS * 60 * 60 * 1_000),
+        },
+        update: {
+          email,
+          tokenHash: digest(token),
+          expiresAt: new Date(now.getTime() + EMAIL_CHANGE_LIFETIME_HOURS * 60 * 60 * 1_000),
+          consumedAt: null,
+          createdAt: now,
+        },
+      });
     });
     return { email, displayName: user.displayName, token };
   }
@@ -446,6 +484,7 @@ export class AuthService {
       data: {
         mfaTotpSecretEnc: encryptTotpSecret(secret, mfaEncryptionSecret(this.environment)),
         mfaTotpEnabledAt: null,
+        mfaTotpLastUsedStep: null,
       },
     });
     return { secret, otpauthUrl: createTotpUri({ secret, email: user.email }) };
@@ -459,13 +498,22 @@ export class AuthService {
       throw error;
     }
     const secret = decryptTotpSecret(user.mfaTotpSecretEnc, mfaEncryptionSecret(this.environment));
-    if (!verifyTotp(secret, code)) throw mfaError();
+    const totpStep = findValidTotpStep(secret, code);
+    if (totpStep === null) throw mfaError();
 
     const recoveryCodes = createRecoveryCodes();
     await this.database.$transaction(async (transaction) => {
       const enabled = await transaction.user.updateMany({
-        where: { id: userId, mfaTotpSecretEnc: user.mfaTotpSecretEnc, mfaTotpEnabledAt: null },
-        data: { mfaTotpEnabledAt: new Date() },
+        where: {
+          id: userId,
+          mfaTotpSecretEnc: user.mfaTotpSecretEnc,
+          mfaTotpEnabledAt: null,
+          OR: [
+            { mfaTotpLastUsedStep: null },
+            { mfaTotpLastUsedStep: { lt: BigInt(totpStep) } },
+          ],
+        },
+        data: { mfaTotpEnabledAt: new Date(), mfaTotpLastUsedStep: BigInt(totpStep) },
       });
       if (enabled.count !== 1) throw mfaError('Authenticator setup has changed. Start again.');
       await transaction.mfaRecoveryCode.deleteMany({ where: { userId } });
@@ -514,20 +562,15 @@ export class AuthService {
     if (!challenge || challenge.consumedAt || challenge.expiresAt <= now || challenge.user.deletedAt || !challenge.user.emailVerified) {
       throw mfaError();
     }
-
-    const normalizedCode = normalizeRecoveryCode(code);
-    const isTotp = Boolean(challenge.user.mfaTotpEnabledAt && challenge.user.mfaTotpSecretEnc && /^\d{6}$/.test(code)
-      && verifyTotp(decryptTotpSecret(challenge.user.mfaTotpSecretEnc, mfaEncryptionSecret(this.environment)), code));
-    const recoveryCode = !isTotp && challenge.user.mfaTotpEnabledAt
-      ? await this.database.mfaRecoveryCode.findFirst({
-        where: {
-          userId: challenge.userId,
-          codeHash: digest(normalizedCode),
-          usedAt: null,
-        },
-      })
+    const totpStep = challenge.user.mfaTotpEnabledAt && challenge.user.mfaTotpSecretEnc
+      ? findValidTotpStep(decryptTotpSecret(challenge.user.mfaTotpSecretEnc, mfaEncryptionSecret(this.environment)), code)
       : null;
-    if (!isTotp && !recoveryCode) throw mfaError();
+    if (totpStep === null) {
+      const recoveryCode = typeof code === 'string' ? await this.database.mfaRecoveryCode.findFirst({
+        where: { userId: challenge.userId, codeHash: digest(normalizeRecoveryCode(code)), usedAt: null },
+      }) : null;
+      if (!recoveryCode) throw mfaError();
+    }
 
     await this.database.$transaction(async (transaction) => {
       const consumedChallenge = await transaction.mfaChallenge.updateMany({
@@ -535,13 +578,7 @@ export class AuthService {
         data: { consumedAt: now },
       });
       if (consumedChallenge.count !== 1) throw mfaError();
-      if (recoveryCode) {
-        const consumedCode = await transaction.mfaRecoveryCode.updateMany({
-          where: { id: recoveryCode.id, userId: challenge.userId, usedAt: null },
-          data: { usedAt: now },
-        });
-        if (consumedCode.count !== 1) throw mfaError();
-      }
+      await consumeMfaFactor(transaction, challenge.user, code, this.environment);
     });
     return this.generateSessionForUser(challenge.user, metadata);
   }
@@ -549,9 +586,10 @@ export class AuthService {
   async rotateMfaRecoveryCodes(userId, code) {
     const user = await this.database.user.findUnique({ where: { id: userId } });
     if (!user?.mfaTotpEnabledAt || !user.mfaTotpSecretEnc) throw mfaError('Two-factor authentication is not enabled.');
-    if (!verifyTotp(decryptTotpSecret(user.mfaTotpSecretEnc, mfaEncryptionSecret(this.environment)), code)) throw mfaError();
+    if (findValidTotpStep(decryptTotpSecret(user.mfaTotpSecretEnc, mfaEncryptionSecret(this.environment)), code) === null) throw mfaError();
     const recoveryCodes = createRecoveryCodes();
     await this.database.$transaction(async (transaction) => {
+      await consumeMfaFactor(transaction, user, code, this.environment);
       await transaction.mfaRecoveryCode.deleteMany({ where: { userId } });
       await transaction.mfaRecoveryCode.createMany({
         data: recoveryCodes.map((recoveryCode) => ({ userId, codeHash: digest(normalizeRecoveryCode(recoveryCode)) })),
@@ -561,14 +599,22 @@ export class AuthService {
   }
 
   async disableTotp(userId, sessionId, { code, currentPassword }) {
-    const user = await this.database.user.findUnique({ where: { id: userId } });
+    const [user, session] = await Promise.all([
+      this.database.user.findUnique({ where: { id: userId } }),
+      this.database.session.findFirst({ where: { id: sessionId, userId }, select: { createdAt: true } }),
+    ]);
     if (!user?.mfaTotpEnabledAt || !user.mfaTotpSecretEnc) throw mfaError('Two-factor authentication is not enabled.');
-    const validTotp = Boolean(code && verifyTotp(decryptTotpSecret(user.mfaTotpSecretEnc, mfaEncryptionSecret(this.environment)), code));
-    const validPassword = Boolean(currentPassword && verifyPassword(currentPassword, user.passwordHash));
-    if (!validTotp && !validPassword) throw mfaError('Enter a valid authenticator code or current password to turn off two-factor authentication.');
+    const recentlyAuthenticated = session && Date.now() - session.createdAt.getTime() <= 10 * 60 * 1_000;
+    if (!recentlyAuthenticated && !(currentPassword && verifyPassword(currentPassword, user.passwordHash))) {
+      const error = new Error('Sign in again or enter your current password before turning off two-factor authentication.');
+      error.statusCode = 403;
+      throw error;
+    }
+    if (!code) throw mfaError('Enter an authenticator code or unused recovery code to turn off two-factor authentication.');
     const now = new Date();
     await this.database.$transaction(async (transaction) => {
-      await transaction.user.update({ where: { id: userId }, data: { mfaTotpSecretEnc: null, mfaTotpEnabledAt: null } });
+      await consumeMfaFactor(transaction, user, code, this.environment);
+      await transaction.user.update({ where: { id: userId }, data: { mfaTotpSecretEnc: null, mfaTotpEnabledAt: null, mfaTotpLastUsedStep: null } });
       await transaction.mfaRecoveryCode.deleteMany({ where: { userId } });
       await transaction.mfaChallenge.updateMany({ where: { userId, consumedAt: null }, data: { consumedAt: now } });
       await transaction.session.updateMany({ where: { userId, id: { not: sessionId } }, data: { expiresAt: now } });
@@ -675,29 +721,31 @@ export class AuthService {
     });
   }
 
-  async updatePassword(userId, currentSessionId, currentPassword, nextPassword) {
+  async updatePassword(userId, currentSessionId, currentPassword, nextPassword, mfaCode) {
     const user = await this.database.user.findFirst({ where: { id: userId, deletedAt: null } });
     if (!user || !user.passwordHash || !verifyPassword(currentPassword, user.passwordHash)) {
       const err = new Error('Current password is incorrect.');
       err.statusCode = 400;
       throw err;
     }
+    if (user.mfaTotpEnabledAt && !mfaCode) throw mfaError('Enter an authenticator code or unused recovery code to change your password.');
 
     const now = new Date();
-    await this.database.$transaction([
-      this.database.user.update({
+    await this.database.$transaction(async (transaction) => {
+      if (user.mfaTotpEnabledAt) await consumeMfaFactor(transaction, user, mfaCode, this.environment);
+      await transaction.user.update({
         where: { id: userId },
         data: { passwordHash: hashPassword(nextPassword) },
-      }),
-      this.database.session.updateMany({
+      });
+      await transaction.session.updateMany({
         where: { userId, id: { not: currentSessionId }, expiresAt: { gt: now } },
         data: { expiresAt: now },
-      }),
-      this.database.refreshToken.updateMany({
+      });
+      await transaction.refreshToken.updateMany({
         where: { session: { userId, id: { not: currentSessionId } }, revokedAt: null },
         data: { revokedAt: now },
-      }),
-    ]);
+      });
+    });
   }
 
   async listSessions(userId, currentSessionId) {
@@ -733,15 +781,27 @@ export class AuthService {
     return result.count > 0;
   }
 
-  async revokeAllSessions(userId) {
+  async revokeAllSessions(userId, currentSessionId, mfaCode) {
+    const [session, user] = await Promise.all([
+      this.database.session.findFirst({ where: { id: currentSessionId, userId }, select: { createdAt: true } }),
+      this.database.user.findUnique({ where: { id: userId } }),
+    ]);
+    if (!session || Date.now() - session.createdAt.getTime() > 10 * 60 * 1_000) {
+      const error = new Error('Sign in again before revoking every session. Recent authentication is required.');
+      error.statusCode = 403;
+      throw error;
+    }
+    if (user?.mfaTotpEnabledAt && !mfaCode) throw mfaError('Enter an authenticator code or unused recovery code to revoke every session.');
+
     const now = new Date();
-    await this.database.$transaction([
-      this.database.session.updateMany({ where: { userId }, data: { expiresAt: now } }),
-      this.database.refreshToken.updateMany({
+    await this.database.$transaction(async (transaction) => {
+      if (user?.mfaTotpEnabledAt) await consumeMfaFactor(transaction, user, mfaCode, this.environment);
+      await transaction.session.updateMany({ where: { userId }, data: { expiresAt: now } });
+      await transaction.refreshToken.updateMany({
         where: { session: { userId }, revokedAt: null },
         data: { revokedAt: now },
-      }),
-    ]);
+      });
+    });
   }
 
   async getAuthenticatedContext(accessToken) {
@@ -891,8 +951,20 @@ export class AuthService {
     return { subject: payload.sub, sessionId: payload.sid };
   }
 
-  async deleteAccount(userId) {
+  async deleteAccount(userId, currentSessionId, { mfaCode } = {}) {
     if (!userId) return;
+
+    const currentSession = await this.database.session.findFirst({
+      where: { id: currentSessionId, userId, expiresAt: { gt: new Date() } },
+      select: { createdAt: true },
+    });
+    if (!currentSession || Date.now() - currentSession.createdAt.getTime() > 10 * 60 * 1_000) {
+      const error = new Error('Sign in again before deleting your account. Recent authentication is required.');
+      error.statusCode = 403;
+      throw error;
+    }
+    const user = await this.database.user.findUnique({ where: { id: userId } });
+    if (user?.mfaTotpEnabledAt && !mfaCode) throw mfaError('Enter an authenticator code or unused recovery code to delete your account.');
 
     const ownedWorkspaces = await this.database.workspace.findMany({
       where: { ownerId: userId },
@@ -904,12 +976,50 @@ export class AuthService {
       throw err;
     }
     const workspaceIds = ownedWorkspaces.map((w) => w.id);
+    const workspaceFiles = workspaceIds.length
+      ? await this.database.storedFile.findMany({
+        where: { workspaceId: { in: workspaceIds } },
+        select: { storageKey: true },
+      })
+      : [];
+    const personalAvatars = await this.database.storedFile.findMany({
+      where: {
+        uploaderId: userId,
+        purpose: 'AVATAR',
+        ...(workspaceIds.length ? { workspaceId: { notIn: workspaceIds } } : {}),
+      },
+      select: { id: true, storageKey: true, workspaceId: true, sizeBytes: true },
+    });
     const dashboardsToReassign = await this.database.dashboard.findMany({
       where: { ownerId: userId, ...(workspaceIds.length ? { workspaceId: { notIn: workspaceIds } } : {}) },
       select: { id: true, workspace: { select: { ownerId: true } } },
     });
 
     await this.database.$transaction(async (transaction) => {
+      if (user?.mfaTotpEnabledAt) await consumeMfaFactor(transaction, user, mfaCode, this.environment);
+      const storageKeys = [...new Set([
+        ...workspaceFiles.map(({ storageKey }) => storageKey),
+        ...personalAvatars.map(({ storageKey }) => storageKey),
+      ])];
+      if (storageKeys.length) {
+        await transaction.storageDeletionJob.createMany({
+          data: storageKeys.map((storageKey) => ({ storageKey })),
+          skipDuplicates: true,
+        });
+      }
+      if (personalAvatars.length) {
+        await transaction.storedFile.deleteMany({ where: { id: { in: personalAvatars.map(({ id }) => id) } } });
+        const storageBytesByWorkspace = new Map();
+        personalAvatars.forEach(({ workspaceId, sizeBytes }) => {
+          storageBytesByWorkspace.set(workspaceId, (storageBytesByWorkspace.get(workspaceId) || 0n) + sizeBytes);
+        });
+        for (const [workspaceId, sizeBytes] of storageBytesByWorkspace) {
+          await transaction.workspace.updateMany({
+            where: { id: workspaceId },
+            data: { storageUsedBytes: { decrement: sizeBytes } },
+          });
+        }
+      }
       for (const dashboard of dashboardsToReassign) {
         await transaction.dashboard.update({
           where: { id: dashboard.id },
@@ -929,6 +1039,14 @@ export class AuthService {
       await transaction.workspaceMember.deleteMany({ where: { OR: [{ workspaceId: { in: workspaceIds } }, { userId }] } });
       await transaction.auditEvent.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
       await transaction.workspace.deleteMany({ where: { id: { in: workspaceIds } } });
+      await transaction.auditEvent.create({
+        data: {
+          actorId: userId,
+          action: 'account.deleted',
+          resourceType: 'account',
+          resourceId: 'self',
+        },
+      });
       await transaction.refreshToken.deleteMany({ where: { session: { userId } } });
       await transaction.session.deleteMany({ where: { userId } });
       await transaction.user.delete({ where: { id: userId } });

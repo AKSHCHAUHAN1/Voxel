@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useThemeStore } from '@/store/theme-store';
+import { useThemeStore, useEffectiveTheme } from '@/store/theme-store';
 import { toggleThemeWithRipple } from '@/utils/theme-ripple';
 import appIcon from '@/assets/app-icon.png';
 import appIconDark from '@/assets/app-icon-dark.png';
@@ -38,7 +38,8 @@ function InteractiveTiltCard({ children, className = '' }) {
 
 export default function LandingPage() {
   const containerRef = useRef(null);
-  const { theme, setTheme } = useThemeStore();
+  const setTheme = useThemeStore((state) => state.setTheme);
+  const theme = useEffectiveTheme();
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
