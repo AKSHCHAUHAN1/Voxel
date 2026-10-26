@@ -1,0 +1,46 @@
+FROM node:22-alpine AS dependencies
+
+WORKDIR /app
+RUN apk add --no-cache openssl
+
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
+RUN npm install --global npm@11.8.0 && npm ci
+
+COPY apps/api/prisma apps/api/prisma
+COPY apps/api/src apps/api/src
+COPY packages/contracts packages/contracts
+RUN npm run prisma:generate --workspace=@voxel/api
+RUN node -e "const fs=require('node:fs'); const local='apps/api/node_modules/.prisma/client'; const root='node_modules/.prisma/client'; const source=fs.existsSync(local)?local:root; if(!fs.existsSync(source)) throw new Error('Prisma Client output was not generated'); if(source!==root) fs.cpSync(source,root,{recursive:true});"
+
+FROM dependencies AS migrate
+ENV NODE_ENV=production
+CMD ["npm", "run", "prisma:deploy", "--workspace=@voxel/api"]
+
+FROM dependencies AS production-dependencies
+RUN npm prune --omit=dev \
+  && rm -rf node_modules/prisma node_modules/@prisma/config node_modules/@prisma/engines node_modules/@prisma/engines-version node_modules/@prisma/fetch-engine node_modules/@prisma/get-platform
+
+FROM node:22-alpine AS runtime
+
+WORKDIR /app
+ENV NODE_ENV=production
+RUN apk add --no-cache openssl \
+  && addgroup -S voxel \
+  && adduser -S -G voxel voxel
+
+COPY --from=production-dependencies /app/node_modules ./node_modules
+COPY --from=dependencies /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=dependencies /app/package.json ./package.json
+COPY --from=dependencies /app/apps/api/package.json ./apps/api/package.json
+COPY --from=dependencies /app/apps/api/src ./apps/api/src
+COPY --from=dependencies /app/packages/contracts/package.json ./packages/contracts/package.json
+COPY --from=dependencies /app/packages/contracts/src ./packages/contracts/src
+
+USER voxel
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3000/health/live').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+CMD ["node", "apps/api/src/server.js"]

@@ -10,6 +10,12 @@ const baseEnvironment = {
 };
 
 describe('environment security requirements', () => {
+  it('does not trust forwarded client addresses unless explicitly configured', () => {
+    expect(parseEnvironment({ ...baseEnvironment, NODE_ENV: 'development' }).TRUST_PROXY).toBe(false);
+    expect(parseEnvironment({ ...baseEnvironment, NODE_ENV: 'development', TRUST_PROXY: 'true' }).TRUST_PROXY).toBe(true);
+    expect(() => parseEnvironment({ ...baseEnvironment, NODE_ENV: 'development', TRUST_PROXY: 'yes' })).toThrow();
+  });
+
   it('allows local development without production storage or email providers', () => {
     const environment = parseEnvironment({
       ...baseEnvironment,

@@ -38,6 +38,7 @@ export const buildApp = async (environment, { readinessChecks = {}, accountRateL
     throw new Error('Redis-backed credential and source address rate limiters are required in production');
   }
   const app = Fastify({
+    trustProxy: environment.TRUST_PROXY ?? false,
     logger: {
       level: environment.NODE_ENV === 'production' ? 'info' : 'warn',
       redact: ['req.headers.authorization', 'req.headers.cookie', 'res.headers.set-cookie'],

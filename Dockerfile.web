@@ -1,0 +1,25 @@
+FROM node:22-alpine AS build
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
+RUN npm install --global npm@11.8.0 && npm ci
+
+COPY apps/web apps/web
+COPY packages/contracts packages/contracts
+ARG VITE_VOXEL_API_URL=
+ENV VITE_VOXEL_API_URL=${VITE_VOXEL_API_URL}
+RUN npm run build --workspace=@voxel/web
+
+FROM nginx/nginx-unprivileged:stable-alpine3.24-slim AS runtime
+
+ENV API_UPSTREAM=http://api:3000
+ENV NGINX_ENVSUBST_FILTER=^API_UPSTREAM$
+COPY --from=build /app/apps/web/dist /usr/share/nginx/html
+COPY deploy/nginx/default.conf.template /etc/nginx/templates/default.conf.template
+
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1

@@ -45,7 +45,9 @@ jobs:
           cache: npm
 
       - name: Install locked dependencies
-        run: npm ci
+        run: |
+          npm install --global npm@11.8.0
+          npm ci
 
       - name: Generate Prisma Client
         run: npm run prisma:generate -w @voxel/api
@@ -64,3 +66,12 @@ jobs:
 
       - name: Build production workspaces
         run: npm run build
+
+      - name: Build API runtime container
+        run: docker build --file Dockerfile.api --target runtime --tag voxel-api:${{ github.sha }} .
+
+      - name: Build API migration container
+        run: docker build --file Dockerfile.api --target migrate --tag voxel-api-migrate:${{ github.sha }} .
+
+      - name: Build web runtime container
+        run: docker build --file Dockerfile.web --tag voxel-web:${{ github.sha }} .

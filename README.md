@@ -59,10 +59,11 @@ The app uses React 19, Vite, Tailwind CSS 4, TanStack Query, and Zustand in the 
 
 2. Copy `.env.example` to `.env` and set the database, Redis, session secret, MFA encryption key, and public app and API URLs. Google OAuth is optional; configure both Google client variables to enable it. The example includes local RustFS storage credentials; production must replace them with HTTPS S3-compatible storage and configure an HTTPS email-delivery webhook. Production rejects example secrets and non-HTTPS public URLs.
 
-3. Start PostgreSQL, Redis, and RustFS (Compose creates the development bucket), then apply the Prisma schema:
+3. Start PostgreSQL, Redis, and RustFS (Compose creates the development bucket), generate the Prisma client, and apply database migrations:
 
    ```bash
    docker compose up -d
+   npm run prisma:generate --workspace=@voxel/api
    npm run prisma:deploy -w @voxel/api
    ```
 
@@ -89,6 +90,8 @@ npm run build
 - `GET /api/v1/health` is the stable API health contract for clients and monitoring.
 
 For an existing database created with `prisma db push`, baseline the current schema before the first `prisma migrate deploy`; subsequent releases should use the checked-in migrations.
+
+Container builds, reverse-proxy configuration, migration rollout, secret handling, backup/restore steps, and incident checks are documented in [Deployment and operations](docs/deployment.md). The repository does not configure a hosting provider, backup schedule, alert destination, or named on-call owner.
 
 ## License
 
