@@ -81,6 +81,8 @@ The app uses React 19, Vite, Tailwind CSS 4, TanStack Query, and Zustand in the 
 npm run lint
 npm test
 npm run build
+npx playwright install chromium
+npm run test:e2e
 ```
 
 ## Service health

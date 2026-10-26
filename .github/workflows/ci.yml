@@ -17,7 +17,7 @@ jobs:
   validate:
     name: Validate application
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       DATABASE_URL: postgresql://voxel:voxel@localhost:5432/voxel?schema=public
     services:
@@ -69,6 +69,20 @@ jobs:
 
       - name: Build production workspaces
         run: npm run build
+
+      - name: Install Chromium for browser tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser tests
+        run: npm run test:e2e
+
+      - name: Upload browser traces
+        if: ${{ failure() && !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
 
       - name: Build API runtime container
         run: docker build --file Dockerfile.api --target runtime --tag voxel-api:${{ github.sha }} .

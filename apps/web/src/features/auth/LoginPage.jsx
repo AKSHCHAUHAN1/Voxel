@@ -319,6 +319,7 @@ export function LoginPage() {
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
+                role="alert"
                 className="mt-4 flex items-center gap-2.5 rounded-xl border border-rose-200 bg-rose-50/90 dark:border-rose-500/30 dark:bg-rose-950/40 p-3 text-xs font-semibold text-rose-700 dark:text-rose-300"
               >
                 <AlertCircle size={16} className="shrink-0 text-rose-600 dark:text-rose-400" />
@@ -367,10 +368,11 @@ export function LoginPage() {
           ) : <form onSubmit={handleSubmit} className="mt-5 space-y-3.5">
             {mode === 'signup' && (
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
+                <label htmlFor="auth-display-name" className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
                   Full Name
                 </label>
                 <input
+                  id="auth-display-name"
                   type="text"
                   required
                   maxLength={120}
@@ -383,10 +385,11 @@ export function LoginPage() {
             )}
 
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
+              <label htmlFor="auth-email" className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
                 Email Address
               </label>
               <input
+                id="auth-email"
                 type="email"
                 required
                 maxLength={254}
@@ -398,11 +401,12 @@ export function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
+              <label htmlFor="auth-password" className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
                 Password
               </label>
               <div className="relative">
                 <input
+                  id="auth-password"
                   type={showPassword ? 'text' : 'password'}
                   required
                   minLength={mode === 'signup' ? 12 : undefined}
@@ -415,6 +419,9 @@ export function LoginPage() {
                 />
                 <button
                   type="button"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showPassword}
+                  aria-controls="auth-password"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
                 >
@@ -431,10 +438,11 @@ export function LoginPage() {
 
             {mode === 'signup' && (
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
+                <label htmlFor="auth-confirm-password" className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
                   Confirm Password
                 </label>
                 <input
+                  id="auth-confirm-password"
                   type={showPassword ? 'text' : 'password'}
                   required
                   minLength={12}
