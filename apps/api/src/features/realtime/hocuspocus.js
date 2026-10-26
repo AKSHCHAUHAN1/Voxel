@@ -5,7 +5,10 @@ import { prisma } from '../../database/prisma.js';
 import { runSerializableTransaction } from '../../lib/serializable-transaction.js';
 import { AuthService } from '../auth/auth-service.js';
 import { parseEnvironment } from '../../config/environment.js';
-import { sanitizePresenceState } from './presence.js';
+import {
+  createAwarenessRateLimiter,
+  sanitizeConnectionAwareness,
+} from './presence.js';
 import { getWidgetPluginForType, validatePluginWidgetConfiguration } from '@voxel/contracts';
 
 const environment = parseEnvironment(process.env);
@@ -40,6 +43,9 @@ const hasInstalledPluginWidgets = async (workspaceId, scene, database = prisma) 
 };
 
 export const createHocuspocusServer = () => {
+  const presenceRoleCache = new WeakMap();
+  const presenceClientClaims = new WeakMap();
+  const presenceRateLimited = createAwarenessRateLimiter(50);
   const server = new Server({
     timeout: 30000,
     debounce: 2000,
@@ -84,24 +90,50 @@ export const createHocuspocusServer = () => {
     async beforeHandleAwareness(data) {
       const connection = data.connection;
       if (!connection) return;
-      const role = await authService.isRealtimeSessionActive(
-        data.context?.user?.id,
-        data.context?.sessionId,
-        data.documentName,
-      );
+      const now = Date.now();
+      let access = presenceRoleCache.get(connection);
+      if (!access || access.expiresAt <= now) {
+        const role = await authService.isRealtimeSessionActive(
+          data.context?.user?.id,
+          data.context?.sessionId,
+          data.documentName,
+        );
+        access = role ? { role, expiresAt: now + 250 } : null;
+        if (access) presenceRoleCache.set(connection, access);
+      }
+      const role = access?.role;
       if (!role) {
         connection.close();
         throw new Error('Realtime access has expired or been revoked.');
       }
-
+      connection.readOnly = !['OWNER', 'ADMIN', 'EDITOR'].includes(role);
+      presenceRateLimited(connection, data.states, now);
       const user = data.context?.user;
       if (user?.id) {
-        for (const [clientId, state] of data.states) {
-          if (!state || typeof state !== 'object') continue;
-          data.states.set(clientId, sanitizePresenceState(state, user));
+        let clientClaims = presenceClientClaims.get(data.document);
+        if (!clientClaims) {
+          clientClaims = new Map();
+          presenceClientClaims.set(data.document, clientClaims);
         }
+        sanitizeConnectionAwareness({
+          states: data.states,
+          removedClients: data.removedClients,
+          connection,
+          socketId: data.socketId,
+          document: data.document,
+          awareness: data.awareness,
+          user,
+          clientClaims,
+        });
       }
-      connection.readOnly = !['OWNER', 'ADMIN', 'EDITOR'].includes(role);
+    },
+
+    onDisconnect(data) {
+      const clientClaims = presenceClientClaims.get(data.document);
+      if (!clientClaims) return;
+      for (const [clientId, socketId] of clientClaims) {
+        if (socketId === data.socketId) clientClaims.delete(clientId);
+      }
     },
 
     async onLoadDocument(data) {

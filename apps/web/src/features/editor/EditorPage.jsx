@@ -463,23 +463,6 @@ export default function EditorPage() {
     else setSelectedNodeIds([id]);
   }, []);
 
-  const handleSelectNode = useCallback((id, e) => {
-    const node = scene.nodes.find((item) => item.id === id);
-    const memberIds = node?.groupId
-      ? scene.nodes.filter((item) => item.groupId === node.groupId).map((item) => item.id)
-      : [id];
-    if (e && (e.metaKey || e.ctrlKey || e.shiftKey)) {
-      setSelectedNodeIds((previous) => {
-        const allSelected = memberIds.every((memberId) => previous.includes(memberId));
-        return allSelected
-          ? previous.filter((selectedId) => !memberIds.includes(selectedId))
-          : [...new Set([...previous, ...memberIds])];
-      });
-    } else {
-      setSelectedNodeIds(memberIds);
-    }
-  }, [scene.nodes]);
-
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
     title: '',
@@ -516,12 +499,34 @@ export default function EditorPage() {
   const gridRef = useRef(null);
   const panDragRef = useRef(null);
   const suppressCanvasClickRef = useRef(false);
+  const presencePublishTimerRef = useRef(null);
+  const pendingPresenceFieldsRef = useRef({});
 
   const canUndo = useHistoryStore((s) => s.past.length > 0);
   const canRedo = useHistoryStore((s) => s.future.length > 0);
 
   const { scene: yScene, updateScene, awareness, awarenessStates,
   } = useYjs(dashboardId, dashboard.data?.scene, currentUser.data);
+
+  const queuePresenceField = useCallback((field, value) => {
+    if (!awareness) return;
+    pendingPresenceFieldsRef.current[field] = value;
+    if (presencePublishTimerRef.current !== null) return;
+    presencePublishTimerRef.current = window.setTimeout(() => {
+      presencePublishTimerRef.current = null;
+      const fields = pendingPresenceFieldsRef.current;
+      pendingPresenceFieldsRef.current = {};
+      awareness.setLocalState({ ...(awareness.getLocalState() || {}), ...fields });
+    }, 50);
+  }, [awareness]);
+
+  useEffect(() => () => {
+    if (presencePublishTimerRef.current !== null) {
+      window.clearTimeout(presencePublishTimerRef.current);
+      presencePublishTimerRef.current = null;
+    }
+    pendingPresenceFieldsRef.current = {};
+  }, [awareness]);
 
   const onlineCollaborators = useMemo(
     () =>
@@ -540,6 +545,22 @@ export default function EditorPage() {
     () => sceneOf(yScene || dashboard.data?.scene),
     [dashboard.data?.scene, yScene],
   );
+  const handleSelectNode = useCallback((id, e) => {
+    const node = scene.nodes.find((item) => item.id === id);
+    const memberIds = node?.groupId
+      ? scene.nodes.filter((item) => item.groupId === node.groupId).map((item) => item.id)
+      : [id];
+    if (e && (e.metaKey || e.ctrlKey || e.shiftKey)) {
+      setSelectedNodeIds((previous) => {
+        const allSelected = memberIds.every((memberId) => previous.includes(memberId));
+        return allSelected
+          ? previous.filter((selectedId) => !memberIds.includes(selectedId))
+          : [...new Set([...previous, ...memberIds])];
+      });
+    } else {
+      setSelectedNodeIds(memberIds);
+    }
+  }, [scene.nodes]);
 
   const workspaceFilesQuery = useQuery({
     queryKey: ['workspaces', workspaceId, 'files'],
@@ -1517,8 +1538,8 @@ export default function EditorPage() {
   // Sync selectedNodeId to awareness
   useEffect(() => {
     if (!awareness) return;
-    awareness.setLocalStateField('selectedNodeId', selectedNodeId);
-  }, [awareness, selectedNodeId]);
+    queuePresenceField('selectedNodeId', selectedNodeId);
+  }, [awareness, queuePresenceField, selectedNodeId]);
 
   const handlePointerMove = useCallback((e) => {
     if (!awareness) return;
@@ -1526,22 +1547,20 @@ export default function EditorPage() {
     if (!scrollContainer) return;
     const rect = scrollContainer.getBoundingClientRect();
     const point = pointerToCanvasPoint(
-        e.clientX,
-        e.clientY,
-        rect,
-        scrollContainer.scrollLeft,
-        scrollContainer.scrollTop,
-        zoom,
-      );
-      awareness.setLocalStateField('cursor', point);
-    },
-    [awareness, zoom],
-  );
+      e.clientX,
+      e.clientY,
+      rect,
+      scrollContainer.scrollLeft,
+      scrollContainer.scrollTop,
+      zoom,
+    );
+    queuePresenceField('cursor', point);
+  }, [queuePresenceField, zoom]);
 
   const handlePointerLeave = useCallback(() => {
     if (!awareness) return;
-    awareness.setLocalStateField('cursor', null);
-  }, [awareness]);
+    queuePresenceField('cursor', null);
+  }, [awareness, queuePresenceField]);
 
   const handleCanvasPanStart = useCallback((event) => {
     if (!spacePanActive || event.button !== 0 || !gridRef.current) return;
@@ -1595,13 +1614,11 @@ export default function EditorPage() {
       viewport.clientHeight,
       zoom,
     );
-    awareness.setLocalStateField(
+    queuePresenceField(
       'viewport',
-      Object.fromEntries(
-        Object.entries(visibleCanvas).map(([key, value]) => [key, Math.round(value)]),
-      ),
+      Object.fromEntries(Object.entries(visibleCanvas).map(([key, value]) => [key, Math.round(value)])),
     );
-  }, [awareness, zoom]);
+  }, [awareness, queuePresenceField, zoom]);
 
   useEffect(() => {
     handleViewportChange();
@@ -1617,9 +1634,9 @@ export default function EditorPage() {
           target.matches(
             'input:not([type="checkbox"]):not([type="radio"]):not([type="button"]), textarea',
           ));
-      awareness.setLocalStateField('typing', Boolean(isTextEntry));
+      queuePresenceField('typing', Boolean(isTextEntry));
     },
-    [awareness],
+    [awareness, queuePresenceField],
   );
 
   const handleEditorBlur = useCallback((event) => {
@@ -1631,8 +1648,8 @@ export default function EditorPage() {
           nextTarget.matches(
             'input:not([type="checkbox"]):not([type="radio"]):not([type="button"]), textarea',
           ));
-      awareness.setLocalStateField('typing', Boolean(remainsInTextEntry));
-  }, [awareness],
+      queuePresenceField('typing', Boolean(remainsInTextEntry));
+  }, [awareness, queuePresenceField],
   );
 
   const handleUndo = useCallback(() => {
