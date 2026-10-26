@@ -10,9 +10,11 @@ const nodeBounds = (node) => ({
 });
 
 export function getVisibleCanvasNodeIds(nodes, viewport, selectedNodeIds = []) {
-  if (!viewport || nodes.length <= WIDGET_VIRTUALIZATION_THRESHOLD) {
+  if (nodes.length <= WIDGET_VIRTUALIZATION_THRESHOLD) {
     return new Set(nodes.map((node) => node.id));
   }
+
+  if (!viewport) return new Set(selectedNodeIds);
 
   const horizontalOverscan = Math.max(600, viewport.width * 0.35);
   const verticalOverscan = Math.max(600, viewport.height * 0.35);

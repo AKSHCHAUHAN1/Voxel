@@ -28,6 +28,12 @@ describe('canvas widget virtualization', () => {
     expect(visible.size).toBe(2);
   });
 
+  it('does not mount a large scene before the viewport is measured', () => {
+    const nodes = Array.from({ length: 500 }, (_, index) => ({ id: `node-${index}` }));
+
+    expect(getVisibleCanvasNodeIds(nodes, null, ['node-499'])).toEqual(new Set(['node-499']));
+  });
+
   it('uses custom widget dimensions when calculating viewport intersections', () => {
     const nodes = Array.from({ length: 81 }, (_, index) => ({ id: `node-${index}`, x: 50_000, y: 50_000 }));
     nodes[0] = { id: 'wide-widget', x: 900, y: 20, customWidth: 1_000, customHeight: 320 };

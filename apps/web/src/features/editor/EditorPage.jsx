@@ -772,9 +772,7 @@ export default function EditorPage() {
         const boardSheet = container.firstElementChild;
         if (!boardSheet) return;
 
-        // boardOriginX/Y = how many pixels of scroll are needed to reach the (0,0) of the board sheet.
-        // This equals the container's left/top padding because the board sheet starts right after it.
-        // We measure it live via offsetLeft/offsetTop of the board sheet.
+        // Measure the inner board's leading margin so the canvas origin stays stable as layout changes.
         const boardOriginScrollLeft = boardSheet.offsetLeft;
         const boardOriginScrollTop = boardSheet.offsetTop;
 
@@ -2566,7 +2564,7 @@ export default function EditorPage() {
       </header>
 
       {/* --- GRID EDITOR WORKSPACE --- */}
-      <div className={`flex flex-1 flex-col lg:flex-row relative overflow-hidden ${isResizingLeft || isResizingRight ? 'select-none cursor-col-resize' : ''}`}>
+      <div className={`flex flex-1 min-h-0 min-w-0 flex-col lg:flex-row relative overflow-hidden ${isResizingLeft || isResizingRight ? 'select-none cursor-col-resize' : ''}`}>
         {!canEditDashboard && (
           <div className="absolute inset-0 z-40 cursor-default" aria-label="Read-only dashboard">
             <div className="pointer-events-none fixed left-1/2 top-[4.5rem] -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-4 py-2 text-xs font-semibold text-slate-600 shadow-lg backdrop-blur dark:border-white/10 dark:bg-slate-900/95 dark:text-slate-300">
@@ -2797,7 +2795,7 @@ export default function EditorPage() {
             }
             setSelectedNodeIds([]);
           }}
-          className="flex-1 overflow-hidden relative bg-slate-50 dark:bg-[#030509] min-h-[500px] z-10"
+          className="flex-1 min-w-0 overflow-hidden relative bg-slate-50 dark:bg-[#030509] min-h-[500px] z-10"
           style={gridStyleInline}
         >
           {/* Centered Empty State Overlay when no nodes exist */}
@@ -2819,8 +2817,7 @@ export default function EditorPage() {
           {/* 360-degree Infinite Scrollable Container */}
           <div
             ref={gridRef}
-            className={`w-full h-full overflow-auto relative no-scrollbars flex-1 ${isPanning ? 'cursor-grabbing' : spacePanActive ? 'cursor-grab' : ''}`}
-            style={{ padding: CANVAS_PADDING }}
+            className={`absolute inset-0 box-border overflow-auto no-scrollbars ${isPanning ? 'cursor-grabbing' : spacePanActive ? 'cursor-grab' : ''}`}
             onPointerDownCapture={handleCanvasPanStart}
             onPointerMove={handleCanvasPointerMove}
             onPointerUp={handleCanvasPanEnd}
@@ -2834,6 +2831,7 @@ export default function EditorPage() {
               style={{
                 width: zoom < 1 ? `${(100 / zoom).toFixed(2)}%` : '100%',
                 height: zoom < 1 ? `${(100 / zoom).toFixed(2)}%` : '100%',
+                margin: CANVAS_PADDING,
                 minWidth: '2400px',
                 minHeight: '1800px',
                 transform: `scale(${zoom})`,
@@ -4428,11 +4426,11 @@ function NodeGrid({ nodes, currentScene, selectedNodeIds = [], selectedNodeId, g
   };
 
   useLayoutEffect(() => {
-    const scrollContainer = gridRef.current;
-    if (!scrollContainer) return undefined;
-
+    let scrollContainer = null;
     let animationFrame = 0;
+    let retryFrame = 0;
     const measureViewport = () => {
+      if (!scrollContainer) return;
       const next = getCanvasViewport(
         scrollContainer.scrollLeft,
         scrollContainer.scrollTop,
@@ -4451,17 +4449,30 @@ function NodeGrid({ nodes, currentScene, selectedNodeIds = [], selectedNodeId, g
       });
     };
 
-    measureViewport();
-    scrollContainer.addEventListener('scroll', scheduleMeasure, { passive: true });
-    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleMeasure);
-    if (resizeObserver) resizeObserver.observe(scrollContainer);
-    else window.addEventListener('resize', scheduleMeasure);
+    const attachViewport = () => {
+      scrollContainer = gridRef.current;
+      if (!scrollContainer) {
+        retryFrame = window.requestAnimationFrame(attachViewport);
+        return;
+      }
+      measureViewport();
+      scrollContainer.addEventListener('scroll', scheduleMeasure, { passive: true });
+      const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleMeasure);
+      if (resizeObserver) resizeObserver.observe(scrollContainer);
+      else window.addEventListener('resize', scheduleMeasure);
+      cleanupResizeObserver = () => {
+        resizeObserver?.disconnect();
+        if (!resizeObserver) window.removeEventListener('resize', scheduleMeasure);
+      };
+    };
+    let cleanupResizeObserver = () => {};
+    attachViewport();
 
     return () => {
       if (animationFrame) window.cancelAnimationFrame(animationFrame);
-      scrollContainer.removeEventListener('scroll', scheduleMeasure);
-      resizeObserver?.disconnect();
-      if (!resizeObserver) window.removeEventListener('resize', scheduleMeasure);
+      if (retryFrame) window.cancelAnimationFrame(retryFrame);
+      scrollContainer?.removeEventListener('scroll', scheduleMeasure);
+      cleanupResizeObserver();
     };
   }, [gridRef, zoom]);
 
@@ -4514,6 +4525,7 @@ function NodeGrid({ nodes, currentScene, selectedNodeIds = [], selectedNodeId, g
         aria-label={`Canvas widgets. Showing ${visibleNodes.length} of ${nodes.length}.`}
         data-rendered-widget-count={visibleNodes.length}
         data-total-widget-count={nodes.length}
+        data-viewport-ready={viewport ? 'true' : 'false'}
         className="relative w-full min-h-[650px] z-10"
       >
         {selectionPresentation && (
