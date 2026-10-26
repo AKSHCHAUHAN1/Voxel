@@ -99,7 +99,9 @@ import {
 } from './canvas-geometry';
 import {
   getWidgetDefinition,
-  useWidgetDefinitions, validateWidgetConfiguration,
+  registerWidgetDefinition,
+  useWidgetDefinitions,
+  validateWidgetConfiguration,
 } from './widget-registry';
 import { CustomConfirmModal } from '@/components/feedback/CustomConfirmModal';
 
@@ -334,8 +336,28 @@ export default function EditorPage() {
     queryFn: () => workspaceService.dashboard(dashboardId),
     enabled: Boolean(dashboardId),
   });
+  const installedPlugins = useQuery({
+    queryKey: ['workspaces', dashboard.data?.workspaceId, 'plugins'],
+    queryFn: () => workspaceService.plugins(dashboard.data.workspaceId),
+    enabled: Boolean(dashboard.data?.workspaceId),
+  });
   const currentUser = useQuery({ queryKey: ['auth', 'me'], queryFn: authService.me, retry: false });
   const canEditDashboard = ['OWNER', 'ADMIN', 'EDITOR'].includes(dashboard.data?.accessRole) && dashboard.data?.status !== 'ARCHIVED';
+
+  useEffect(() => {
+    const unregister = [];
+    for (const plugin of installedPlugins.data || []) {
+      for (const widget of plugin.widgets || []) {
+        if (getWidgetDefinition(widget.type)) continue;
+        try {
+          unregister.push(registerWidgetDefinition(widget));
+        } catch (error) {
+          console.error('An installed widget definition could not be loaded.', error);
+        }
+      }
+    }
+    return () => unregister.reverse().forEach((remove) => remove());
+  }, [installedPlugins.data]);
 
   useEffect(() => {
     if (!location.state?.openComments) return;
