@@ -93,6 +93,8 @@ npm run test:e2e
 
 For an existing database created with `prisma db push`, baseline the current schema before the first `prisma migrate deploy`; subsequent releases should use the checked-in migrations.
 
+The browser tests start the API and web app and exercise email registration against local PostgreSQL and Redis. Start the Compose dependencies and apply migrations first. The test creates a uniquely named local account; use disposable data. Set `VOXEL_E2E_DATABASE_URL` or `VOXEL_E2E_REDIS_URL` only to point at a separate disposable test service. The E2E server forces test-only session and storage credentials and disables Google and external email delivery.
+
 Container builds, reverse-proxy configuration, migration rollout, secret handling, backup/restore steps, and incident checks are documented in [Deployment and operations](docs/deployment.md). The repository does not configure a hosting provider, backup schedule, alert destination, or named on-call owner.
 
 ## License

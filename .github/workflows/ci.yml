@@ -20,6 +20,8 @@ jobs:
     timeout-minutes: 25
     env:
       DATABASE_URL: postgresql://voxel:voxel@localhost:5432/voxel?schema=public
+      VOXEL_E2E_DATABASE_URL: postgresql://voxel:voxel@localhost:5432/voxel?schema=public
+      VOXEL_E2E_REDIS_URL: redis://localhost:6379
     services:
       postgres:
         image: postgres:16-alpine
@@ -31,6 +33,15 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd="pg_isready -U voxel -d voxel"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=10
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
           --health-interval=5s
           --health-timeout=3s
           --health-retries=10
