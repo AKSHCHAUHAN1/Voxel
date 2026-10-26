@@ -49,6 +49,9 @@ jobs:
           npm install --global npm@11.8.0
           npm ci
 
+      - name: Audit locked dependencies
+        run: npm audit
+
       - name: Generate Prisma Client
         run: npm run prisma:generate -w @voxel/api
 
