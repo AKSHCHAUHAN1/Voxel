@@ -7,6 +7,7 @@ const e2eEnvironment = {
   NODE_ENV: 'test',
   API_HOST: '0.0.0.0',
   API_PORT: '3000',
+  TRUST_PROXY: 'true',
   VOXEL_PUBLIC_APP_URL: 'http://127.0.0.1:5173',
   VOXEL_API_PUBLIC_URL: 'http://127.0.0.1:3000',
   VITE_VOXEL_API_URL: '',
