@@ -88,6 +88,8 @@ import {
   valueFromWorkspaceData,
 } from './workspace-data-source';
 import { getVisibleCanvasNodeIds } from './canvas-virtualization';
+import { scenesEqual } from './scene-comparison';
+import { getSaveState } from './save-state';
 import { getTimerDisplaySeconds, pauseTimerNode, resetTimerNode, startTimerNode } from './timer-state';
 import {
   CANVAS_INNER_PADDING,
@@ -505,7 +507,7 @@ export default function EditorPage() {
   const canUndo = useHistoryStore((s) => s.past.length > 0);
   const canRedo = useHistoryStore((s) => s.future.length > 0);
 
-  const { scene: yScene, updateScene, awareness, awarenessStates,
+  const { scene: yScene, updateScene, awareness, awarenessStates, isSynced: yjsSynced,
   } = useYjs(dashboardId, dashboard.data?.scene, currentUser.data);
 
   const queuePresenceField = useCallback((field, value) => {
@@ -1017,21 +1019,92 @@ export default function EditorPage() {
     }
   };
 
+  const persistedScene = useMemo(() => sceneOf(dashboard.data?.scene), [dashboard.data?.scene]);
   const draft = useMemo(() => {
-    if (!dashboard.data?.scene) return false;
-    return JSON.stringify(scene) !== JSON.stringify(dashboard.data?.scene);
-  }, [scene, dashboard.data?.scene]);
+    if (!yjsSynced || !dashboard.data?.scene) return false;
+    return !scenesEqual(scene, persistedScene);
+  }, [scene, dashboard.data?.scene, persistedScene, yjsSynced]);
 
   const save = useMutation({
-    mutationFn: (next) =>
+    mutationFn: ({ scene: next, version }) =>
       workspaceService.updateDashboard(dashboardId, {
         scene: next,
-        version: dashboard.data.version,
+        version,
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['dashboard', dashboardId] });
     },
   });
+
+  const saveState = getSaveState({
+    canEdit: canEditDashboard,
+    autosaveEnabled,
+    isPending: save.isPending,
+    isError: save.isError,
+    error: save.error,
+    draft,
+    isReady: yjsSynced,
+  });
+
+  const retrySave = async () => {
+    try {
+      let version = dashboard.data.version;
+      if (save.error?.statusCode === 412) {
+        const latest = await queryClient.fetchQuery({
+          queryKey: ['dashboard', dashboardId],
+          queryFn: () => workspaceService.dashboard(dashboardId),
+          staleTime: 0,
+        });
+        queryClient.setQueryData(['dashboard', dashboardId], latest);
+        version = latest.version;
+      }
+      save.mutate({ scene: sceneRef.current, version });
+    } catch (error) {
+      useNotificationStore.getState().add(
+        error.message || 'The latest dashboard version could not be loaded.',
+        'warning',
+      );
+    }
+  };
+
+  const handleBackToDashboards = async (event) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (canEditDashboard && !yjsSynced) {
+      event.preventDefault();
+      useNotificationStore.getState().add('Wait for the dashboard to finish syncing before leaving.', 'warning');
+      return;
+    }
+    if (!canEditDashboard || !draft) return;
+    event.preventDefault();
+    if (save.isPending) {
+      useNotificationStore.getState().add('Wait for the current save to finish before leaving this dashboard.', 'warning');
+      return;
+    }
+    try {
+      const submittedScene = sceneRef.current;
+      await save.mutateAsync({ scene: submittedScene, version: dashboard.data.version });
+      if (JSON.stringify(sceneRef.current) !== JSON.stringify(submittedScene)) {
+        useNotificationStore.getState().add('More edits were made while saving. Save those changes before leaving.', 'warning');
+        return;
+      }
+      navigate(`/workspaces/${workspaceId}/dashboards`);
+    } catch (error) {
+      useNotificationStore.getState().add(
+        error.message || 'Your dashboard changes could not be saved. Retry before leaving.',
+        'warning',
+      );
+    }
+  };
+
+  useEffect(() => {
+    if (!canEditDashboard || (yjsSynced && !draft)) return undefined;
+    const protectUnsavedChanges = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', protectUnsavedChanges);
+    return () => window.removeEventListener('beforeunload', protectUnsavedChanges);
+  }, [canEditDashboard, draft, yjsSynced]);
 
   const addNode = (type) => {
     const definition = getWidgetDefinition(type);
@@ -1524,14 +1597,14 @@ export default function EditorPage() {
 
   // Autosave Engine respecting user settings
   useEffect(() => {
-    if (!autosaveEnabled || !draft || save.isPending) return;
+    if (!autosaveEnabled || !canEditDashboard || !yjsSynced || !draft || save.isPending || save.isError) return;
     const delay =
       autosaveInterval === '5s' ? 5000 : autosaveInterval === '30s' ? 30000 : 1200;
     const timer = setTimeout(() => {
-      save.mutate(scene);
+      save.mutate({ scene, version: dashboard.data.version });
     }, delay);
     return () => clearTimeout(timer);
-  }, [scene, draft, autosaveEnabled, autosaveInterval, save]);
+  }, [scene, draft, autosaveEnabled, autosaveInterval, canEditDashboard, yjsSynced, save.isPending, save.isError, save.mutate, dashboard.data?.version]);
 
   // Sync selectedNodeId to awareness
   useEffect(() => {
@@ -1880,7 +1953,7 @@ export default function EditorPage() {
 
   const handleSave = () => {
     if (canEditDashboard && yScene && draft && !save.isPending) {
-      save.mutate(scene);
+      save.mutate({ scene, version: dashboard.data.version });
     }
   };
 
@@ -1894,7 +1967,7 @@ export default function EditorPage() {
       return;
     }
     try {
-      if (draft) await save.mutateAsync(scene);
+      if (draft) await save.mutateAsync({ scene, version: dashboard.data.version });
       navigate(`/workspaces/${workspaceId}/dashboards`, { state: { openCreateDashboard: true } });
     } catch (error) {
       useNotificationStore.getState().add(error.message || 'Dashboard changes could not be saved.', 'warning');
@@ -1911,7 +1984,7 @@ export default function EditorPage() {
       return;
     }
     try {
-      if (draft) await save.mutateAsync(scene);
+      if (draft) await save.mutateAsync({ scene, version: dashboard.data.version });
       const copy = await workspaceService.duplicateDashboard(dashboardId);
       await queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'dashboards'] });
       useNotificationStore.getState().add(`Created “${copy.name}”.`, 'success');
@@ -1965,7 +2038,7 @@ export default function EditorPage() {
       onConfirm: () => {
         setConfirmModal({ isOpen: false });
         update(ver.scene);
-        save.mutate(ver.scene);
+        save.mutate({ scene: ver.scene, version: dashboard.data.version });
       },
       onCancel: () => setConfirmModal({ isOpen: false }),
     });
@@ -2362,6 +2435,7 @@ export default function EditorPage() {
         <div className="flex items-center gap-3">
           <Link
             to={`/workspaces/${workspaceId}/dashboards`}
+            onClick={handleBackToDashboards}
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-slate-200 transition cursor-pointer"
             title="Back to Dashboards"
           >
@@ -2373,13 +2447,36 @@ export default function EditorPage() {
           </div>
 
           <div className="flex flex-col">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <h1 className="text-sm font-extrabold text-slate-900 dark:text-white leading-none">
                 {dashboard.data?.name || 'Dashboard'}
               </h1>
               <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[9px] font-extrabold text-violet-600 dark:text-violet-400 uppercase tracking-widest border border-violet-500/20">
                 Freeform
               </span>
+              <div className={`inline-flex items-center gap-1.5 text-[10px] font-semibold ${saveState.tone === 'error' ? 'text-rose-600 dark:text-rose-300' : saveState.tone === 'success' ? 'text-emerald-600 dark:text-emerald-300' : saveState.tone === 'pending' ? 'text-amber-700 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400'}`} title={saveState.detail || saveState.label}>
+                <span className="inline-flex items-center gap-1.5" role="status" aria-live="polite">
+                  {saveState.tone === 'error'
+                    ? <AlertTriangle size={12} aria-hidden="true" />
+                    : saveState.tone === 'success'
+                      ? <CheckCircle2 size={12} aria-hidden="true" />
+                      : saveState.tone === 'pending'
+                        ? <RefreshCw size={11} className={save.isPending ? 'animate-spin' : ''} aria-hidden="true" />
+                        : null}
+                  <span className="sr-only sm:not-sr-only">{saveState.label}</span>
+                  {saveState.detail && <span className="sr-only">{saveState.detail}</span>}
+                </span>
+                {saveState.retryable && (
+                  <button
+                    type="button"
+                    onClick={retrySave}
+                    className="rounded px-1 py-0.5 text-[10px] font-bold underline decoration-current underline-offset-2 hover:bg-rose-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                    title={saveState.conflict ? 'Save your current canvas using the latest server version.' : saveState.detail}
+                  >
+                    {saveState.conflict ? 'Retry with latest' : 'Retry save'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -2495,7 +2592,7 @@ export default function EditorPage() {
             <button
               disabled={!draft || save.isPending}
               onClick={() => {
-                save.mutate(scene, {
+                save.mutate({ scene, version: dashboard.data.version }, {
                   onSuccess: () => {
                     useNotificationStore.getState().add('Dashboard canvas changes saved to database.', 'success');
                   },

@@ -52,11 +52,13 @@ export function useYjs(dashboardId, initialScene, currentUser) {
   const [awareness, setAwareness] = useState(null);
   const [awarenessStates, setAwarenessStates] = useState([]);
   const [provider, setProvider] = useState(null);
+  const [isSynced, setIsSynced] = useState(false);
 
   useEffect(() => {
     if (!dashboardId) return;
 
     let cancelled = false;
+    setIsSynced(false);
     const doc = new Y.Doc();
     const yScene = doc.getMap('scene');
     let hpProvider;
@@ -80,6 +82,7 @@ export function useYjs(dashboardId, initialScene, currentUser) {
     yScene.observeDeep(updateLocalState);
 
     hpProvider.on('synced', () => {
+      if (!cancelled) setIsSynced(true);
       if (Array.from(yScene.keys()).length === 0 && initialScene) {
         doc.transact(() => {
           for (const [key, value] of Object.entries(initialScene)) {
@@ -105,6 +108,7 @@ export function useYjs(dashboardId, initialScene, currentUser) {
       setProvider(null);
       setAwareness(null);
       setAwarenessStates([]);
+      setIsSynced(false);
       doc.destroy();
     };
   }, [dashboardId]);
@@ -135,5 +139,5 @@ export function useYjs(dashboardId, initialScene, currentUser) {
     [provider],
   );
 
-  return { scene, updateScene, awareness, awarenessStates };
+  return { scene, updateScene, awareness, awarenessStates, isSynced };
 }

@@ -65,8 +65,10 @@ test('a 500-widget dashboard stays virtualized and saves edits after reload', as
   const startedAt = Date.now();
   await page.goto(`/workspaces/${dashboard.workspaceId}/dashboards/${dashboard.id}`);
   const canvas = page.getByRole('group', { name: /Canvas widgets/ });
+  const saveStatus = page.getByRole('status').filter({ hasText: 'All changes saved' });
   await expect(canvas).toHaveAttribute('data-total-widget-count', '500', { timeout: 15_000 });
   await expect(canvas).toHaveAttribute('data-viewport-ready', 'true');
+  await expect(saveStatus).toBeVisible({ timeout: 15_000 });
   const firstRenderedWidget = page.locator('[data-canvas-widget]').first();
   await expect(firstRenderedWidget).toBeVisible();
 
@@ -105,6 +107,7 @@ test('a 500-widget dashboard stays virtualized and saves edits after reload', as
   expect(editedWidgetId).toBeTruthy();
   await firstRenderedWidget.click();
   await page.getByLabel('Value').first().fill('saved-after-large-scene-load');
+  await expect(saveStatus).toBeVisible({ timeout: 15_000 });
   await expect
     .poll(
       () => page.evaluate(async ({ id, widgetId }) => {
